@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // ============================================================================
@@ -32,6 +33,45 @@ var (
 	reReasoningTag = regexp.MustCompile(`(?s)<reasoning>(.*?)</reasoning>`)
 	reDecisionTag  = regexp.MustCompile(`(?s)<decision>(.*?)</decision>`)
 )
+
+// ============================================================================
+// Token Estimation
+// ============================================================================
+
+// EstimateTokenCount 估算文本的token数量
+// 使用简化的估算方法：
+// - 中文字符：约1.5字符=1token
+// - 英文字符和数字：约4字符=1token
+// - 混合文本：使用加权平均估算
+func EstimateTokenCount(text string) int {
+	if len(text) == 0 {
+		return 0
+	}
+
+	// 计算中文字符数量（UTF-8中中文字符通常占3字节）
+	chineseCharCount := 0
+	totalRunes := utf8.RuneCountInString(text)
+
+	for _, r := range text {
+		// 中文字符Unicode范围：0x4E00-0x9FFF（基本），0x3400-0x4DBF（扩展A）
+		if r >= 0x4E00 && r <= 0x9FFF {
+			chineseCharCount++
+		}
+	}
+
+	// 估算token数
+	// 中文字符：1.5字符/1token，非中文字符：4字符/1token
+	nonChineseCount := totalRunes - chineseCharCount
+	estimatedTokens := int(float64(chineseCharCount)/1.5 + float64(nonChineseCount)/4.0)
+
+	// 至少返回总字符数的1/3（保守估算）
+	minTokens := totalRunes / 3
+	if estimatedTokens < minTokens {
+		estimatedTokens = minTokens
+	}
+
+	return estimatedTokens
+}
 
 // ============================================================================
 // Type Definitions
@@ -284,6 +324,19 @@ func GetFullDecisionWithStrategy(ctx *Context, mcpClient mcp.AIClient, engine *S
 
 	// 3. Build User Prompt using strategy engine
 	userPrompt := engine.BuildUserPrompt(ctx)
+
+	// Calculate estimated token count
+	systemTokens := EstimateTokenCount(systemPrompt)
+	userTokens := EstimateTokenCount(userPrompt)
+	totalTokens := systemTokens + userTokens
+
+	// Log token estimation
+	logger.Infof("📊 [Token Estimation] System prompt: ~%d tokens, User prompt: ~%d tokens, Total: ~%d tokens",
+		systemTokens, userTokens, totalTokens)
+
+	if totalTokens > 50000 {
+		logger.Warnf("⚠️  [Token Warning] Estimated token count (%d) is very high, may exceed model context limit", totalTokens)
+	}
 
 	// 4. Call AI API
 	aiCallStart := time.Now()

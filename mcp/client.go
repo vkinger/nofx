@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const (
@@ -190,6 +191,38 @@ func (client *Client) setAuthHeader(reqHeader http.Header) {
 	reqHeader.Set("Authorization", fmt.Sprintf("Bearer %s", client.APIKey))
 }
 
+// estimateTokenCount 估算文本的token数量（mcp包内使用）
+// 使用与decision包相同的算法，确保估算一致性
+func estimateTokenCount(text string) int {
+	if len(text) == 0 {
+		return 0
+	}
+
+	// 计算中文字符数量
+	chineseCharCount := 0
+	totalRunes := utf8.RuneCountInString(text)
+
+	for _, r := range text {
+		// 中文字符Unicode范围：0x4E00-0x9FFF
+		if r >= 0x4E00 && r <= 0x9FFF {
+			chineseCharCount++
+		}
+	}
+
+	// 估算token数（与decision包保持一致）
+	// 中文字符：1.5字符/1token，非中文字符：4字符/1token
+	nonChineseCount := totalRunes - chineseCharCount
+	estimatedTokens := int(float64(chineseCharCount)/1.5 + float64(nonChineseCount)/4.0)
+
+	// 至少返回总字符数的1/3（保守估算）
+	minTokens := totalRunes / 3
+	if estimatedTokens < minTokens {
+		estimatedTokens = minTokens
+	}
+
+	return estimatedTokens
+}
+
 func (client *Client) buildMCPRequestBody(systemPrompt, userPrompt string) map[string]any {
 	// Build messages array
 	messages := []map[string]string{}
@@ -298,8 +331,24 @@ func (client *Client) call(systemPrompt, userPrompt string) (string, error) {
 		client.logger.Debugf("[%s]   API Key: %s...%s", client.String(), client.APIKey[:4], client.APIKey[len(client.APIKey)-4:])
 	}
 
+	// Estimate token count before sending request
+	systemTokens := estimateTokenCount(systemPrompt)
+	userTokens := estimateTokenCount(userPrompt)
+	totalTokens := systemTokens + userTokens
+	client.logger.Infof("📊 [MCP %s] Estimated input tokens: ~%d (system: ~%d, user: ~%d)",
+		client.String(), totalTokens, systemTokens, userTokens)
+
 	// Step 1: Build request body (via hooks for dynamic dispatch)
 	requestBody := client.hooks.buildMCPRequestBody(systemPrompt, userPrompt)
+
+	// Log max_tokens configuration
+	tokenKey := "max_tokens"
+	if client.Provider == ProviderOpenAI {
+		tokenKey = "max_completion_tokens"
+	}
+	if maxTokensVal, ok := requestBody[tokenKey]; ok {
+		client.logger.Infof("📊 [MCP %s] Max output tokens: %d", client.String(), maxTokensVal)
+	}
 
 	// Step 2: Serialize request body (via hooks for dynamic dispatch)
 	jsonData, err := client.hooks.marshalRequestBody(requestBody)
