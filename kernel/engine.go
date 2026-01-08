@@ -1019,20 +1019,11 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString("The JSON parser cannot evaluate expressions. You must calculate the result yourself and output the number.\n")
 
 	sb.WriteString("### ⚠️ CRITICAL: Numeric Field Format (stop_loss, take_profit, risk_usd, position_size_usd)\n\n")
-	sb.WriteString("**These fields MUST be actual numbers, NOT strings or expressions!**\n\n")
+	sb.WriteString("**These fields MUST be actual numbers, NOT strings or expressions! You must calculate the actual value and output the number directly**\n\n")
 	sb.WriteString("- `stop_loss`: Decimal number (actual price level from market data)\n")
-	sb.WriteString("  - **MUST be a numeric value, NOT a string or expression**\n")
-	sb.WriteString("  - **You must calculate the actual price value and output the number directly**\n\n")
 	sb.WriteString("- `take_profit`: Decimal number (actual price level from market data)\n")
-	sb.WriteString("  - **MUST be a numeric value, NOT a string or expression**\n")
-	sb.WriteString("  - **You must calculate the actual price value and output the number directly**\n\n")
 	sb.WriteString("- `risk_usd`: Decimal number (calculated maximum risk in USDT)\n")
-	sb.WriteString("  - **MUST be a numeric value, NOT a string or expression**\n")
-	sb.WriteString("  - **You must calculate the actual risk amount and output the number directly**\n\n")
 	sb.WriteString("- `position_size_usd`: Decimal number (calculated position size in USDT, based on account equity and risk limits)\n")
-	sb.WriteString("  - **You must calculate the actual risk amount and output the number directly**\n\n")
-
-
 	sb.WriteString("<reasoning>\n")
 	sb.WriteString("Your chain of thought analysis...\n")
 	sb.WriteString("- Briefly summarize your thinking process \n")
