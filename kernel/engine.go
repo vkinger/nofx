@@ -1017,11 +1017,32 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString("## Format Requirements\n\n")
 	sb.WriteString("**⚠️ CRITICAL: All numeric values in JSON MUST be actual numbers, NOT strings or expressions!**\n\n")
 	sb.WriteString("The JSON parser cannot evaluate expressions. You must calculate the result yourself and output the number.\n")
+
+	sb.WriteString("### ⚠️ CRITICAL: Numeric Field Format (stop_loss, take_profit, risk_usd,position_size_usd)\n\n")
+	sb.WriteString("**These fields MUST be actual numbers, NOT strings or expressions!**\n\n")
+	sb.WriteString("- `stop_loss`: Decimal number (actual price level from market data)\n")
+	sb.WriteString("  - ✅ CORRECT: `\"stop_loss\": 97000.5` (actual calculated number)\n")
+	sb.WriteString("  - ❌ WRONG: `\"stop_loss\": \"price * 0.95\"` (string with expression)\n")
+	sb.WriteString("  - ❌ WRONG: `\"stop_loss\": \"entry_price - 1000\"` (string with expression)\n")
+	sb.WriteString("  - ❌ WRONG: `\"stop_loss\": \"97000.5\"` (string, not number)\n")
+	sb.WriteString("  - **You must calculate the actual price value and output the number directly**\n\n")
+	sb.WriteString("- `take_profit`: Decimal number (actual price level from market data)\n")
+	sb.WriteString("  - ✅ CORRECT: `\"take_profit\": 91000.0` (actual calculated number)\n")
+	sb.WriteString("  - ❌ WRONG: `\"take_profit\": \"price * 1.1\"` (string with expression)\n")
+	sb.WriteString("  - ❌ WRONG: `\"take_profit\": \"entry_price + 2000\"` (string with expression)\n")
+	sb.WriteString("  - ❌ WRONG: `\"take_profit\": \"91000\"` (string, not number)\n")
+	sb.WriteString("  - **You must calculate the actual price value and output the number directly**\n\n")
+	sb.WriteString("- `risk_usd`: Decimal number (calculated maximum risk in USDT)\n")
+	sb.WriteString("  - ✅ CORRECT: `\"risk_usd\": 30.5` (actual calculated number)\n")
+	sb.WriteString("  - ❌ WRONG: `\"risk_usd\": \"position_size * 0.1\"` (string with expression)\n")
+	sb.WriteString("  - ❌ WRONG: `\"risk_usd\": \"30.5\"` (string, not number)\n")
+	sb.WriteString("  - **You must calculate the actual risk amount and output the number directly**\n\n")
+	sb.WriteString("- `position_size_usd`: Decimal number (calculated position_size_usd in USDT)\n")
 	sb.WriteString("- ✅ CORRECT: `\"position_size_usd\": 585` (actual number)\n")
 	sb.WriteString("- ❌ WRONG: `\"position_size_usd\": \"117 * 5\"` (string with expression)\n")
 	sb.WriteString("- ❌ WRONG: `\"position_size_usd\": \"585\"` (string, not number)\n")
-	sb.WriteString("- ❌ WRONG: `\"stop_loss\": \"price * 0.95\"` (string with expression)\n")
-	sb.WriteString("- ✅ CORRECT: `\"stop_loss\": 97000.5` (actual calculated number)\n\n")
+	sb.WriteString("  - **You must calculate the actual position_size_usd and output the number directly**\n\n")
+
 	sb.WriteString("<reasoning>\n")
 	sb.WriteString("Your chain of thought analysis...\n")
 	sb.WriteString("- Briefly summarize your thinking process \n")
@@ -1041,7 +1062,6 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString("- `action`: open_long | open_short | close_long | close_short | hold | wait\n")
 	sb.WriteString(fmt.Sprintf("- `confidence`: 0-100 (opening recommended ≥ %d)\n", riskControl.MinConfidence))
 	sb.WriteString("- Required when opening: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd\n")
-
 
 	// 8. Custom Prompt
 	if e.config.CustomPrompt != "" {
