@@ -1516,6 +1516,7 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 
 func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *market.TimeframeSeriesData, indicators store.IndicatorConfig) {
 	// 方案7：使用摘要而非完整数据（节省 10000-15000 tokens）
+	klines = data.klines
 	if len(klines) > 0 {
 		// 计算K线摘要信息
 		latest := klines[len(klines)-1]
