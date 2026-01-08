@@ -1017,7 +1017,8 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString("## Format Requirements\n\n")
 	sb.WriteString("<reasoning>\n")
 	sb.WriteString("Your chain of thought analysis...\n")
-	sb.WriteString("- Briefly analyze your thinking process \n")
+	sb.WriteString("- Briefly summarize your thinking process \n")
+	sb.WriteString("- No excessive verbosity \n")
 	sb.WriteString("</reasoning>\n\n")
 	sb.WriteString("<decision>\n")
 	sb.WriteString("Step 2: JSON decision array\n\n")
@@ -1238,9 +1239,53 @@ func (e *StrategyEngine) BuildUserPrompt(ctx *Context) string {
 		positionSymbols[normalizedSymbol] = true
 	}
 
-	sb.WriteString(fmt.Sprintf("## Candidate Coins (%d coins)\n\n", len(ctx.MarketDataMap)))
+	// 方案4：优先使用策略配置的候选币种数量，优化作为兜底
+	coinSource := e.config.CoinSource
+	maxCandidateCoins := 0
+
+	// 根据配置的币种来源确定最大数量
+	switch coinSource.SourceType {
+	case "static":
+		maxCandidateCoins = len(coinSource.StaticCoins)
+	case "ai500":
+		maxCandidateCoins = coinSource.AI500Limit
+		if maxCandidateCoins <= 0 {
+			maxCandidateCoins = 10 // 默认值
+		}
+	case "oi_top":
+		maxCandidateCoins = coinSource.OITopLimit
+		if maxCandidateCoins <= 0 {
+			maxCandidateCoins = 20 // 默认值
+		}
+	case "mixed":
+		// 混合模式：取两者之和，但设置上限
+		ai500Limit := coinSource.AI500Limit
+		if ai500Limit <= 0 {
+			ai500Limit = 10
+		}
+		oiTopLimit := coinSource.OITopLimit
+		if oiTopLimit <= 0 {
+			oiTopLimit = 20
+		}
+		maxCandidateCoins = ai500Limit + oiTopLimit
+	default:
+		maxCandidateCoins = 10 // 默认值
+	}
+
+	// 优化兜底：如果配置的数量过多（>5个），限制为 5 个（减少 token 消耗）
+	if maxCandidateCoins > 5 {
+		maxCandidateCoins = 5
+	}
+
+	candidateCoins := ctx.CandidateCoins
+	if len(candidateCoins) > maxCandidateCoins {
+		candidateCoins = candidateCoins[:maxCandidateCoins]
+	}
+
+	totalCandidateCount := len(ctx.CandidateCoins)
+	sb.WriteString(fmt.Sprintf("## Candidate Coins (%d total, showing top %d)\n\n", totalCandidateCount, len(candidateCoins)))
 	displayedCount := 0
-	for _, coin := range ctx.CandidateCoins {
+	for _, coin := range candidateCoins {
 		// Skip if this coin is already a position (data already shown in positions section)
 		normalizedCoinSymbol := market.Normalize(coin.Symbol)
 		if positionSymbols[normalizedCoinSymbol] {
@@ -1273,18 +1318,24 @@ func (e *StrategyEngine) BuildUserPrompt(ctx *Context) string {
 	}
 
 	// OI Ranking data (market-wide open interest changes)
+	// 优化：只显示 Top 5，减少 token 消耗
 	if ctx.OIRankingData != nil {
-		sb.WriteString(nofxos.FormatOIRankingForAI(ctx.OIRankingData, nofxosLang))
+		limitedOIRanking := limitOIRankingData(ctx.OIRankingData, 5)
+		sb.WriteString(nofxos.FormatOIRankingForAI(limitedOIRanking, nofxosLang))
 	}
 
 	// NetFlow Ranking data (market-wide fund flow)
+	// 优化：只显示 Top 5，减少 token 消耗
 	if ctx.NetFlowRankingData != nil {
-		sb.WriteString(nofxos.FormatNetFlowRankingForAI(ctx.NetFlowRankingData, nofxosLang))
+		limitedNetFlowRanking := limitNetFlowRankingData(ctx.NetFlowRankingData, 5)
+		sb.WriteString(nofxos.FormatNetFlowRankingForAI(limitedNetFlowRanking, nofxosLang))
 	}
 
 	// Price Ranking data (market-wide gainers/losers)
+	// 优化：只显示 Top 5，减少 token 消耗
 	if ctx.PriceRankingData != nil {
-		sb.WriteString(nofxos.FormatPriceRankingForAI(ctx.PriceRankingData, nofxosLang))
+		limitedPriceRanking := limitPriceRankingData(ctx.PriceRankingData, 5)
+		sb.WriteString(nofxos.FormatPriceRankingForAI(limitedPriceRanking, nofxosLang))
 	}
 
 	sb.WriteString("---\n\n")
@@ -1464,45 +1515,143 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 }
 
 func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *market.TimeframeSeriesData, indicators store.IndicatorConfig) {
-	if len(data.Klines) > 0 {
-		sb.WriteString("Time(UTC)      Open      High      Low       Close     Volume\n")
-		for i, k := range data.Klines {
-			t := time.Unix(k.Time/1000, 0).UTC()
-			timeStr := t.Format("01-02 15:04")
-			marker := ""
-			if i == len(data.Klines)-1 {
-				marker = "  <- current"
+	// 方案7：使用摘要而非完整数据（节省 10000-15000 tokens）
+	if len(klines) > 0 {
+		// 计算K线摘要信息
+		latest := klines[len(klines)-1]
+		oldest := klines[0]
+
+		// 计算价格统计
+		var minPrice, maxPrice, totalVolume float64
+		minPrice = klines[0].Low
+		maxPrice = klines[0].High
+		for _, k := range klines {
+			if k.Low < minPrice {
+				minPrice = k.Low
 			}
-			sb.WriteString(fmt.Sprintf("%-14s %-9.4f %-9.4f %-9.4f %-9.4f %-12.2f%s\n",
-				timeStr, k.Open, k.High, k.Low, k.Close, k.Volume, marker))
+			if k.High > maxPrice {
+				maxPrice = k.High
+			}
+			totalVolume += k.Volume
 		}
-		sb.WriteString("\n")
+
+		// 计算价格变化
+		priceChange := ((latest.Close - oldest.Close) / oldest.Close) * 100
+		priceChangeAbs := latest.Close - oldest.Close
+
+		// 计算趋势（简单判断：最近3根 vs 前3根）
+		trend := "sideways"
+		if len(klines) >= 6 {
+			recent3Avg := (klines[len(klines)-1].Close + klines[len(klines)-2].Close + klines[len(klines)-3].Close) / 3
+			prev3Avg := (klines[0].Close + klines[1].Close + klines[2].Close) / 3
+			if recent3Avg > prev3Avg*1.01 {
+				trend = "uptrend"
+			} else if recent3Avg < prev3Avg*0.99 {
+				trend = "downtrend"
+			}
+		}
+
+		// 价格精度
+		pricePrecision := 4
+		if latest.Close > 1000 {
+			pricePrecision = 2
+		}
+		priceFormat := fmt.Sprintf("%%.%df", pricePrecision)
+
+		// 显示摘要而非完整数据
+		sb.WriteString(fmt.Sprintf("Summary (%d bars): Latest %s | Range [%s, %s] | Change %+.2f%% (%+.2f) | Trend: %s\n",
+			len(klines), fmt.Sprintf(priceFormat, latest.Close),
+			fmt.Sprintf(priceFormat, minPrice), fmt.Sprintf(priceFormat, maxPrice),
+			priceChange, priceChangeAbs, trend))
+
+		// 显示最新K线详情（仅1根）
+		t := time.Unix(latest.Time/1000, 0).UTC()
+		timeStr := t.Format("01-02 15:04")
+		volumeStr := fmt.Sprintf("%.2f", latest.Volume)
+		if latest.Volume >= 1000000 {
+			volumeStr = fmt.Sprintf("%.2e", latest.Volume)
+		}
+		sb.WriteString(fmt.Sprintf("Latest (%s): O:%s H:%s L:%s C:%s V:%s\n\n",
+			timeStr, fmt.Sprintf(priceFormat, latest.Open), fmt.Sprintf(priceFormat, latest.High),
+			fmt.Sprintf(priceFormat, latest.Low), fmt.Sprintf(priceFormat, latest.Close), volumeStr))
 	} else if len(data.MidPrices) > 0 {
-		sb.WriteString(fmt.Sprintf("Mid prices: %s\n\n", formatFloatSlice(data.MidPrices)))
+		// 限制 MidPrices 数量
+		midPrices := data.MidPrices
+		if len(midPrices) > maxKlines {
+			midPrices = midPrices[len(midPrices)-maxKlines:]
+		}
+		sb.WriteString(fmt.Sprintf("Mid prices: %s\n\n", formatFloatSlice(midPrices)))
 		if indicators.EnableVolume && len(data.Volume) > 0 {
-			sb.WriteString(fmt.Sprintf("Volume: %s\n\n", formatFloatSlice(data.Volume)))
+			volume := data.Volume
+			if len(volume) > maxKlines {
+				volume = volume[len(volume)-maxKlines:]
+			}
+			sb.WriteString(fmt.Sprintf("Volume: %s\n\n", formatFloatSlice(volume)))
 		}
 	}
 
+	// 方案7：指标数据使用摘要而非完整数组（节省大量 tokens）
 	if indicators.EnableEMA {
 		if len(data.EMA20Values) > 0 {
-			sb.WriteString(fmt.Sprintf("EMA20: %s\n", formatFloatSlice(data.EMA20Values)))
+			ema20 := data.EMA20Values
+			current := ema20[len(ema20)-1]
+			previous := current
+			if len(ema20) > 1 {
+				previous = ema20[len(ema20)-2]
+			}
+			change := ((current - previous) / previous) * 100
+			sb.WriteString(fmt.Sprintf("EMA20: %.4f (change: %+.2f%%)\n", current, change))
 		}
 		if len(data.EMA50Values) > 0 {
-			sb.WriteString(fmt.Sprintf("EMA50: %s\n", formatFloatSlice(data.EMA50Values)))
+			ema50 := data.EMA50Values
+			current := ema50[len(ema50)-1]
+			previous := current
+			if len(ema50) > 1 {
+				previous = ema50[len(ema50)-2]
+			}
+			change := ((current - previous) / previous) * 100
+			sb.WriteString(fmt.Sprintf("EMA50: %.4f (change: %+.2f%%)\n", current, change))
 		}
 	}
 
 	if indicators.EnableMACD && len(data.MACDValues) > 0 {
-		sb.WriteString(fmt.Sprintf("MACD: %s\n", formatFloatSlice(data.MACDValues)))
+		macd := data.MACDValues
+		current := macd[len(macd)-1]
+		previous := current
+		if len(macd) > 1 {
+			previous = macd[len(macd)-2]
+		}
+		trend := "neutral"
+		if current > 0 && current > previous {
+			trend = "bullish"
+		} else if current < 0 && current < previous {
+			trend = "bearish"
+		}
+		sb.WriteString(fmt.Sprintf("MACD: %.4f (trend: %s)\n", current, trend))
 	}
 
 	if indicators.EnableRSI {
 		if len(data.RSI7Values) > 0 {
-			sb.WriteString(fmt.Sprintf("RSI7: %s\n", formatFloatSlice(data.RSI7Values)))
+			rsi7 := data.RSI7Values
+			current := rsi7[len(rsi7)-1]
+			signal := "neutral"
+			if current > 70 {
+				signal = "overbought"
+			} else if current < 30 {
+				signal = "oversold"
+			}
+			sb.WriteString(fmt.Sprintf("RSI7: %.2f (%s)\n", current, signal))
 		}
 		if len(data.RSI14Values) > 0 {
-			sb.WriteString(fmt.Sprintf("RSI14: %s\n", formatFloatSlice(data.RSI14Values)))
+			rsi14 := data.RSI14Values
+			current := rsi14[len(rsi14)-1]
+			signal := "neutral"
+			if current > 70 {
+				signal = "overbought"
+			} else if current < 30 {
+				signal = "oversold"
+			}
+			sb.WriteString(fmt.Sprintf("RSI14: %.2f (%s)\n", current, signal))
 		}
 	}
 
@@ -1511,9 +1660,29 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 	}
 
 	if indicators.EnableBOLL && len(data.BOLLUpper) > 0 {
-		sb.WriteString(fmt.Sprintf("BOLL Upper: %s\n", formatFloatSlice(data.BOLLUpper)))
-		sb.WriteString(fmt.Sprintf("BOLL Middle: %s\n", formatFloatSlice(data.BOLLMiddle)))
-		sb.WriteString(fmt.Sprintf("BOLL Lower: %s\n", formatFloatSlice(data.BOLLLower)))
+		bollUpper := data.BOLLUpper
+		bollMiddle := data.BOLLMiddle
+		bollLower := data.BOLLLower
+		if len(bollUpper) > 0 {
+			upper := bollUpper[len(bollUpper)-1]
+			middle := bollMiddle[len(bollMiddle)-1]
+			lower := bollLower[len(bollLower)-1]
+			position := "middle"
+			if len(klines) > 0 {
+				currentPrice := klines[len(klines)-1].Close
+				if currentPrice > upper {
+					position = "above upper"
+				} else if currentPrice < lower {
+					position = "below lower"
+				} else if currentPrice > middle {
+					position = "upper half"
+				} else {
+					position = "lower half"
+				}
+			}
+			sb.WriteString(fmt.Sprintf("BOLL: Upper=%.4f Middle=%.4f Lower=%.4f (price: %s)\n",
+				upper, middle, lower, position))
+		}
 	}
 
 	sb.WriteString("\n")
@@ -1623,10 +1792,27 @@ func formatFlowValue(v float64) string {
 	return fmt.Sprintf("%s%.2f", sign, v)
 }
 
+// formatFloatSlice 格式化浮点数切片（方案7：压缩数据格式）
 func formatFloatSlice(values []float64) string {
+	if len(values) == 0 {
+		return "[]"
+	}
+
 	strValues := make([]string, len(values))
 	for i, v := range values {
-		strValues[i] = fmt.Sprintf("%.4f", v)
+		// 优化：根据数值大小动态调整精度，减少 token 消耗
+		// 绝对值 > 1000 使用 2 位小数，> 100 使用 3 位，否则使用 4 位
+		precision := 4
+		absV := v
+		if absV < 0 {
+			absV = -absV
+		}
+		if absV > 1000 {
+			precision = 2
+		} else if absV > 100 {
+			precision = 3
+		}
+		strValues[i] = fmt.Sprintf("%.*f", precision, v)
 	}
 	return "[" + strings.Join(strValues, ", ") + "]"
 }
@@ -1936,4 +2122,114 @@ func detectLanguage(text string) Language {
 		}
 	}
 	return LangEnglish
+}
+
+// ============================================================================
+// Ranking Data Optimization Functions (减少 Token 消耗)
+// ============================================================================
+
+// limitOIRankingData 限制 OI 排名数据，只保留 Top N
+func limitOIRankingData(data *nofxos.OIRankingData, limit int) *nofxos.OIRankingData {
+	if data == nil {
+		return nil
+	}
+
+	limited := &nofxos.OIRankingData{
+		TimeRange: data.TimeRange,
+		Duration:  data.Duration,
+		FetchedAt: data.FetchedAt,
+	}
+
+	// 限制 TopPositions
+	if len(data.TopPositions) > limit {
+		limited.TopPositions = data.TopPositions[:limit]
+	} else {
+		limited.TopPositions = data.TopPositions
+	}
+
+	// 限制 LowPositions
+	if len(data.LowPositions) > limit {
+		limited.LowPositions = data.LowPositions[:limit]
+	} else {
+		limited.LowPositions = data.LowPositions
+	}
+
+	return limited
+}
+
+// limitNetFlowRankingData 限制 NetFlow 排名数据，只保留 Top N
+func limitNetFlowRankingData(data *nofxos.NetFlowRankingData, limit int) *nofxos.NetFlowRankingData {
+	if data == nil {
+		return nil
+	}
+
+	limited := &nofxos.NetFlowRankingData{
+		Duration:  data.Duration,
+		TimeRange: data.TimeRange,
+		FetchedAt: data.FetchedAt,
+	}
+
+	// 限制各个排名列表
+	if len(data.InstitutionFutureTop) > limit {
+		limited.InstitutionFutureTop = data.InstitutionFutureTop[:limit]
+	} else {
+		limited.InstitutionFutureTop = data.InstitutionFutureTop
+	}
+
+	if len(data.InstitutionFutureLow) > limit {
+		limited.InstitutionFutureLow = data.InstitutionFutureLow[:limit]
+	} else {
+		limited.InstitutionFutureLow = data.InstitutionFutureLow
+	}
+
+	if len(data.PersonalFutureTop) > limit {
+		limited.PersonalFutureTop = data.PersonalFutureTop[:limit]
+	} else {
+		limited.PersonalFutureTop = data.PersonalFutureTop
+	}
+
+	if len(data.PersonalFutureLow) > limit {
+		limited.PersonalFutureLow = data.PersonalFutureLow[:limit]
+	} else {
+		limited.PersonalFutureLow = data.PersonalFutureLow
+	}
+
+	return limited
+}
+
+// limitPriceRankingData 限制 Price 排名数据，只保留 Top N
+func limitPriceRankingData(data *nofxos.PriceRankingData, limit int) *nofxos.PriceRankingData {
+	if data == nil {
+		return nil
+	}
+
+	limited := &nofxos.PriceRankingData{
+		FetchedAt: data.FetchedAt,
+		Durations: make(map[string]*nofxos.PriceRankingDuration),
+	}
+
+	// 限制每个时间段的 Top 和 Low
+	for duration, durationData := range data.Durations {
+		if durationData == nil {
+			continue
+		}
+
+		limitedDuration := &nofxos.PriceRankingDuration{}
+
+		if len(durationData.Top) > limit {
+			limitedDuration.Top = durationData.Top[:limit]
+		} else {
+			limitedDuration.Top = durationData.Top
+		}
+
+		if len(durationData.Low) > limit {
+			limitedDuration.Low = durationData.Low[:limit]
+		} else {
+			limitedDuration.Low = durationData.Low
+		}
+
+		limited.Durations[duration] = limitedDuration
+	}
+
+	return limited
 }

@@ -30,9 +30,10 @@ func (pb *PromptBuilder) BuildSystemPrompt() string {
 }
 
 // BuildUserPrompt 构建用户提示词（包含完整的交易上下文）
+// 注意：不包含 Schema，Schema 已在 SystemPrompt 中包含
 func (pb *PromptBuilder) BuildUserPrompt(ctx *Context) string {
-	// 使用Formatter格式化交易上下文
-	formattedData := FormatContextForAI(ctx, pb.lang)
+	// 使用无 Schema 的格式化方法（Schema 已在 SystemPrompt 中包含，避免重复）
+	formattedData := FormatContextDataOnly(ctx, pb.lang)
 
 	// 添加决策要求
 	if pb.lang == LangChinese {
