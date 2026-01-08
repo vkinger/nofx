@@ -1015,6 +1015,13 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString("# Output Format (Strictly Follow)\n\n")
 	sb.WriteString("**Must use XML tags <reasoning> and <decision> to separate chain of thought and decision JSON, avoiding parsing errors**\n\n")
 	sb.WriteString("## Format Requirements\n\n")
+	sb.WriteString("**⚠️ CRITICAL: All numeric values in JSON MUST be actual numbers, NOT strings or expressions!**\n\n")
+	sb.WriteString("The JSON parser cannot evaluate expressions. You must calculate the result yourself and output the number.\n")
+	sb.WriteString("- ✅ CORRECT: `\"position_size_usd\": 585` (actual number)\n")
+	sb.WriteString("- ❌ WRONG: `\"position_size_usd\": \"117 * 5\"` (string with expression)\n")
+	sb.WriteString("- ❌ WRONG: `\"position_size_usd\": \"585\"` (string, not number)\n")
+	sb.WriteString("- ❌ WRONG: `\"stop_loss\": \"price * 0.95\"` (string with expression)\n")
+	sb.WriteString("- ✅ CORRECT: `\"stop_loss\": 97000.5` (actual calculated number)\n\n")
 	sb.WriteString("<reasoning>\n")
 	sb.WriteString("Your chain of thought analysis...\n")
 	sb.WriteString("- Briefly summarize your thinking process \n")
@@ -1034,7 +1041,7 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString("- `action`: open_long | open_short | close_long | close_short | hold | wait\n")
 	sb.WriteString(fmt.Sprintf("- `confidence`: 0-100 (opening recommended ≥ %d)\n", riskControl.MinConfidence))
 	sb.WriteString("- Required when opening: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd\n")
-	sb.WriteString("- **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas/expressions (e.g., use `27.76` not `3000 * 0.01`)\n\n")
+
 
 	// 8. Custom Prompt
 	if e.config.CustomPrompt != "" {
@@ -1516,7 +1523,8 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 
 func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *market.TimeframeSeriesData, indicators store.IndicatorConfig) {
 	// 方案7：使用摘要而非完整数据（节省 10000-15000 tokens）
-	klines = data.klines
+	const maxKlines = 30 // 限制显示的K线数量
+	klines := data.Klines
 	if len(klines) > 0 {
 		// 计算K线摘要信息
 		latest := klines[len(klines)-1]
