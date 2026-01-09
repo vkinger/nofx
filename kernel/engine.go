@@ -1062,17 +1062,13 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 
 	sb.WriteString("### Required ONLY when action is `open_long` or `open_short`:\n")
 	sb.WriteString("- `leverage`: Integer (1-20, must not exceed limits)\n")
-	sb.WriteString("- `position_size_usd`: Number (USDT, calculated based on account equity and risk limits)\n")
 	sb.WriteString("- `stop_loss`: Number (actual price level from market data)\n")
 	sb.WriteString("- `take_profit`: Number (actual price level from market data)\n")
-	sb.WriteString("- `risk_usd`: Number (calculated maximum risk in USDT)\n")
-	sb.WriteString("  - **MUST be a pure numeric value WITHOUT suffixes (K, M, etc.)**\n")
 
 	sb.WriteString("## Validation Rules (Backend will reject invalid formats)\n\n")
 	sb.WriteString("1. **Action validation**: If `action` is not one of the 6 exact values above, the decision will be REJECTED\n")
 	sb.WriteString("2. **JSON format**: Must be valid JSON array, each element is an object\n")
 	sb.WriteString("3. **Numeric values**: Must be actual numbers, NOT formulas (e.g., use `27.76` not `3000 * 0.01`)\n")
-	sb.WriteString("   - **CRITICAL**: Numbers MUST be pure numeric values WITHOUT any suffixes (K, M, B, etc.)**\n")
 	sb.WriteString("4. **Required fields**: Missing required fields for opening positions will cause rejection\n")
 	sb.WriteString("5. **Price validation**: stop_loss and take_profit must be valid price levels from actual market data\n")
 	sb.WriteString("6. **Risk/reward**: Risk-reward ratio must be ≥ 3.0:1\n\n")
