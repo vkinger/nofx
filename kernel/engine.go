@@ -1059,11 +1059,8 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString("- `symbol`: Trading pair symbol from provided data (e.g., \"BTCUSDT\", \"ETHUSDT\")\n")
 	sb.WriteString(fmt.Sprintf("- `action`: EXACTLY one of: open_long, open_short, close_long, close_short, hold, wait (case-sensitive)\n"))
 	sb.WriteString(fmt.Sprintf("- `confidence`: Integer 0-100 (opening positions require ≥ %d)\n\n", riskControl.MinConfidence))
-
-	sb.WriteString("### Required ONLY when action is `open_long` or `open_short`:\n")
-	sb.WriteString("- `leverage`: Integer (1-20, must not exceed limits)\n")
-	sb.WriteString("- `stop_loss`: Number (actual price level from market data)\n")
-	sb.WriteString("- `take_profit`: Number (actual price level from market data)\n")
+	sb.WriteString("- Required when opening: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd\n")
+	sb.WriteString("- **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas/expressions (e.g., use `27.76` not `3000 * 0.01`)\n\n")
 
 	sb.WriteString("## Validation Rules (Backend will reject invalid formats)\n\n")
 	sb.WriteString("1. **Action validation**: If `action` is not one of the 6 exact values above, the decision will be REJECTED\n")
