@@ -1011,41 +1011,77 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 		sb.WriteString("3. Write chain of thought first, then output structured JSON\n\n")
 	}
 
-	// 7. Output format
-	sb.WriteString("# Output Format (Strictly Follow)\n\n")
-	sb.WriteString("**Must use XML tags <reasoning> and <decision> to separate chain of thought and decision JSON, avoiding parsing errors**\n\n")
-	sb.WriteString("## Format Requirements\n\n")
-	sb.WriteString("**⚠️ CRITICAL: All numeric values in JSON MUST be actual numbers, NOT strings or expressions!**\n\n")
-	sb.WriteString("The JSON parser cannot evaluate expressions. You must calculate the result yourself and output the number.\n")
+	// 7. Output format (STRICT - 严格格式要求)
+	sb.WriteString("# ⚠️ Output Format (STRICTLY ENFORCED - 严格强制执行)\n\n")
+	sb.WriteString("**CRITICAL: You MUST follow this format exactly. Any deviation will cause parsing errors.**\n\n")
 
-	sb.WriteString("### ⚠️ CRITICAL: Numeric Field Format (stop_loss, take_profit, risk_usd, position_size_usd)\n\n")
-	sb.WriteString("**These fields MUST be actual numbers, NOT strings or expressions! You must calculate the actual value and output the number directly**\n\n")
-	sb.WriteString("- `stop_loss`: Decimal number (actual price level from market data)\n")
-	sb.WriteString("- `take_profit`: Decimal number (actual price level from market data)\n")
-	sb.WriteString("- `risk_usd`: Decimal number (calculated maximum risk in USDT)\n")
-	sb.WriteString("- `position_size_usd`: Decimal number (calculated position size in USDT, based on account equity and risk limits)\n")
+	sb.WriteString("## Format Structure (Required)\n\n")
+	sb.WriteString("You MUST use XML tags to separate reasoning and decision:\n\n")
 	sb.WriteString("<reasoning>\n")
-	sb.WriteString("Your chain of thought analysis...\n")
-	sb.WriteString("- Briefly summarize your thinking process \n")
-	sb.WriteString("- No excessive verbosity \n")
+	sb.WriteString("Your analysis process (brief, no excessive verbosity)\n")
 	sb.WriteString("</reasoning>\n\n")
 	sb.WriteString("<decision>\n")
-	sb.WriteString("Step 2: JSON decision array\n\n")
-	sb.WriteString("```json\n[\n")
-	// Use the actual configured position value ratio for BTC/ETH in the example
+	sb.WriteString("JSON array here (see format template below)\n")
+	sb.WriteString("</decision>\n\n")
+
+	sb.WriteString("## Action Field (CRITICAL - 关键字段)\n\n")
+	sb.WriteString("**The `action` field MUST be EXACTLY one of these 6 values (case-sensitive, no variations):**\n\n")
+	sb.WriteString("1. `\"open_long\"` - Open a long position (buy)\n")
+	sb.WriteString("2. `\"open_short\"` - Open a short position (sell)\n")
+	sb.WriteString("3. `\"close_long\"` - Close an existing long position\n")
+	sb.WriteString("4. `\"close_short\"` - Close an existing short position\n")
+	sb.WriteString("5. `\"hold\"` - Hold existing position(s), no action\n")
+	sb.WriteString("6. `\"wait\"` - Wait, no positions, no action\n\n")
+
+	sb.WriteString("### Example Format (Values are placeholders - 数值仅为占位符)\n\n")
+	sb.WriteString("**Note: The values below are FORMAT EXAMPLES only. Replace ALL values with your calculated decisions.**\n\n")
 	examplePositionSize := accountEquity * btcEthPosValueRatio
+	sb.WriteString("<reasoning>\n")
+	sb.WriteString("Example analysis: Market shows bearish signals. RSI overbought. OI decreasing.\n")
+	sb.WriteString("</reasoning>\n\n")
+	sb.WriteString("<decision>\n")
+	sb.WriteString("```json\n[\n")
 	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"BTCUSDT\", \"action\": \"open_short\", \"leverage\": %d, \"position_size_usd\": %.0f, \"stop_loss\": 97000, \"take_profit\": 91000, \"confidence\": 85, \"risk_usd\": 300},\n",
 		riskControl.BTCETHMaxLeverage, examplePositionSize))
 	sb.WriteString("  {\"symbol\": \"ETHUSDT\", \"action\": \"close_long\"}\n")
 	sb.WriteString("]\n```\n")
 	sb.WriteString("</decision>\n\n")
-	sb.WriteString("**⚠️ CRITICAL REMINDER: All numeric fields (position_size_usd, stop_loss, take_profit, risk_usd, leverage, confidence) MUST be actual numbers, NOT strings or expressions!**\n\n")
-	sb.WriteString("## Field Description\n\n")
-	sb.WriteString("- `action`: open_long | open_short | close_long | close_short | hold | wait\n")
-	sb.WriteString(fmt.Sprintf("- `confidence`: 0-100 (opening recommended ≥ %d)\n", riskControl.MinConfidence))
-	sb.WriteString("- Required when opening: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd\n")
-	sb.WriteString("  - **All of these numeric fields MUST be actual numbers, NOT strings or expressions!**\n")
-	sb.WriteString("  - **Calculate the values first, then output the numbers directly**\n")
+
+	sb.WriteString("**⚠️ CRITICAL REMINDER:**\n")
+	sb.WriteString("- The example above shows FORMAT STRUCTURE only\n")
+	sb.WriteString("- You MUST replace symbol, action, prices, sizes with YOUR actual analysis\n")
+	sb.WriteString("- DO NOT use the example BTCUSDT/ETHUSDT decisions unless they match your analysis\n")
+	sb.WriteString("- Calculate position_size_usd, stop_loss, take_profit based on actual market data\n")
+	sb.WriteString("- Use actual symbols from the candidate coins or existing positions provided\n\n")
+
+	sb.WriteString("## Field Requirements\n\n")
+	sb.WriteString("### Required for ALL decisions:\n")
+	sb.WriteString("- `symbol`: Trading pair symbol from provided data (e.g., \"BTCUSDT\", \"ETHUSDT\")\n")
+	sb.WriteString(fmt.Sprintf("- `action`: EXACTLY one of: open_long, open_short, close_long, close_short, hold, wait (case-sensitive)\n"))
+	sb.WriteString(fmt.Sprintf("- `confidence`: Integer 0-100 (opening positions require ≥ %d)\n\n", riskControl.MinConfidence))
+
+	sb.WriteString("### Required ONLY when action is `open_long` or `open_short`:\n")
+	sb.WriteString("- `leverage`: Integer (1-20, must not exceed limits)\n")
+	sb.WriteString("- `position_size_usd`: Number (USDT, calculated based on account equity and risk limits)\n")
+	sb.WriteString("- `stop_loss`: Number (actual price level from market data)\n")
+	sb.WriteString("- `take_profit`: Number (actual price level from market data)\n")
+	sb.WriteString("- `risk_usd`: Number (calculated maximum risk in USDT)\n\n")
+
+	sb.WriteString("## Validation Rules (Backend will reject invalid formats)\n\n")
+	sb.WriteString("1. **Action validation**: If `action` is not one of the 6 exact values above, the decision will be REJECTED\n")
+	sb.WriteString("2. **JSON format**: Must be valid JSON array, each element is an object\n")
+	sb.WriteString("3. **Numeric values**: Must be actual numbers, NOT formulas (e.g., use `27.76` not `3000 * 0.01`)\n")
+	sb.WriteString("4. **Required fields**: Missing required fields for opening positions will cause rejection\n")
+	sb.WriteString("5. **Price validation**: stop_loss and take_profit must be valid price levels from actual market data\n")
+	sb.WriteString("6. **Risk/reward**: Risk-reward ratio must be ≥ 3.0:1\n\n")
+
+	sb.WriteString("## Common Mistakes to Avoid\n\n")
+	sb.WriteString("- ❌ Copying example values without analyzing actual market data\n")
+	sb.WriteString("- ❌ Missing required fields when opening positions\n")
+	sb.WriteString("- ❌ Using formulas in numeric fields instead of calculated values\n")
+	sb.WriteString("- ❌ Invalid JSON structure (missing brackets, commas, quotes)\n\n")
+
+	sb.WriteString("**Remember: Follow the format structure, but generate decisions based on actual market analysis.**\n\n")
 
 	// 8. Custom Prompt
 	if e.config.CustomPrompt != "" {
@@ -1451,8 +1487,18 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 	}
 
 	if len(data.TimeframeData) > 0 {
-		timeframeOrder := []string{"1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d", "3d", "1w"}
-		for _, tf := range timeframeOrder {
+		// 优先使用策略配置的时间框架
+		timeframes := indicators.Klines.SelectedTimeframes
+
+		// 兜底：如果配置为空，使用默认的关键时间框架
+		if len(timeframes) == 0 {
+			// 如果没有配置，使用默认的关键时间框架
+			timeframes = []string{"5m", "15m", "1h", "4h"}
+		}
+		// 去掉硬编码限制，直接使用配置值（因为已实现摘要化，不会显著增加token）
+
+		// 显示配置的时间框架（已优化）
+		for _, tf := range timeframes {
 			if tfData, ok := data.TimeframeData[tf]; ok {
 				sb.WriteString(fmt.Sprintf("=== %s Timeframe (oldest → latest) ===\n\n", strings.ToUpper(tf)))
 				e.formatTimeframeSeriesData(&sb, tfData, indicators)
