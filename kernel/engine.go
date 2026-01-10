@@ -1024,15 +1024,6 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString("JSON array here (see format template below)\n")
 	sb.WriteString("</decision>\n\n")
 
-	sb.WriteString("## Action Field (CRITICAL - 关键字段)\n\n")
-	sb.WriteString("**The `action` field MUST be EXACTLY one of these 6 values (case-sensitive, no variations):**\n\n")
-	sb.WriteString("1. `\"open_long\"` - Open a long position (buy)\n")
-	sb.WriteString("2. `\"open_short\"` - Open a short position (sell)\n")
-	sb.WriteString("3. `\"close_long\"` - Close an existing long position\n")
-	sb.WriteString("4. `\"close_short\"` - Close an existing short position\n")
-	sb.WriteString("5. `\"hold\"` - Hold existing position(s), no action\n")
-	sb.WriteString("6. `\"wait\"` - Wait, no positions, no action\n\n")
-
 	sb.WriteString("### Example Format (Values are placeholders - 数值仅为占位符)\n\n")
 	sb.WriteString("**Note: The values below are FORMAT EXAMPLES only. Replace ALL values with your calculated decisions.**\n\n")
 	examplePositionSize := accountEquity * btcEthPosValueRatio
@@ -1050,9 +1041,7 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString("**⚠️ CRITICAL REMINDER:**\n")
 	sb.WriteString("- The example above shows FORMAT STRUCTURE only\n")
 	sb.WriteString("- You MUST replace symbol, action, prices, sizes with YOUR actual analysis\n")
-	sb.WriteString("- DO NOT use the example BTCUSDT/ETHUSDT decisions unless they match your analysis\n")
-	sb.WriteString("- Calculate position_size_usd, stop_loss, take_profit based on actual market data\n")
-	sb.WriteString("- Use actual symbols from the candidate coins or existing positions provided\n\n")
+    sb.WriteString("- **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas/expressions (e.g., use `27.76` not `3000 * 0.01`)\n\n")
 
 	sb.WriteString("## Field Requirements\n\n")
 	sb.WriteString("### Required for ALL decisions:\n")
@@ -1060,7 +1049,6 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString(fmt.Sprintf("- `action`: EXACTLY one of: open_long, open_short, close_long, close_short, hold, wait (case-sensitive)\n"))
 	sb.WriteString(fmt.Sprintf("- `confidence`: Integer 0-100 (opening positions require ≥ %d)\n\n", riskControl.MinConfidence))
 	sb.WriteString("- Required when opening: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd\n")
-	sb.WriteString("- **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas/expressions (e.g., use `27.76` not `3000 * 0.01`)\n\n")
 
 	sb.WriteString("## Validation Rules (Backend will reject invalid formats)\n\n")
 	sb.WriteString("1. **Action validation**: If `action` is not one of the 6 exact values above, the decision will be REJECTED\n")
@@ -1075,8 +1063,6 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString("- ❌ Missing required fields when opening positions\n")
 	sb.WriteString("- ❌ Using formulas in numeric fields instead of calculated values\n")
 	sb.WriteString("- ❌ Invalid JSON structure (missing brackets, commas, quotes)\n\n")
-
-	sb.WriteString("**Remember: Follow the format structure, but generate decisions based on actual market analysis.**\n\n")
 
 	// 8. Custom Prompt
 	if e.config.CustomPrompt != "" {
