@@ -1300,9 +1300,9 @@ func (e *StrategyEngine) BuildUserPrompt(ctx *Context) string {
 		maxCandidateCoins = 10 // 默认值
 	}
 
-	// 优化兜底：如果配置的数量过多（>5个），限制为 5 个（减少 token 消耗）
-	if maxCandidateCoins > 5 {
-		maxCandidateCoins = 5
+	// 优化兜底：如果配置的数量过多（>5个），限制为 10 个（减少 token 消耗）
+	if maxCandidateCoins > 10 {
+		maxCandidateCoins = 10
 	}
 
 	candidateCoins := ctx.CandidateCoins
@@ -1348,21 +1348,21 @@ func (e *StrategyEngine) BuildUserPrompt(ctx *Context) string {
 	// OI Ranking data (market-wide open interest changes)
 	// 优化：只显示 Top 5，减少 token 消耗
 	if ctx.OIRankingData != nil {
-		limitedOIRanking := limitOIRankingData(ctx.OIRankingData, 5)
+		limitedOIRanking := limitOIRankingData(ctx.OIRankingData, maxCandidateCoins)
 		sb.WriteString(nofxos.FormatOIRankingForAI(limitedOIRanking, nofxosLang))
 	}
 
 	// NetFlow Ranking data (market-wide fund flow)
 	// 优化：只显示 Top 5，减少 token 消耗
 	if ctx.NetFlowRankingData != nil {
-		limitedNetFlowRanking := limitNetFlowRankingData(ctx.NetFlowRankingData, 5)
+		limitedNetFlowRanking := limitNetFlowRankingData(ctx.NetFlowRankingData, maxCandidateCoins)
 		sb.WriteString(nofxos.FormatNetFlowRankingForAI(limitedNetFlowRanking, nofxosLang))
 	}
 
 	// Price Ranking data (market-wide gainers/losers)
 	// 优化：只显示 Top 5，减少 token 消耗
 	if ctx.PriceRankingData != nil {
-		limitedPriceRanking := limitPriceRankingData(ctx.PriceRankingData, 5)
+		limitedPriceRanking := limitPriceRankingData(ctx.PriceRankingData, maxCandidateCoins)
 		sb.WriteString(nofxos.FormatPriceRankingForAI(limitedPriceRanking, nofxosLang))
 	}
 
@@ -1470,14 +1470,6 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 	if len(data.TimeframeData) > 0 {
 		// 优先使用策略配置的时间框架
 		timeframes := indicators.Klines.SelectedTimeframes
-
-		// 兜底：如果配置为空，使用默认的关键时间框架
-		if len(timeframes) == 0 {
-			// 如果没有配置，使用默认的关键时间框架
-			timeframes = []string{"5m", "15m", "1h", "4h"}
-		}
-		// 去掉硬编码限制，直接使用配置值（因为已实现摘要化，不会显著增加token）
-
 		// 显示配置的时间框架（已优化）
 		for _, tf := range timeframes {
 			if tfData, ok := data.TimeframeData[tf]; ok {
@@ -1554,7 +1546,6 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 
 func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *market.TimeframeSeriesData, indicators store.IndicatorConfig) {
 	// 方案7：使用摘要而非完整数据（节省 10000-15000 tokens）
-	const maxKlines = 30 // 限制显示的K线数量
 	klines := data.Klines
 	if len(klines) > 0 {
 		// 计算K线摘要信息
@@ -1615,17 +1606,10 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 			timeStr, fmt.Sprintf(priceFormat, latest.Open), fmt.Sprintf(priceFormat, latest.High),
 			fmt.Sprintf(priceFormat, latest.Low), fmt.Sprintf(priceFormat, latest.Close), volumeStr))
 	} else if len(data.MidPrices) > 0 {
-		// 限制 MidPrices 数量
 		midPrices := data.MidPrices
-		if len(midPrices) > maxKlines {
-			midPrices = midPrices[len(midPrices)-maxKlines:]
-		}
 		sb.WriteString(fmt.Sprintf("Mid prices: %s\n\n", formatFloatSlice(midPrices)))
 		if indicators.EnableVolume && len(data.Volume) > 0 {
 			volume := data.Volume
-			if len(volume) > maxKlines {
-				volume = volume[len(volume)-maxKlines:]
-			}
 			sb.WriteString(fmt.Sprintf("Volume: %s\n\n", formatFloatSlice(volume)))
 		}
 	}
