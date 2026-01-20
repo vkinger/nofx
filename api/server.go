@@ -164,6 +164,7 @@ func (s *Server) setupRoutes() {
 			protected.POST("/traders/:id/sync-balance", s.handleSyncBalance)
 			protected.POST("/traders/:id/close-position", s.handleClosePosition)
 			protected.PUT("/traders/:id/competition", s.handleToggleCompetition)
+			protected.GET("/traders/:id/grid-risk", s.handleGetGridRiskInfo)
 
 			// AI model configuration
 			protected.GET("/models", s.handleGetModelConfigs)
@@ -1103,6 +1104,20 @@ func (s *Server) handleToggleCompetition(c *gin.Context) {
 	})
 }
 
+// handleGetGridRiskInfo returns current risk information for a grid trader
+func (s *Server) handleGetGridRiskInfo(c *gin.Context) {
+	traderID := c.Param("id")
+
+	autoTrader, err := s.traderManager.GetTrader(traderID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "trader not found"})
+		return
+	}
+
+	riskInfo := autoTrader.GetGridRiskInfo()
+	c.JSON(http.StatusOK, riskInfo)
+}
+
 // handleSyncBalance Sync exchange balance to initial_balance (Option B: Manual Sync + Option C: Smart Detection)
 func (s *Server) handleSyncBalance(c *gin.Context) {
 	userID := c.GetString("user_id")
@@ -1376,7 +1391,7 @@ func (s *Server) handleClosePosition(c *gin.Context) {
 
 	if closeErr != nil {
 		logger.Infof("❌ Close position failed: symbol=%s, side=%s, error=%v", req.Symbol, req.Side, closeErr)
-		SafeInternalError(c, "Failed to close position", closeErr)
+		SafeInternalError(c, "Close position", closeErr)
 		return
 	}
 
@@ -1712,13 +1727,26 @@ func (s *Server) handleUpdateModelConfigs(c *gin.Context) {
 		logger.Infof("🔓 Decrypted model config data (UserID: %s)", userID)
 	}
 
-	// Update each model's configuration
+	// Update each model's configuration and track traders that need reload
+	tradersToReload := make(map[string]bool)
 	for modelID, modelData := range req.Models {
+		// Find traders using this AI model BEFORE updating
+		traders, _ := s.store.Trader().ListByAIModelID(userID, modelID)
+		for _, t := range traders {
+			tradersToReload[t.ID] = true
+		}
+
 		err := s.store.AIModel().Update(userID, modelID, modelData.Enabled, modelData.APIKey, modelData.CustomAPIURL, modelData.CustomModelName)
 		if err != nil {
 			SafeInternalError(c, fmt.Sprintf("Update model %s", modelID), err)
 			return
 		}
+	}
+
+	// Remove affected traders from memory BEFORE reloading to pick up new config
+	for traderID := range tradersToReload {
+		logger.Infof("🔄 Removing trader %s from memory to reload with new AI model config", traderID)
+		s.traderManager.RemoveTrader(traderID)
 	}
 
 	// Reload all traders for this user to make new config take effect immediately
@@ -1832,13 +1860,26 @@ func (s *Server) handleUpdateExchangeConfigs(c *gin.Context) {
 		logger.Infof("🔓 Decrypted exchange config data (UserID: %s)", userID)
 	}
 
-	// Update each exchange's configuration
+	// Update each exchange's configuration and track traders that need reload
+	tradersToReload := make(map[string]bool)
 	for exchangeID, exchangeData := range req.Exchanges {
+		// Find traders using this exchange BEFORE updating
+		traders, _ := s.store.Trader().ListByExchangeID(userID, exchangeID)
+		for _, t := range traders {
+			tradersToReload[t.ID] = true
+		}
+
 		err := s.store.Exchange().Update(userID, exchangeID, exchangeData.Enabled, exchangeData.APIKey, exchangeData.SecretKey, exchangeData.Passphrase, exchangeData.Testnet, exchangeData.HyperliquidWalletAddr, exchangeData.AsterUser, exchangeData.AsterSigner, exchangeData.AsterPrivateKey, exchangeData.LighterWalletAddr, exchangeData.LighterPrivateKey, exchangeData.LighterAPIKeyPrivateKey, exchangeData.LighterAPIKeyIndex)
 		if err != nil {
 			SafeInternalError(c, fmt.Sprintf("Update exchange %s", exchangeID), err)
 			return
 		}
+	}
+
+	// Remove affected traders from memory BEFORE reloading to pick up new config
+	for traderID := range tradersToReload {
+		logger.Infof("🔄 Removing trader %s from memory to reload with new exchange config", traderID)
+		s.traderManager.RemoveTrader(traderID)
 	}
 
 	// Reload all traders for this user to make new config take effect immediately

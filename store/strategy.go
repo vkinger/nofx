@@ -22,8 +22,8 @@ type Strategy struct {
 	Description   string    `gorm:"default:''" json:"description"`
 	IsActive      bool      `gorm:"column:is_active;default:false;index" json:"is_active"`
 	IsDefault     bool      `gorm:"column:is_default;default:false" json:"is_default"`
-	IsPublic      bool      `gorm:"column:is_public;default:false;index" json:"is_public"`    // whether visible in strategy market
-	ConfigVisible bool      `gorm:"column:config_visible;default:true" json:"config_visible"` // whether config details are visible
+	IsPublic      bool      `gorm:"column:is_public;default:false;index" json:"is_public"`       // whether visible in strategy market
+	ConfigVisible bool      `gorm:"column:config_visible;default:true" json:"config_visible"`    // whether config details are visible
 	Config        string    `gorm:"not null;default:'{}'" json:"config"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
@@ -33,6 +33,9 @@ func (Strategy) TableName() string { return "strategies" }
 
 // StrategyConfig strategy configuration details (JSON structure)
 type StrategyConfig struct {
+	// Strategy type: "ai_trading" (default) or "grid_trading"
+	StrategyType string `json:"strategy_type,omitempty"`
+
 	// language setting: "zh" for Chinese, "en" for English
 	// This determines the language used for data formatting and prompt generation
 	Language string `json:"language,omitempty"`
@@ -48,6 +51,8 @@ type StrategyConfig struct {
 	PromptSections PromptSectionsConfig `json:"prompt_sections,omitempty"`
 	// Telegram notification configuration
 	Telegram TelegramConfig `json:"telegram,omitempty"`
+    // Grid trading configuration (only used when StrategyType == "grid_trading")
+    GridConfig *GridStrategyConfig `json:"grid_config,omitempty"`
 }
 
 // TrailingStopConfig configures the trailing stop
@@ -68,6 +73,39 @@ type TrailingStopConfig struct {
 type TrailingTightenBand struct {
 	ProfitPct float64 `json:"profit_pct"` // Profit % threshold to apply this band
 	TrailPct  float64 `json:"trail_pct"`  // Trail % to apply once threshold is reached
+
+	// Grid trading configuration (only used when StrategyType == "grid_trading")
+	GridConfig *GridStrategyConfig `json:"grid_config,omitempty"`
+}
+
+// GridStrategyConfig grid trading specific configuration
+type GridStrategyConfig struct {
+	// Trading pair (e.g., "BTCUSDT")
+	Symbol string `json:"symbol"`
+	// Number of grid levels (5-50)
+	GridCount int `json:"grid_count"`
+	// Total investment in USDT
+	TotalInvestment float64 `json:"total_investment"`
+	// Leverage (1-20)
+	Leverage int `json:"leverage"`
+	// Upper price boundary (0 = auto-calculate from ATR)
+	UpperPrice float64 `json:"upper_price"`
+	// Lower price boundary (0 = auto-calculate from ATR)
+	LowerPrice float64 `json:"lower_price"`
+	// Use ATR to auto-calculate bounds
+	UseATRBounds bool `json:"use_atr_bounds"`
+	// ATR multiplier for bound calculation (default 2.0)
+	ATRMultiplier float64 `json:"atr_multiplier"`
+	// Position distribution: "uniform" | "gaussian" | "pyramid"
+	Distribution string `json:"distribution"`
+	// Maximum drawdown percentage before emergency exit
+	MaxDrawdownPct float64 `json:"max_drawdown_pct"`
+	// Stop loss percentage per position
+	StopLossPct float64 `json:"stop_loss_pct"`
+	// Daily loss limit percentage
+	DailyLossLimitPct float64 `json:"daily_loss_limit_pct"`
+	// Use maker-only orders for lower fees
+	UseMakerOnly bool `json:"use_maker_only"`
 }
 
 // PromptSectionsConfig editable sections of System Prompt
@@ -124,7 +162,7 @@ type IndicatorConfig struct {
 	EnableMACD        bool `json:"enable_macd"`
 	EnableRSI         bool `json:"enable_rsi"`
 	EnableATR         bool `json:"enable_atr"`
-	EnableBOLL        bool `json:"enable_boll"` // Bollinger Bands
+	EnableBOLL        bool `json:"enable_boll"`         // Bollinger Bands
 	EnableVolume      bool `json:"enable_volume"`
 	EnableOI          bool `json:"enable_oi"`           // open interest
 	EnableFundingRate bool `json:"enable_funding_rate"` // funding rate
@@ -182,10 +220,10 @@ type KlineConfig struct {
 
 // ExternalDataSource external data source configuration
 type ExternalDataSource struct {
-	Name        string            `json:"name"`   // data source name
-	Type        string            `json:"type"`   // type: "api" | "webhook"
-	URL         string            `json:"url"`    // API URL
-	Method      string            `json:"method"` // HTTP method
+	Name        string            `json:"name"`         // data source name
+	Type        string            `json:"type"`         // type: "api" | "webhook"
+	URL         string            `json:"url"`          // API URL
+	Method      string            `json:"method"`       // HTTP method
 	Headers     map[string]string `json:"headers,omitempty"`
 	DataPath    string            `json:"data_path,omitempty"`    // JSON data path
 	RefreshSecs int               `json:"refresh_secs,omitempty"` // refresh interval (seconds)
