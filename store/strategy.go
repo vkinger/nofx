@@ -46,6 +46,8 @@ type StrategyConfig struct {
 	RiskControl RiskControlConfig `json:"risk_control"`
 	// editable sections of System Prompt
 	PromptSections PromptSectionsConfig `json:"prompt_sections,omitempty"`
+	// Telegram notification configuration
+	Telegram TelegramConfig `json:"telegram,omitempty"`
 }
 
 // TrailingStopConfig configures the trailing stop
@@ -78,6 +80,18 @@ type PromptSectionsConfig struct {
 	EntryStandards string `json:"entry_standards,omitempty"`
 	// decision process
 	DecisionProcess string `json:"decision_process,omitempty"`
+}
+
+// TelegramConfig Telegram通知配置
+type TelegramConfig struct {
+	Enabled bool   `json:"enabled"`           // 是否启用Telegram通知
+	Token   string `json:"token,omitempty"`   // Telegram Bot Token
+	ChatID  int64  `json:"chat_id,omitempty"` // Telegram Chat ID
+}
+
+// IsValid 检查Telegram配置是否有效
+func (tc *TelegramConfig) IsValid() bool {
+	return tc.Enabled && tc.Token != "" && tc.ChatID != 0
 }
 
 // CoinSourceConfig coin source configuration

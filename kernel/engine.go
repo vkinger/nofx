@@ -1024,6 +1024,15 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString("JSON array here (see format template below)\n")
 	sb.WriteString("</decision>\n\n")
 
+	sb.WriteString("## Action Field (CRITICAL - 关键字段)\n\n")
+	sb.WriteString("**The `action` field MUST be EXACTLY one of these 6 values (case-sensitive, no variations):**\n\n")
+	sb.WriteString("1. `\"open_long\"` - Open a long position (buy)\n")
+	sb.WriteString("2. `\"open_short\"` - Open a short position (sell)\n")
+	sb.WriteString("3. `\"close_long\"` - Close an existing long position\n")
+	sb.WriteString("4. `\"close_short\"` - Close an existing short position\n")
+	sb.WriteString("5. `\"hold\"` - Hold existing position(s), no action\n")
+	sb.WriteString("6. `\"wait\"` - Wait, no positions, no action\n\n")
+
 	sb.WriteString("### Example Format (Values are placeholders - 数值仅为占位符)\n\n")
 	sb.WriteString("**Note: The values below are FORMAT EXAMPLES only. Replace ALL values with your calculated decisions.**\n\n")
 	examplePositionSize := accountEquity * btcEthPosValueRatio
@@ -1041,7 +1050,9 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString("**⚠️ CRITICAL REMINDER:**\n")
 	sb.WriteString("- The example above shows FORMAT STRUCTURE only\n")
 	sb.WriteString("- You MUST replace symbol, action, prices, sizes with YOUR actual analysis\n")
-    sb.WriteString("- **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas/expressions (e.g., use `27.76` not `3000 * 0.01`)\n\n")
+	sb.WriteString("- DO NOT use the example BTCUSDT/ETHUSDT decisions unless they match your analysis\n")
+	sb.WriteString("- Calculate position_size_usd, stop_loss, take_profit based on actual market data\n")
+	sb.WriteString("- Use actual symbols from the candidate coins or existing positions provided\n\n")
 
 	sb.WriteString("## Field Requirements\n\n")
 	sb.WriteString("### Required for ALL decisions:\n")
@@ -1049,6 +1060,7 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString(fmt.Sprintf("- `action`: EXACTLY one of: open_long, open_short, close_long, close_short, hold, wait (case-sensitive)\n"))
 	sb.WriteString(fmt.Sprintf("- `confidence`: Integer 0-100 (opening positions require ≥ %d)\n\n", riskControl.MinConfidence))
 	sb.WriteString("- Required when opening: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd\n")
+	sb.WriteString("- **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas/expressions (e.g., use `27.76` not `3000 * 0.01`)\n\n")
 
 	sb.WriteString("## Validation Rules (Backend will reject invalid formats)\n\n")
 	sb.WriteString("1. **Action validation**: If `action` is not one of the 6 exact values above, the decision will be REJECTED\n")
@@ -1063,6 +1075,8 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString("- ❌ Missing required fields when opening positions\n")
 	sb.WriteString("- ❌ Using formulas in numeric fields instead of calculated values\n")
 	sb.WriteString("- ❌ Invalid JSON structure (missing brackets, commas, quotes)\n\n")
+
+	sb.WriteString("**Remember: Follow the format structure, but generate decisions based on actual market analysis.**\n\n")
 
 	// 8. Custom Prompt
 	if e.config.CustomPrompt != "" {
@@ -1300,9 +1314,9 @@ func (e *StrategyEngine) BuildUserPrompt(ctx *Context) string {
 		maxCandidateCoins = 10 // 默认值
 	}
 
-	// 优化兜底：如果配置的数量过多（>5个），限制为 10 个（减少 token 消耗）
-	if maxCandidateCoins > 10 {
-		maxCandidateCoins = 10
+	// 优化兜底：如果配置的数量过多（>5个），限制为 5 个（减少 token 消耗）
+	if maxCandidateCoins > 5 {
+		maxCandidateCoins = 5
 	}
 
 	candidateCoins := ctx.CandidateCoins
@@ -1348,21 +1362,21 @@ func (e *StrategyEngine) BuildUserPrompt(ctx *Context) string {
 	// OI Ranking data (market-wide open interest changes)
 	// 优化：只显示 Top 5，减少 token 消耗
 	if ctx.OIRankingData != nil {
-		limitedOIRanking := limitOIRankingData(ctx.OIRankingData, maxCandidateCoins)
+		limitedOIRanking := limitOIRankingData(ctx.OIRankingData, 5)
 		sb.WriteString(nofxos.FormatOIRankingForAI(limitedOIRanking, nofxosLang))
 	}
 
 	// NetFlow Ranking data (market-wide fund flow)
 	// 优化：只显示 Top 5，减少 token 消耗
 	if ctx.NetFlowRankingData != nil {
-		limitedNetFlowRanking := limitNetFlowRankingData(ctx.NetFlowRankingData, maxCandidateCoins)
+		limitedNetFlowRanking := limitNetFlowRankingData(ctx.NetFlowRankingData, 5)
 		sb.WriteString(nofxos.FormatNetFlowRankingForAI(limitedNetFlowRanking, nofxosLang))
 	}
 
 	// Price Ranking data (market-wide gainers/losers)
 	// 优化：只显示 Top 5，减少 token 消耗
 	if ctx.PriceRankingData != nil {
-		limitedPriceRanking := limitPriceRankingData(ctx.PriceRankingData, maxCandidateCoins)
+		limitedPriceRanking := limitPriceRankingData(ctx.PriceRankingData, 5)
 		sb.WriteString(nofxos.FormatPriceRankingForAI(limitedPriceRanking, nofxosLang))
 	}
 
@@ -1470,6 +1484,14 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 	if len(data.TimeframeData) > 0 {
 		// 优先使用策略配置的时间框架
 		timeframes := indicators.Klines.SelectedTimeframes
+
+		// 兜底：如果配置为空，使用默认的关键时间框架
+		if len(timeframes) == 0 {
+			// 如果没有配置，使用默认的关键时间框架
+			timeframes = []string{"5m", "15m", "1h", "4h"}
+		}
+		// 去掉硬编码限制，直接使用配置值（因为已实现摘要化，不会显著增加token）
+
 		// 显示配置的时间框架（已优化）
 		for _, tf := range timeframes {
 			if tfData, ok := data.TimeframeData[tf]; ok {
@@ -1546,6 +1568,7 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 
 func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *market.TimeframeSeriesData, indicators store.IndicatorConfig) {
 	// 方案7：使用摘要而非完整数据（节省 10000-15000 tokens）
+	const maxKlines = 30 // 限制显示的K线数量
 	klines := data.Klines
 	if len(klines) > 0 {
 		// 计算K线摘要信息
@@ -1606,10 +1629,17 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 			timeStr, fmt.Sprintf(priceFormat, latest.Open), fmt.Sprintf(priceFormat, latest.High),
 			fmt.Sprintf(priceFormat, latest.Low), fmt.Sprintf(priceFormat, latest.Close), volumeStr))
 	} else if len(data.MidPrices) > 0 {
+		// 限制 MidPrices 数量
 		midPrices := data.MidPrices
+		if len(midPrices) > maxKlines {
+			midPrices = midPrices[len(midPrices)-maxKlines:]
+		}
 		sb.WriteString(fmt.Sprintf("Mid prices: %s\n\n", formatFloatSlice(midPrices)))
 		if indicators.EnableVolume && len(data.Volume) > 0 {
 			volume := data.Volume
+			if len(volume) > maxKlines {
+				volume = volume[len(volume)-maxKlines:]
+			}
 			sb.WriteString(fmt.Sprintf("Volume: %s\n\n", formatFloatSlice(volume)))
 		}
 	}

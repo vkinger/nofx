@@ -44,6 +44,11 @@ type Config struct {
 	AlpacaAPIKey    string // Alpaca API key for US stocks
 	AlpacaSecretKey string // Alpaca secret key
 	TwelveDataKey   string // TwelveData API key for forex & metals
+
+	// Telegram notification configuration
+	TelegramEnabled bool   // Whether Telegram notifications are enabled
+	TelegramToken   string // Telegram Bot Token
+	TelegramChatID  int64  // Telegram Chat ID
 }
 
 // Init initializes global configuration (from .env)
@@ -130,6 +135,17 @@ func Init() {
 	}
 	if v := os.Getenv("DB_SSLMODE"); v != "" {
 		cfg.DBSSLMode = v
+	}
+
+	// Telegram notification configuration
+	if v := os.Getenv("TELEGRAM_ENABLED"); v != "" {
+		cfg.TelegramEnabled = strings.ToLower(v) == "true"
+	}
+	cfg.TelegramToken = os.Getenv("TELEGRAM_BOT_TOKEN")
+	if v := os.Getenv("TELEGRAM_CHAT_ID"); v != "" {
+		if chatID, err := strconv.ParseInt(v, 10, 64); err == nil && chatID != 0 {
+			cfg.TelegramChatID = chatID
+		}
 	}
 
 	global = cfg

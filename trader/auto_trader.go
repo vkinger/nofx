@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	globalconfig "nofx/config"
 	"nofx/experience"
 	"nofx/kernel"
 	"nofx/logger"
 	"nofx/market"
 	"nofx/mcp"
+	"nofx/notification"
 	"nofx/store"
 	"strings"
 	"sync"
@@ -133,6 +135,7 @@ type AutoTrader struct {
 	trailingClosing        map[string]struct{}
 	lastBalanceSyncTime    time.Time // Last balance sync time
 	userID                 string    // User ID
+	telegramNotifier       *notification.TelegramNotifier // Telegram通知服务
 }
 
 // TrailingState stores peak information per position
@@ -346,6 +349,40 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 	strategyEngine := kernel.NewStrategyEngine(config.StrategyConfig)
 	logger.Infof("✓ [%s] Using strategy engine (strategy configuration loaded)", config.Name)
 
+	// Initialize Telegram notifier (from global config, fallback to strategy config for backward compatibility)
+	var telegramNotifier *notification.TelegramNotifier
+	globalCfg := globalconfig.Get()
+
+	// Priority: 1. Global config (from .env), 2. Strategy config (for backward compatibility)
+	var telegramToken string
+	var telegramChatID int64
+	var telegramEnabled bool
+
+	if globalCfg.TelegramEnabled && globalCfg.TelegramToken != "" && globalCfg.TelegramChatID != 0 {
+		// Use global config from .env
+		telegramEnabled = true
+		telegramToken = globalCfg.TelegramToken
+		telegramChatID = globalCfg.TelegramChatID
+		logger.Infof("📱 [%s] Using Telegram config from environment variables", config.Name)
+	} else if config.StrategyConfig != nil && config.StrategyConfig.Telegram.IsValid() {
+		// Fallback to strategy config (backward compatibility)
+		// Only use strategy config if it's valid (enabled, token and chat_id are set)
+		telegramEnabled = true
+		telegramToken = config.StrategyConfig.Telegram.Token
+		telegramChatID = config.StrategyConfig.Telegram.ChatID
+		logger.Infof("📱 [%s] Using Telegram config from strategy (deprecated, use .env instead)", config.Name)
+	}
+
+	if telegramEnabled && telegramToken != "" && telegramChatID != 0 {
+		var err error
+		telegramNotifier, err = notification.NewTelegramNotifier(telegramToken, telegramChatID)
+		if err != nil {
+			logger.Warnf("⚠️ [%s] Failed to initialize Telegram notifier: %v", config.Name, err)
+		} else if telegramNotifier != nil {
+			logger.Infof("✓ [%s] Telegram notifications enabled", config.Name)
+		}
+	}
+
 	return &AutoTrader{
 		id:                    config.ID,
 		name:                  config.Name,
@@ -377,6 +414,7 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 		trailingClosing:       make(map[string]struct{}),
 		lastBalanceSyncTime:   time.Now(),
 		userID:                userID,
+		telegramNotifier:      telegramNotifier,
 	}, nil
 }
 
@@ -704,6 +742,9 @@ func (at *AutoTrader) runCycle() error {
 		logger.Infof("⚠ Failed to save decision record: %v", err)
 	}
 
+	// 10. Send account and position summary via Telegram
+	at.sendAccountSummary()
+
 	return nil
 }
 
@@ -998,21 +1039,29 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 
 // executeDecisionWithRecord executes AI decision and records detailed information
 func (at *AutoTrader) executeDecisionWithRecord(decision *kernel.Decision, actionRecord *store.DecisionAction) error {
+	var err error
+
 	switch decision.Action {
 	case "open_long":
-		return at.executeOpenLongWithRecord(decision, actionRecord)
+		err = at.executeOpenLongWithRecord(decision, actionRecord)
+		at.sendDecisionNotification(decision, actionRecord, err)
 	case "open_short":
-		return at.executeOpenShortWithRecord(decision, actionRecord)
+		err = at.executeOpenShortWithRecord(decision, actionRecord)
+		at.sendDecisionNotification(decision, actionRecord, err)
 	case "close_long":
-		return at.executeCloseLongWithRecord(decision, actionRecord)
+		err = at.executeCloseLongWithRecord(decision, actionRecord)
+		at.sendDecisionNotification(decision, actionRecord, err)
 	case "close_short":
-		return at.executeCloseShortWithRecord(decision, actionRecord)
+		err = at.executeCloseShortWithRecord(decision, actionRecord)
+		at.sendDecisionNotification(decision, actionRecord, err)
 	case "hold", "wait":
 		// No execution needed, just record
 		return nil
 	default:
 		return fmt.Errorf("unknown action: %s", decision.Action)
 	}
+
+	return err
 }
 
 // ExecuteDecision executes a trading decision from external sources (e.g., debate consensus)
@@ -2745,4 +2794,99 @@ func getSideFromAction(action string) string {
 // GetOpenOrders returns open orders (pending SL/TP) from exchange
 func (at *AutoTrader) GetOpenOrders(symbol string) ([]OpenOrder, error) {
 	return at.trader.GetOpenOrders(symbol)
+}
+
+// sendDecisionNotification 发送决策通知
+func (at *AutoTrader) sendDecisionNotification(decision *kernel.Decision, actionRecord *store.DecisionAction, execErr error) {
+	if at.telegramNotifier == nil {
+		return
+	}
+
+	details := map[string]interface{}{
+		"price":             actionRecord.Price,
+		"quantity":          actionRecord.Quantity,
+		"leverage":          actionRecord.Leverage,
+		"position_size_usd": decision.PositionSizeUSD,
+		"stop_loss":         actionRecord.StopLoss,
+		"take_profit":       actionRecord.TakeProfit,
+		"confidence":        actionRecord.Confidence,
+	}
+
+	// 对于平仓操作，添加开仓价和盈亏
+	if decision.Action == "close_long" || decision.Action == "close_short" {
+		if at.store != nil {
+			normalizedSymbol := market.Normalize(decision.Symbol)
+			side := "LONG"
+			if decision.Action == "close_short" {
+				side = "SHORT"
+			}
+			if openPos, err := at.store.Position().GetOpenPositionBySymbol(at.id, normalizedSymbol, side); err == nil && openPos != nil {
+				details["entry_price"] = openPos.EntryPrice
+				if actionRecord.Price > 0 {
+					var pnl float64
+					if decision.Action == "close_long" {
+						pnl = (actionRecord.Price - openPos.EntryPrice) * actionRecord.Quantity
+					} else {
+						pnl = (openPos.EntryPrice - actionRecord.Price) * actionRecord.Quantity
+					}
+					details["pnl"] = pnl
+				}
+			}
+		}
+	}
+
+	if execErr != nil {
+		details["error"] = execErr.Error()
+	}
+
+	msg := notification.FormatDecisionMessage(at.name, decision.Symbol, decision.Action, details)
+	if err := at.telegramNotifier.SendMessage(msg); err != nil {
+		logger.Warnf("Failed to send telegram notification: %v", err)
+	}
+}
+
+// sendAccountSummary 发送账户和持仓摘要
+func (at *AutoTrader) sendAccountSummary() {
+	if at.telegramNotifier == nil {
+		return
+	}
+
+	// 获取账户信息
+	accountInfo, err := at.GetAccountInfo()
+	if err != nil {
+		logger.Warnf("Failed to get account info for telegram: %v", err)
+		return
+	}
+
+	// 获取持仓信息
+	positions, err := at.GetPositions()
+	if err != nil {
+		logger.Warnf("Failed to get positions for telegram: %v", err)
+		return
+	}
+
+	// 计算持仓数量
+	positionCount := 0
+	for _, pos := range positions {
+		if amt, ok := pos["positionAmt"].(float64); ok {
+			if amt != 0 {
+				positionCount++
+			}
+		}
+	}
+	accountInfo["position_count"] = positionCount
+
+	// 发送账户信息
+	accountMsg := notification.FormatAccountInfoMessage(at.name, accountInfo)
+	if err := at.telegramNotifier.SendMessage(accountMsg); err != nil {
+		logger.Warnf("Failed to send account info: %v", err)
+	}
+
+	// 发送持仓信息
+	if positionCount > 0 {
+		positionsMsg := notification.FormatPositionsMessage(at.name, positions)
+		if err := at.telegramNotifier.SendMessage(positionsMsg); err != nil {
+			logger.Warnf("Failed to send positions info: %v", err)
+		}
+	}
 }
