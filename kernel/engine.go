@@ -974,6 +974,20 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString(fmt.Sprintf("- Example: With equity %.0f and BTC/ETH ratio %.1fx, max is %.0f USDT\n",
 		accountEquity, btcEthPosValueRatio, accountEquity*btcEthPosValueRatio))
 	sb.WriteString("- **DO NOT** just use available_balance as position_size_usd. Use the Position Value Limits!\n\n")
+	
+	// Dynamic position size validation rule
+	sb.WriteString("### ⚠️ Dynamic Position Size Validation (CRITICAL - 关键验证):\n")
+	sb.WriteString("**Before outputting `position_size_usd`, you MUST validate and adjust if necessary:**\n\n")
+	sb.WriteString(fmt.Sprintf("1. **Calculate max allowed position value**:\n"))
+	sb.WriteString(fmt.Sprintf("   - For BTC/ETH: max = equity × %.1fx = %.0f USDT\n", btcEthPosValueRatio, accountEquity*btcEthPosValueRatio))
+	sb.WriteString(fmt.Sprintf("   - For Altcoins: max = equity × %.1fx = %.0f USDT\n", altcoinPosValueRatio, accountEquity*altcoinPosValueRatio))
+	sb.WriteString("2. **Compare your calculated `position_size_usd` with the max limit**\n")
+	sb.WriteString("3. **If `position_size_usd` > max limit, you MUST adjust it to max limit**\n")
+	sb.WriteString("   - ❌ WRONG: Outputting `position_size_usd` that exceeds the limit (will be rejected by backend)\n")
+	sb.WriteString("   - ✅ CORRECT: Adjust `position_size_usd` to max limit if your calculation exceeds it\n")
+	sb.WriteString(fmt.Sprintf("   - Example: If you calculate 6000 USDT for BTC but max is %.0f USDT, use %.0f USDT instead\n",
+		accountEquity*btcEthPosValueRatio, accountEquity*btcEthPosValueRatio))
+	sb.WriteString("4. **This validation is CODE ENFORCED - backend will reject decisions exceeding limits**\n\n")
 
 	// 4. Trading frequency (editable)
 	if promptSections.TradingFrequency != "" {
