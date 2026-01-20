@@ -1060,6 +1060,12 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString(fmt.Sprintf("- `action`: EXACTLY one of: open_long, open_short, close_long, close_short, hold, wait (case-sensitive)\n"))
 	sb.WriteString(fmt.Sprintf("- `confidence`: Integer 0-100 (opening positions require ≥ %d)\n\n", riskControl.MinConfidence))
 	sb.WriteString("- Required when opening: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd\n")
+	sb.WriteString("- **Stop Loss and Take Profit validation** (CRITICAL - 关键验证):\n")
+	sb.WriteString("  - For `open_long`: `stop_loss` MUST be LOWER than `take_profit` (止损必须低于止盈)\n")
+	sb.WriteString("  - For `open_short`: `take_profit` MUST be LOWER than `stop_loss` (止盈必须低于止损)\n")
+	sb.WriteString("  - Example for long: Entry 100, stop_loss 95, take_profit 110 ✓ (stop_loss < take_profit)\n")
+	sb.WriteString("  - Example for short: Entry 100, stop_loss 110, take_profit 95 ✓ (take_profit < stop_loss)\n\n")
+	
 	sb.WriteString("- **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas/expressions (e.g., use `27.76` not `3000 * 0.01`)\n\n")
 
 	sb.WriteString("## Validation Rules (Backend will reject invalid formats)\n\n")
@@ -1068,7 +1074,10 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString("3. **Numeric values**: Must be actual numbers, NOT formulas (e.g., use `27.76` not `3000 * 0.01`)\n")
 	sb.WriteString("4. **Required fields**: Missing required fields for opening positions will cause rejection\n")
 	sb.WriteString("5. **Price validation**: stop_loss and take_profit must be valid price levels from actual market data\n")
-	sb.WriteString("6. **Risk/reward**: Risk-reward ratio must be ≥ 3.0:1\n\n")
+	sb.WriteString("6. **Stop Loss/Take Profit relationship** (CRITICAL):\n")
+	sb.WriteString("   - For `open_long`: stop_loss MUST be < take_profit (止损必须低于止盈), otherwise REJECTED\n")
+	sb.WriteString("   - For `open_short`: take_profit MUST be < stop_loss (止盈必须低于止损), otherwise REJECTED\n")
+	sb.WriteString("7. **Risk/reward**: Risk-reward ratio must be ≥ 3.0:1\n\n")
 
 	sb.WriteString("## Common Mistakes to Avoid\n\n")
 	sb.WriteString("- ❌ Copying example values without analyzing actual market data\n")
