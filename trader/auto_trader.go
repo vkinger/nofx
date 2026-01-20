@@ -2796,6 +2796,11 @@ func (at *AutoTrader) GetOpenOrders(symbol string) ([]OpenOrder, error) {
 	return at.trader.GetOpenOrders(symbol)
 }
 
+// GetTrader 获取底层 Trader 实例
+func (at *AutoTrader) GetTrader() Trader {
+	return at.trader
+}
+
 // sendDecisionNotification 发送决策通知
 func (at *AutoTrader) sendDecisionNotification(decision *kernel.Decision, actionRecord *store.DecisionAction, execErr error) {
 	if at.telegramNotifier == nil {

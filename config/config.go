@@ -46,9 +46,10 @@ type Config struct {
 	TwelveDataKey   string // TwelveData API key for forex & metals
 
 	// Telegram notification configuration
-	TelegramEnabled bool   // Whether Telegram notifications are enabled
-	TelegramToken   string // Telegram Bot Token
-	TelegramChatID  int64  // Telegram Chat ID
+	TelegramEnabled  bool   // Whether Telegram notifications are enabled
+	TelegramToken    string // Telegram Bot Token
+	TelegramChatID   int64  // Telegram Chat ID
+	TelegramWebhookURL string // Telegram Webhook URL (optional, for command handling)
 }
 
 // Init initializes global configuration (from .env)
@@ -147,6 +148,7 @@ func Init() {
 			cfg.TelegramChatID = chatID
 		}
 	}
+	cfg.TelegramWebhookURL = os.Getenv("TELEGRAM_WEBHOOK_URL")
 
 	global = cfg
 

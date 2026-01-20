@@ -13,6 +13,7 @@ import (
 	"nofx/logger"
 	"nofx/manager"
 	"nofx/market"
+	"nofx/notification"
 	"nofx/provider/alpaca"
 	"nofx/provider/coinank/coinank_api"
 	"nofx/provider/coinank/coinank_enum"
@@ -22,10 +23,12 @@ import (
 	"nofx/trader"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 // Server HTTP API server
@@ -38,6 +41,7 @@ type Server struct {
 	debateHandler   *DebateHandler
 	httpServer      *http.Server
 	port            int
+	telegramWebhook *notification.TelegramWebhook
 }
 
 // NewServer Creates API server
@@ -126,6 +130,9 @@ func (s *Server) setupRoutes() {
 		// Market data (no authentication required)
 		api.GET("/klines", s.handleKlines)
 		api.GET("/symbols", s.handleSymbols)
+
+		// Telegram Webhook (with IP whitelist and rate limiting)
+		api.POST("/telegram/webhook", s.telegramWebhookIPWhitelist(), s.telegramWebhookRateLimit(), s.handleTelegramWebhook)
 
 		// Public strategy market (no authentication required)
 		api.GET("/strategies/public", s.handlePublicStrategies)
@@ -3642,4 +3649,176 @@ func (s *Server) handleGetPublicTraderConfig(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, result)
+}
+
+// SetTelegramWebhook 设置 Telegram Webhook 实例
+func (s *Server) SetTelegramWebhook(webhook *notification.TelegramWebhook) {
+	s.telegramWebhook = webhook
+}
+
+// telegramWebhookIPWhitelist IP 白名单中间件（只允许 Telegram 官方 IP 段）
+func (s *Server) telegramWebhookIPWhitelist() gin.HandlerFunc {
+	// Telegram 官方 IP 段
+	telegramIPRanges := []string{
+		"149.154.160.0/20", // Telegram 主要 IP 段
+		"91.108.4.0/22",    // Telegram 备用 IP 段
+	}
+
+	// 解析 CIDR 范围
+	var allowedNetworks []*net.IPNet
+	for _, cidr := range telegramIPRanges {
+		_, ipNet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			logger.Errorf("Failed to parse Telegram IP range %s: %v", cidr, err)
+			continue
+		}
+		allowedNetworks = append(allowedNetworks, ipNet)
+	}
+
+	return func(c *gin.Context) {
+		// 获取客户端 IP
+		clientIP := c.ClientIP()
+
+		// 解析 IP 地址
+		ip := net.ParseIP(clientIP)
+		if ip == nil {
+			logger.Warnf("Invalid IP address from Telegram webhook: %s", clientIP)
+			c.JSON(http.StatusForbidden, gin.H{"error": "Invalid IP address"})
+			c.Abort()
+			return
+		}
+
+		// 检查是否在允许的 IP 段内
+		allowed := false
+		for _, ipNet := range allowedNetworks {
+			if ipNet.Contains(ip) {
+				allowed = true
+				break
+			}
+		}
+
+		if !allowed {
+			logger.Warnf("Telegram webhook request from unauthorized IP: %s", clientIP)
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
+}
+
+// rateLimiter 简单的速率限制器
+type rateLimiter struct {
+	visitors map[string]*visitor
+	mu       sync.RWMutex
+	rate     int           // 每分钟允许的请求数
+	window   time.Duration // 时间窗口
+}
+
+type visitor struct {
+	lastSeen time.Time
+	count    int
+}
+
+// newRateLimiter 创建速率限制器
+func newRateLimiter(rate int, window time.Duration) *rateLimiter {
+	rl := &rateLimiter{
+		visitors: make(map[string]*visitor),
+		rate:     rate,
+		window:   window,
+	}
+
+	// 定期清理过期的访问记录
+	go rl.cleanup()
+	return rl
+}
+
+// cleanup 定期清理过期的访问记录
+func (rl *rateLimiter) cleanup() {
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		rl.mu.Lock()
+		now := time.Now()
+		for ip, v := range rl.visitors {
+			if now.Sub(v.lastSeen) > rl.window {
+				delete(rl.visitors, ip)
+			}
+		}
+		rl.mu.Unlock()
+	}
+}
+
+// allow 检查是否允许请求
+func (rl *rateLimiter) allow(ip string) bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	now := time.Now()
+	v, exists := rl.visitors[ip]
+
+	if !exists {
+		// 新访问者
+		rl.visitors[ip] = &visitor{
+			lastSeen: now,
+			count:    1,
+		}
+		return true
+	}
+
+	// 检查时间窗口
+	if now.Sub(v.lastSeen) > rl.window {
+		// 重置计数器
+		v.lastSeen = now
+		v.count = 1
+		return true
+	}
+
+	// 检查是否超过限制
+	if v.count >= rl.rate {
+		return false
+	}
+
+	// 增加计数
+	v.count++
+	v.lastSeen = now
+	return true
+}
+
+// telegramWebhookRateLimit 速率限制中间件
+func (s *Server) telegramWebhookRateLimit() gin.HandlerFunc {
+	// 创建速率限制器：每分钟最多 30 个请求（Telegram 通常不会发送太多）
+	limiter := newRateLimiter(30, 1*time.Minute)
+
+	return func(c *gin.Context) {
+		clientIP := c.ClientIP()
+
+		if !limiter.allow(clientIP) {
+			logger.Warnf("Telegram webhook rate limit exceeded for IP: %s", clientIP)
+			c.JSON(http.StatusTooManyRequests, gin.H{
+				"error": "Rate limit exceeded. Please try again later.",
+			})
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
+}
+
+// handleTelegramWebhook 处理 Telegram Webhook 请求
+func (s *Server) handleTelegramWebhook(c *gin.Context) {
+	var update tgbotapi.Update
+	if err := c.ShouldBindJSON(&update); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	if s.telegramWebhook != nil {
+		s.telegramWebhook.HandleUpdate(&update)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true})
 }

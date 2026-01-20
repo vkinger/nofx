@@ -10,11 +10,13 @@ import (
 	"nofx/logger"
 	"nofx/manager"
 	"nofx/mcp"
+	"nofx/notification"
 	"nofx/store"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
@@ -135,6 +137,55 @@ func main() {
 			logger.Fatalf("❌ Failed to start API server: %v", err)
 		}
 	}()
+
+	// Initialize Telegram Webhook if enabled
+	if cfg.TelegramEnabled && cfg.TelegramToken != "" && cfg.TelegramChatID != 0 {
+		// Wait a bit for server to start
+		time.Sleep(2 * time.Second)
+
+		// Webhook URL is required
+		webhookURL := cfg.TelegramWebhookURL
+		if webhookURL == "" {
+			logger.Warnf("⚠️ TELEGRAM_WEBHOOK_URL is not set. Telegram Webhook will not be initialized.")
+			logger.Warnf("⚠️ To enable Telegram Webhook, please set TELEGRAM_WEBHOOK_URL in your .env file:")
+			logger.Warnf("⚠️   - For domain: https://your-domain.com/api/telegram/webhook")
+			logger.Warnf("⚠️   - For IP: https://123.45.67.89:443/api/telegram/webhook (requires self-signed cert with IP as CN)")
+			logger.Warnf("⚠️ Requirements:")
+			logger.Warnf("⚠️   - Must use HTTPS (not HTTP)")
+			logger.Warnf("⚠️   - Port must be one of: 443, 80, 88, 8443")
+			logger.Warnf("⚠️   - Must be publicly accessible (not localhost)")
+			logger.Warnf("⚠️   - For IP addresses, SSL certificate CN must match the IP")
+		} else {
+			telegramWebhook, err := notification.NewTelegramWebhook(
+				cfg.TelegramToken,
+				cfg.TelegramChatID,
+			)
+			if err == nil && telegramWebhook != nil {
+				// 注册指令处理器
+				commandCtx := &notification.CommandContext{
+					TraderManager: traderManager,
+				}
+				handlers := notification.CreateCommandHandlers(commandCtx)
+				for cmd, handler := range handlers {
+					telegramWebhook.RegisterCommand(cmd, handler)
+				}
+
+				// 启动 Webhook
+				if err := telegramWebhook.StartWebhook(webhookURL); err == nil {
+					server.SetTelegramWebhook(telegramWebhook)
+					// 发送欢迎消息
+					time.Sleep(1 * time.Second)
+					telegramWebhook.SendWelcomeMessage()
+					logger.Info("✓ Telegram Webhook initialized and welcome message sent")
+				} else {
+					logger.Warnf("⚠️ Failed to start Telegram webhook: %v", err)
+					logger.Warnf("⚠️ Please check your TELEGRAM_WEBHOOK_URL configuration")
+				}
+			} else if err != nil {
+				logger.Warnf("⚠️ Failed to create Telegram webhook: %v", err)
+			}
+		}
+	}
 
 	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)
