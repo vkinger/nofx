@@ -178,6 +178,7 @@ export function TraderDashboardPage({
 }: TraderDashboardPageProps) {
     const [closingPosition, setClosingPosition] = useState<string | null>(null)
     const [selectedChartSymbol, setSelectedChartSymbol] = useState<string | undefined>(undefined)
+    const [showOnlyValidActions, setShowOnlyValidActions] = useState<boolean>(false)
     const [chartUpdateKey, setChartUpdateKey] = useState<number>(0)
     const chartSectionRef = useRef<HTMLDivElement>(null)
     const [showWalletAddress, setShowWalletAddress] = useState<boolean>(false)
@@ -826,26 +827,98 @@ export function TraderDashboardPage({
                             </select>
                         </div>
 
+                        {/* Filter Toggle */}
+                        <div className="flex items-center justify-between mb-4 px-1">
+                            <label className="flex items-center gap-2 cursor-pointer group">
+                                <input
+                                    type="checkbox"
+                                    checked={showOnlyValidActions}
+                                    onChange={(e) => setShowOnlyValidActions(e.target.checked)}
+                                    className="sr-only"
+                                />
+                                <div
+                                    className={`relative w-11 h-6 rounded-full transition-all duration-200 ${
+                                        showOnlyValidActions
+                                            ? 'bg-nofx-accent'
+                                            : 'bg-white/10'
+                                    }`}
+                                >
+                                    <div
+                                        className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-all duration-200 shadow-md ${
+                                            showOnlyValidActions ? 'translate-x-5' : 'translate-x-0'
+                                        }`}
+                                    />
+                                </div>
+                                <span className="text-sm text-nofx-text-main group-hover:text-nofx-accent transition-colors">
+                                    {t('showOnlyValidActions', language)}
+                                </span>
+                            </label>
+                            {showOnlyValidActions && decisions && (
+                                <span className="text-xs text-nofx-text-muted">
+                                    {(() => {
+                                        const filtered = decisions.filter((decision) => {
+                                            if (!decision.decisions || decision.decisions.length === 0) return false
+                                            return decision.decisions.some((action) => {
+                                                const actionType = action.action
+                                                return (
+                                                    actionType === 'open_long' ||
+                                                    actionType === 'open_short' ||
+                                                    actionType === 'close_long' ||
+                                                    actionType === 'close_short'
+                                                )
+                                            })
+                                        })
+                                        return filtered.length
+                                    })()}{' '}
+                                    {t('validDecisions', language)}
+                                </span>
+                            )}
+                        </div>
+
                         {/* Decisions List - Scrollable */}
                         <div
                             className="space-y-4 overflow-y-auto pr-2 custom-scrollbar"
                             style={{ maxHeight: 'calc(100vh - 280px)' }}
                         >
-                            {decisions && decisions.length > 0 ? (
-                                decisions.map((decision, i) => (
-                                    <DecisionCard key={i} decision={decision} language={language} onSymbolClick={handleSymbolClick} />
-                                ))
-                            ) : (
-                                <div className="py-16 text-center text-nofx-text-muted opacity-60">
-                                    <div className="text-6xl mb-4 opacity-30 grayscale">🧠</div>
-                                    <div className="text-lg font-semibold mb-2 text-nofx-text-main">
-                                        {t('noDecisionsYet', language)}
+                            {(() => {
+                                // Filter decisions based on showOnlyValidActions
+                                const filteredDecisions = decisions
+                                    ? showOnlyValidActions
+                                        ? decisions.filter((decision) => {
+                                              if (!decision.decisions || decision.decisions.length === 0) return false
+                                              return decision.decisions.some((action) => {
+                                                  const actionType = action.action
+                                                  return (
+                                                      actionType === 'open_long' ||
+                                                      actionType === 'open_short' ||
+                                                      actionType === 'close_long' ||
+                                                      actionType === 'close_short'
+                                                  )
+                                              })
+                                          })
+                                        : decisions
+                                    : []
+
+                                return filteredDecisions.length > 0 ? (
+                                    filteredDecisions.map((decision, i) => (
+                                        <DecisionCard key={i} decision={decision} language={language} onSymbolClick={handleSymbolClick} />
+                                    ))
+                                ) : (
+                                    <div className="py-16 text-center text-nofx-text-muted opacity-60">
+                                        <div className="text-6xl mb-4 opacity-30 grayscale">🧠</div>
+                                        <div className="text-lg font-semibold mb-2 text-nofx-text-main">
+                                            {showOnlyValidActions
+                                                ? t('noValidDecisions', language)
+                                                : t('noDecisionsYet', language)}
+                                        </div>
+                                        <div className="text-sm">
+                                            {showOnlyValidActions
+                                                ? t('noValidDecisionsHint', language)
+                                                : t('aiDecisionsWillAppear', language)}
+                                        </div>
                                     </div>
-                                    <div className="text-sm">
-                                        {t('aiDecisionsWillAppear', language)}
-                                    </div>
-                                </div>
-                            )}
+                                )
+                            })()}
                         </div>
                     </div>
                 </div>
