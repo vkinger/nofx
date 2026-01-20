@@ -22,6 +22,40 @@ import (
 	"github.com/joho/godotenv"
 )
 
+// userStoreAdapterImpl 用户存储适配器实现（在 main.go 中定义以避免循环导入）
+type userStoreAdapterImpl struct {
+	store *store.UserStore
+}
+
+// GetByID 根据用户ID获取用户
+func (usa *userStoreAdapterImpl) GetByID(userID string) (notification.UserInterface, error) {
+	user, err := usa.store.GetByID(userID)
+	if err != nil {
+		return nil, err
+	}
+	return &userAdapterImpl{user: user}, nil
+}
+
+// userAdapterImpl 用户适配器实现
+type userAdapterImpl struct {
+	user *store.User
+}
+
+// GetID 获取用户ID
+func (ua *userAdapterImpl) GetID() string {
+	return ua.user.ID
+}
+
+// GetOTPSecret 获取 OTP Secret
+func (ua *userAdapterImpl) GetOTPSecret() string {
+	return ua.user.OTPSecret
+}
+
+// IsOTPVerified 检查 OTP 是否已验证
+func (ua *userAdapterImpl) IsOTPVerified() bool {
+	return ua.user.OTPVerified
+}
+
 func main() {
 	// Load .env environment variables
 	_ = godotenv.Load()
@@ -162,8 +196,11 @@ func main() {
 			)
 			if err == nil && telegramWebhook != nil {
 				// 注册指令处理器
+				// 创建用户存储适配器（在 main.go 中创建以避免循环导入）
+				userStoreAdapter := &userStoreAdapterImpl{store: st.User()}
 				commandCtx := &notification.CommandContext{
 					TraderManager: traderManager,
+					UserStore:     userStoreAdapter,
 				}
 				handlers := notification.CreateCommandHandlers(commandCtx)
 				for cmd, handler := range handlers {
