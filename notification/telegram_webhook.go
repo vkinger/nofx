@@ -200,23 +200,30 @@ func (tw *TelegramWebhook) SendWelcomeMessage() error {
 
 📋 <b>可用指令：</b>
 
-/account - 查看账户及持仓信息
-/price [币种] - 查看币种当前价格
+/price [币种] - 查看币种当前价格（无需验证）
   示例: /price BTCUSDT
 
-/sl [币种] [止损价] - 设置止损
-  示例: /sl BTCUSDT 42000
+<b>需要用户ID和 2FA 验证码的操作：</b>
+/account [用户ID] [OTP码] - 查看账户及持仓信息
+  示例: /account user_abc123 123456
 
-/tp [币种] [止盈价] - 设置止盈
-  示例: /tp BTCUSDT 45000
+/sl [用户ID] [币种] [止损价] [OTP码] - 设置止损
+  示例: /sl user_abc123 BTCUSDT 42000 123456
 
-/close [币种] [方向] - 平仓
-  示例: /close BTCUSDT long
-  示例: /close ETHUSDT short
+/tp [用户ID] [币种] [止盈价] [OTP码] - 设置止盈
+  示例: /tp user_abc123 BTCUSDT 45000 123456
 
-/help - 显示此帮助信息
+/close [用户ID] [币种] [方向] [OTP码] - 平仓
+  示例: /close user_abc123 BTCUSDT long 123456
+  示例: /close user_abc123 ETHUSDT short 123456
+
+/help - 显示帮助信息（无需验证）
 
 💡 <b>提示：</b>
+- 只有 /price 和 /help 指令无需验证码
+- 其他所有指令都需要提供用户ID和 Google Authenticator 验证码
+- 用户ID可以从 Web 界面获取
+- OTP 码来自你的 Google Authenticator 等 2FA 应用
 - 币种格式: BTCUSDT, ETHUSDT 等
 - 方向: long (做多) 或 short (做空)
 - 价格请使用数字，无需单位`

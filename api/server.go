@@ -51,6 +51,12 @@ func NewServer(traderManager *manager.TraderManager, st *store.Store, cryptoServ
 
 	router := gin.Default()
 
+	// 配置信任代理，以便从 X-Forwarded-For 和 X-Real-IP 头中获取真实客户端IP
+	// nil 表示信任所有代理（适用于通过nginx等反向代理的场景）
+	if err := router.SetTrustedProxies(nil); err != nil {
+		logger.Warnf("Failed to set trusted proxies: %v", err)
+	}
+
 	// Enable CORS
 	router.Use(corsMiddleware())
 
@@ -3717,8 +3723,14 @@ func (s *Server) telegramWebhookIPWhitelist() gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-		// 获取客户端 IP
+		// 获取客户端 IP（会从 X-Real-IP 或 X-Forwarded-For 中获取）
 		clientIP := c.ClientIP()
+		
+		// 添加调试日志，帮助排查问题
+		xRealIP := c.GetHeader("X-Real-IP")
+		xForwardedFor := c.GetHeader("X-Forwarded-For")
+		logger.Infof("Telegram webhook request - ClientIP: %s, X-Real-IP: %s, X-Forwarded-For: %s, RemoteAddr: %s", 
+			clientIP, xRealIP, xForwardedFor, c.Request.RemoteAddr)
 
 		// 解析 IP 地址
 		ip := net.ParseIP(clientIP)
@@ -3734,12 +3746,13 @@ func (s *Server) telegramWebhookIPWhitelist() gin.HandlerFunc {
 		for _, ipNet := range allowedNetworks {
 			if ipNet.Contains(ip) {
 				allowed = true
+				logger.Infof("Telegram webhook IP %s is allowed (matched network: %s)", clientIP, ipNet.String())
 				break
 			}
 		}
 
 		if !allowed {
-			logger.Warnf("Telegram webhook request from unauthorized IP: %s", clientIP)
+			logger.Warnf("Telegram webhook request from unauthorized IP: %s (not in allowed ranges)", clientIP)
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			c.Abort()
 			return
