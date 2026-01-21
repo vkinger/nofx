@@ -38,6 +38,15 @@ func (usa *userStoreAdapterImpl) GetByID(userID string) (notification.UserInterf
 	return &userAdapterImpl{user: user}, nil
 }
 
+// GetByEmail 根据邮箱获取用户
+func (usa *userStoreAdapterImpl) GetByEmail(email string) (notification.UserInterface, error) {
+	user, err := usa.store.GetByEmail(email)
+	if err != nil {
+		return nil, err
+	}
+	return &userAdapterImpl{user: user}, nil
+}
+
 // userAdapterImpl 用户适配器实现
 type userAdapterImpl struct {
 	user *store.User
@@ -240,6 +249,7 @@ func main() {
 			logger.Warnf("⚠️   - Must be publicly accessible (not localhost)")
 			logger.Warnf("⚠️   - For IP addresses, SSL certificate CN must match the IP")
 		} else {
+			logger.Infof("📱 Initializing Telegram Webhook - ChatID: %d", cfg.TelegramChatID)
 			telegramWebhook, err := notification.NewTelegramWebhook(
 				cfg.TelegramToken,
 				cfg.TelegramChatID,

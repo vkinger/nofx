@@ -21,6 +21,7 @@ type UserInterface interface {
 // UserStoreInterface 用户存储接口（避免循环导入）
 type UserStoreInterface interface {
 	GetByID(userID string) (UserInterface, error)
+	GetByEmail(email string) (UserInterface, error)
 }
 
 // TraderInterface 交易员接口（避免循环导入）
@@ -50,7 +51,7 @@ type CommandContext struct {
 func CreateCommandHandlers(ctx *CommandContext) map[string]CommandHandler {
 	handlers := make(map[string]CommandHandler)
 
-	// /account - 查看账户及持仓（需要用户ID和OTP）
+	// /account - 查看账户及持仓（需要邮箱和OTP）
 	handlers["/account"] = func(update *tgbotapi.Update) string {
 		return handleCommandWithUserIDAndOTP(ctx, update, handleAccountCommandWithOTP)
 	}
@@ -64,17 +65,17 @@ func CreateCommandHandlers(ctx *CommandContext) map[string]CommandHandler {
 		return handlePriceCommand(ctx, args[0])
 	}
 
-	// /sl - 设置止损（需要用户ID和OTP）
+	// /sl - 设置止损（需要邮箱和OTP）
 	handlers["/sl"] = func(update *tgbotapi.Update) string {
 		return handleCommandWithUserIDAndOTP(ctx, update, handleStopLossCommandWithOTP)
 	}
 
-	// /tp - 设置止盈（需要用户ID和OTP）
+	// /tp - 设置止盈（需要邮箱和OTP）
 	handlers["/tp"] = func(update *tgbotapi.Update) string {
 		return handleCommandWithUserIDAndOTP(ctx, update, handleTakeProfitCommandWithOTP)
 	}
 
-	// /close - 平仓（需要用户ID和OTP）
+	// /close - 平仓（需要邮箱和OTP）
 	handlers["/close"] = func(update *tgbotapi.Update) string {
 		return handleCommandWithUserIDAndOTP(ctx, update, handleCloseCommandWithOTP)
 	}
@@ -86,26 +87,44 @@ func CreateCommandHandlers(ctx *CommandContext) map[string]CommandHandler {
 /price [币种] - 查看币种当前价格（无需验证）
   示例: /price BTCUSDT
 
-<b>需要用户ID和 2FA 验证码的操作：</b>
-/account [用户ID] [OTP码] - 查看账户及持仓信息
-  示例: /account user_abc123 123456
+<b>需要邮箱和 2FA 验证码的操作：</b>
+/account [邮箱] [OTP码] - 查看账户及持仓信息
+  示例: /account user@example.com 123456
 
-/sl [用户ID] [币种] [止损价] [OTP码] - 设置止损
-  示例: /sl user_abc123 BTCUSDT 42000 123456
+/sl [邮箱] [币种] [止损价] [OTP码] - 设置止损
+  示例: /sl user@example.com BTCUSDT 42000 123456
 
-/tp [用户ID] [币种] [止盈价] [OTP码] - 设置止盈
-  示例: /tp user_abc123 BTCUSDT 45000 123456
+/tp [邮箱] [币种] [止盈价] [OTP码] - 设置止盈
+  示例: /tp user@example.com BTCUSDT 45000 123456
 
-/close [用户ID] [币种] [方向] [OTP码] - 平仓
-  示例: /close user_abc123 BTCUSDT long 123456
+/close [邮箱] [币种] [方向] [OTP码] - 平仓
+  示例: /close user@example.com BTCUSDT long 123456
 
 /help - 显示帮助信息（无需验证）
 
+📢 <b>自动推送功能：</b>
+系统会自动推送以下交易信息到 Telegram：
+
+<b>交易决策通知：</b>
+📈 开仓通知 - 包含价格、数量、杠杆、仓位大小、止损、止盈、信心度
+📉 平仓通知 - 包含价格、数量、开仓价、盈亏
+🔄 持仓调整 - 包含调整详情
+
+<b>账户摘要：</b>
+📊 总权益、可用余额、已用保证金
+📈 总盈亏（含百分比）
+📋 持仓数量
+
+<b>持仓详情：</b>
+📋 每个持仓的符号、方向、数量、杠杆
+💰 开仓价、标记价、未实现盈亏
+
 💡 <b>提示：</b>
 - 只有 /price 和 /help 指令无需验证码
-- 其他所有指令都需要提供用户ID和 Google Authenticator 验证码
-- 用户ID可以从 Web 界面获取
-- OTP 码来自你的 Google Authenticator 等 2FA 应用`
+- 其他所有指令都需要提供邮箱和 Google Authenticator 验证码
+- 邮箱应该是注册时使用的邮箱地址
+- OTP 码来自你的 Google Authenticator 等 2FA 应用
+- 交易通知会在 AI 交易员执行交易时自动推送，无需手动查询`
 	}
 
 	return handlers
@@ -126,22 +145,22 @@ func getFirstTrader(ctx *CommandContext) (TraderInterface, error) {
 	return nil, fmt.Errorf("没有找到运行中的交易员")
 }
 
-// handleCommandWithUserIDAndOTP 处理需要用户ID和OTP验证的指令
+// handleCommandWithEmailAndOTP 处理需要邮箱和OTP验证的指令
 func handleCommandWithUserIDAndOTP(ctx *CommandContext, update *tgbotapi.Update, handler func(*CommandContext, *tgbotapi.Update, UserInterface) string) string {
 	args := strings.Fields(update.Message.Text)
 
 	if len(args) < 2 {
-		return "❌ 参数不足。操作指令需要用户ID和 Google Authenticator 验证码。\n示例: /account user_abc123 123456\n示例: /sl user_abc123 BTCUSDT 42000 123456"
+		return "❌ 参数不足。操作指令需要邮箱和 Google Authenticator 验证码。\n示例: /account user@example.com 123456\n示例: /sl user@example.com BTCUSDT 42000 123456"
 	}
 
-	// 第一个参数是用户ID，最后一个参数是 OTP
-	userID := args[0]
+	// 第一个参数是邮箱，最后一个参数是 OTP
+	email := args[0]
 	otpCode := args[len(args)-1]
 
-	// 获取用户信息
-	user, err := ctx.UserStore.GetByID(userID)
+	// 通过邮箱获取用户
+	user, err := ctx.UserStore.GetByEmail(email)
 	if err != nil {
-		return fmt.Sprintf("❌ 用户不存在: %s\n\n请确认用户ID是否正确。用户ID可以从 Web 界面获取。", userID)
+		return fmt.Sprintf("❌ 用户不存在: %s\n\n请确认邮箱地址是否正确。邮箱应该是注册时使用的邮箱地址。", email)
 	}
 
 	// 检查用户是否已启用 OTP
@@ -154,10 +173,10 @@ func handleCommandWithUserIDAndOTP(ctx *CommandContext, update *tgbotapi.Update,
 		return "❌ OTP 验证码错误。请使用 Google Authenticator 应用中的当前验证码。"
 	}
 
-	// 移除用户ID和OTP参数，保留中间的操作参数
-	// 格式: /account userID OTP -> (空)
-	// 格式: /sl userID symbol price OTP -> symbol price
-	// 格式: /close userID symbol side OTP -> symbol side
+	// 移除邮箱和OTP参数，保留中间的操作参数
+	// 格式: /account email OTP -> (空)
+	// 格式: /sl email symbol price OTP -> symbol price
+	// 格式: /close email symbol side OTP -> symbol side
 	if len(args) > 2 {
 		update.Message.Text = strings.Join(args[1:len(args)-1], " ")
 	} else {
@@ -309,7 +328,7 @@ func handleStopLossCommand(ctx *CommandContext, symbol string, stopPrice float64
 func handleTakeProfitCommandWithOTP(ctx *CommandContext, update *tgbotapi.Update, user UserInterface) string {
 	args := strings.Fields(update.Message.Text)
 	if len(args) < 2 {
-		return "❌ 请指定币种和止盈价\n示例: /tp user_abc123 BTCUSDT 45000 123456"
+		return "❌ 请指定币种和止盈价\n示例: /tp user@example.com BTCUSDT 45000 123456"
 	}
 
 	price, err := strconv.ParseFloat(args[1], 64)
@@ -372,7 +391,7 @@ func handleTakeProfitCommand(ctx *CommandContext, symbol string, takeProfitPrice
 func handleCloseCommandWithOTP(ctx *CommandContext, update *tgbotapi.Update, user UserInterface) string {
 	args := strings.Fields(update.Message.Text)
 	if len(args) < 2 {
-		return "❌ 请指定币种和方向\n示例: /close user_abc123 BTCUSDT long 123456"
+		return "❌ 请指定币种和方向\n示例: /close user@example.com BTCUSDT long 123456"
 	}
 
 	return handleCloseCommand(ctx, args[0], args[1])

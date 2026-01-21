@@ -154,17 +154,33 @@ func (tw *TelegramWebhook) StopWebhook() {
 // HandleUpdate 处理 Webhook 更新
 func (tw *TelegramWebhook) HandleUpdate(update *tgbotapi.Update) {
 	if !tw.enabled {
+		logger.Warnf("Telegram webhook is not enabled, ignoring update")
+		return
+	}
+
+	// 只处理消息类型的更新
+	if update.Message == nil {
+		logger.Debugf("Telegram webhook update has no message (UpdateID: %d), ignoring", update.UpdateID)
 		return
 	}
 
 	// 只处理来自配置的 chatID 的消息
-	if update.Message != nil && update.Message.Chat.ID != tw.chatID {
+	// 注意：频道消息的 ChatID 是负数，个人聊天的 ChatID 是正数
+	if update.Message.Chat.ID != tw.chatID {
+		logger.Warnf("Telegram webhook message from unauthorized chatID: %d (expected: %d), ignoring. Chat type: %s", 
+			update.Message.Chat.ID, tw.chatID, update.Message.Chat.Type)
+		logger.Infof("Please check your TELEGRAM_CHAT_ID configuration. Current message chatID: %d, configured chatID: %d", 
+			update.Message.Chat.ID, tw.chatID)
 		return
 	}
+
+	logger.Infof("Telegram webhook message accepted, sending to command channel - ChatID: %d, Text: %s", 
+		update.Message.Chat.ID, update.Message.Text)
 
 	// 发送到命令处理通道
 	select {
 	case tw.commandChan <- update:
+		logger.Infof("Telegram webhook update sent to command channel successfully")
 	default:
 		logger.Warnf("Command channel full, dropping update")
 	}
@@ -203,27 +219,30 @@ func (tw *TelegramWebhook) SendWelcomeMessage() error {
 /price [币种] - 查看币种当前价格（无需验证）
   示例: /price BTCUSDT
 
-<b>需要用户ID和 2FA 验证码的操作：</b>
-/account [用户ID] [OTP码] - 查看账户及持仓信息
-  示例: /account user_abc123 123456
+<b>需要邮箱和 2FA 验证码的操作：</b>
+/account [邮箱] [OTP码] - 查看账户及持仓信息
+  示例: /account user@example.com 123456
 
-/sl [用户ID] [币种] [止损价] [OTP码] - 设置止损
-  示例: /sl user_abc123 BTCUSDT 42000 123456
+/sl [邮箱] [币种] [止损价] [OTP码] - 设置止损
+  示例: /sl user@example.com BTCUSDT 42000 123456
 
-/tp [用户ID] [币种] [止盈价] [OTP码] - 设置止盈
-  示例: /tp user_abc123 BTCUSDT 45000 123456
+/tp [邮箱] [币种] [止盈价] [OTP码] - 设置止盈
+  示例: /tp user@example.com BTCUSDT 45000 123456
 
-/close [用户ID] [币种] [方向] [OTP码] - 平仓
-  示例: /close user_abc123 BTCUSDT long 123456
-  示例: /close user_abc123 ETHUSDT short 123456
+/close [邮箱] [币种] [方向] [OTP码] - 平仓
+  示例: /close user@example.com BTCUSDT long 123456
 
 /help - 显示帮助信息（无需验证）
 
+📢 <b>自动推送功能：</b>
+系统会自动推送交易决策、账户摘要和持仓详情到 Telegram，无需手动查询。
+
 💡 <b>提示：</b>
 - 只有 /price 和 /help 指令无需验证码
-- 其他所有指令都需要提供用户ID和 Google Authenticator 验证码
-- 用户ID可以从 Web 界面获取
+- 其他所有指令都需要提供邮箱和 Google Authenticator 验证码
+- 邮箱应该是注册时使用的邮箱地址
 - OTP 码来自你的 Google Authenticator 等 2FA 应用
+- 发送 /help 查看完整帮助信息
 - 币种格式: BTCUSDT, ETHUSDT 等
 - 方向: long (做多) 或 short (做空)
 - 价格请使用数字，无需单位`
@@ -238,23 +257,30 @@ func (tw *TelegramWebhook) processCommands() {
 		case <-tw.stopChan:
 			return
 		case update := <-tw.commandChan:
+			logger.Infof("Processing command from channel - UpdateID: %d", update.UpdateID)
 			if update.Message == nil {
+				logger.Warnf("Update has no message, skipping")
 				continue
 			}
 
 			text := update.Message.Text
 			if text == "" {
+				logger.Warnf("Message text is empty, skipping")
 				continue
 			}
+
+			logger.Infof("Processing command text: %s", text)
 
 			// 解析命令
 			parts := strings.Fields(text)
 			if len(parts) == 0 {
+				logger.Warnf("Command has no parts, skipping")
 				continue
 			}
 
 			command := strings.ToLower(parts[0])
 			args := parts[1:]
+			logger.Infof("Parsed command: %s, args: %v", command, args)
 
 			tw.mu.RLock()
 			handler, ok := tw.commandHandlers[command]
@@ -262,19 +288,27 @@ func (tw *TelegramWebhook) processCommands() {
 
 			var response string
 			if ok {
+				logger.Infof("Found handler for command: %s", command)
 				// 创建带参数的更新对象
 				updateWithArgs := *update
 				updateWithArgs.Message.Text = strings.Join(args, " ")
 				response = handler(&updateWithArgs)
+				logger.Infof("Handler returned response (length: %d)", len(response))
 			} else {
+				logger.Warnf("No handler found for command: %s", command)
 				response = "❌ 未知指令。发送 /help 查看帮助。"
 			}
 
 			// 发送响应
 			if response != "" {
+				logger.Infof("Sending response message (length: %d)", len(response))
 				if err := tw.SendMessage(response); err != nil {
 					logger.Errorf("Failed to send command response: %v", err)
+				} else {
+					logger.Infof("Response message sent successfully")
 				}
+			} else {
+				logger.Warnf("Response is empty, not sending message")
 			}
 		}
 	}
