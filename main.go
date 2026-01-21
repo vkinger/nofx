@@ -7,11 +7,13 @@ import (
 	"nofx/config"
 	"nofx/crypto"
 	"nofx/experience"
+	"nofx/kernel"
 	"nofx/logger"
 	"nofx/manager"
 	"nofx/mcp"
 	"nofx/notification"
 	"nofx/store"
+	"nofx/trader"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -54,6 +56,54 @@ func (ua *userAdapterImpl) GetOTPSecret() string {
 // IsOTPVerified 检查 OTP 是否已验证
 func (ua *userAdapterImpl) IsOTPVerified() bool {
 	return ua.user.OTPVerified
+}
+
+// traderManagerAdapterImpl 交易员管理器适配器实现（在 main.go 中定义以避免循环导入）
+type traderManagerAdapterImpl struct {
+	traderManager *manager.TraderManager
+}
+
+// GetAllTraders 获取所有交易员
+func (tma *traderManagerAdapterImpl) GetAllTraders() map[string]notification.TraderInterface {
+	traders := tma.traderManager.GetAllTraders()
+	result := make(map[string]notification.TraderInterface)
+	for id, trader := range traders {
+		result[id] = &traderAdapterImpl{trader: trader}
+	}
+	return result
+}
+
+// traderAdapterImpl 交易员适配器实现（在 main.go 中定义以避免循环导入）
+type traderAdapterImpl struct {
+	trader *trader.AutoTrader
+}
+
+// GetName 获取交易员名称
+func (ta *traderAdapterImpl) GetName() string {
+	return ta.trader.GetName()
+}
+
+// GetAccountInfo 获取账户信息
+func (ta *traderAdapterImpl) GetAccountInfo() (map[string]interface{}, error) {
+	return ta.trader.GetAccountInfo()
+}
+
+// GetPositions 获取持仓信息
+func (ta *traderAdapterImpl) GetPositions() ([]map[string]interface{}, error) {
+	return ta.trader.GetPositions()
+}
+
+// ExecuteDecision 执行交易决策
+func (ta *traderAdapterImpl) ExecuteDecision(decision *kernel.Decision) error {
+	return ta.trader.ExecuteDecision(decision)
+}
+
+// GetTrader 获取底层交易员实例
+func (ta *traderAdapterImpl) GetTrader() interface {
+	SetStopLoss(symbol string, positionSide string, quantity, stopPrice float64) error
+	SetTakeProfit(symbol string, positionSide string, quantity, takeProfitPrice float64) error
+} {
+	return ta.trader.GetTrader()
 }
 
 func main() {
@@ -198,8 +248,10 @@ func main() {
 				// 注册指令处理器
 				// 创建用户存储适配器（在 main.go 中创建以避免循环导入）
 				userStoreAdapter := &userStoreAdapterImpl{store: st.User()}
+				// 创建交易员管理器适配器（在 main.go 中创建以避免循环导入）
+				traderManagerAdapter := &traderManagerAdapterImpl{traderManager: traderManager}
 				commandCtx := &notification.CommandContext{
-					TraderManager: traderManager,
+					TraderManager: traderManagerAdapter,
 					UserStore:     userStoreAdapter,
 				}
 				handlers := notification.CreateCommandHandlers(commandCtx)
