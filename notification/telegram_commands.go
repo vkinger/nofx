@@ -50,9 +50,9 @@ type CommandContext struct {
 func CreateCommandHandlers(ctx *CommandContext) map[string]CommandHandler {
 	handlers := make(map[string]CommandHandler)
 
-	// /account - 查看账户及持仓（无需 OTP）
+	// /account - 查看账户及持仓（需要用户ID和OTP）
 	handlers["/account"] = func(update *tgbotapi.Update) string {
-		return handleAccountCommand(ctx)
+		return handleCommandWithUserIDAndOTP(ctx, update, handleAccountCommandWithOTP)
 	}
 
 	// /price - 查看币种价格（无需 OTP）
@@ -83,11 +83,13 @@ func CreateCommandHandlers(ctx *CommandContext) map[string]CommandHandler {
 	handlers["/help"] = func(update *tgbotapi.Update) string {
 		return `📋 <b>可用指令：</b>
 
-/account - 查看账户及持仓信息
-/price [币种] - 查看币种当前价格
+/price [币种] - 查看币种当前价格（无需验证）
   示例: /price BTCUSDT
 
 <b>需要用户ID和 2FA 验证码的操作：</b>
+/account [用户ID] [OTP码] - 查看账户及持仓信息
+  示例: /account user_abc123 123456
+
 /sl [用户ID] [币种] [止损价] [OTP码] - 设置止损
   示例: /sl user_abc123 BTCUSDT 42000 123456
 
@@ -97,11 +99,11 @@ func CreateCommandHandlers(ctx *CommandContext) map[string]CommandHandler {
 /close [用户ID] [币种] [方向] [OTP码] - 平仓
   示例: /close user_abc123 BTCUSDT long 123456
 
-/help - 显示帮助信息
+/help - 显示帮助信息（无需验证）
 
 💡 <b>提示：</b>
-- 查询类指令（/account, /price）无需验证码
-- 操作类指令（/sl, /tp, /close）需要提供用户ID和 Google Authenticator 验证码
+- 只有 /price 和 /help 指令无需验证码
+- 其他所有指令都需要提供用户ID和 Google Authenticator 验证码
 - 用户ID可以从 Web 界面获取
 - OTP 码来自你的 Google Authenticator 等 2FA 应用`
 	}
@@ -128,12 +130,12 @@ func getFirstTrader(ctx *CommandContext) (TraderInterface, error) {
 func handleCommandWithUserIDAndOTP(ctx *CommandContext, update *tgbotapi.Update, handler func(*CommandContext, *tgbotapi.Update, UserInterface) string) string {
 	args := strings.Fields(update.Message.Text)
 
-	if len(args) < 3 {
-		return "❌ 参数不足。操作指令需要用户ID和 Google Authenticator 验证码。\n示例: /sl user_abc123 BTCUSDT 42000 123456"
+	if len(args) < 2 {
+		return "❌ 参数不足。操作指令需要用户ID和 Google Authenticator 验证码。\n示例: /account user_abc123 123456\n示例: /sl user_abc123 BTCUSDT 42000 123456"
 	}
 
 	// 第一个参数是用户ID，最后一个参数是 OTP
-	userID := args[1]
+	userID := args[0]
 	otpCode := args[len(args)-1]
 
 	// 获取用户信息
@@ -153,12 +155,23 @@ func handleCommandWithUserIDAndOTP(ctx *CommandContext, update *tgbotapi.Update,
 	}
 
 	// 移除用户ID和OTP参数，保留中间的操作参数
+	// 格式: /account userID OTP -> (空)
 	// 格式: /sl userID symbol price OTP -> symbol price
-	update.Message.Text = strings.Join(args[2:len(args)-1], " ")
+	// 格式: /close userID symbol side OTP -> symbol side
+	if len(args) > 2 {
+		update.Message.Text = strings.Join(args[1:len(args)-1], " ")
+	} else {
+		update.Message.Text = ""
+	}
 	return handler(ctx, update, user)
 }
 
-// handleAccountCommand 处理账户查询指令
+// handleAccountCommandWithOTP 处理账户查询指令（带用户 OTP 验证）
+func handleAccountCommandWithOTP(ctx *CommandContext, update *tgbotapi.Update, user UserInterface) string {
+	return handleAccountCommand(ctx)
+}
+
+// handleAccountCommand 处理账户查询指令（内部函数）
 func handleAccountCommand(ctx *CommandContext) string {
 	firstTrader, err := getFirstTrader(ctx)
 	if err != nil {
