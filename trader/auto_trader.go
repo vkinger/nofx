@@ -2394,7 +2394,7 @@ func (at *AutoTrader) sendAccountSummary() {
 	}
 
 	// 计算持仓数量
-	positionCount := positions.len
+	positionCount := len(positions)
 	accountInfo["position_count"] = positionCount
 
 	// 发送账户信息
