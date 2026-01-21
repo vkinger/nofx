@@ -1,0 +1,280 @@
+package notification
+
+import (
+	"fmt"
+	"net/url"
+	"nofx/logger"
+	"regexp"
+	"strings"
+	"sync"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+)
+
+// TelegramWebhook Telegram Webhook 服务
+type TelegramWebhook struct {
+	bot             *tgbotapi.BotAPI
+	chatID          int64
+	enabled         bool
+	commandChan     chan *tgbotapi.Update
+	stopChan        chan struct{}
+	commandHandlers map[string]CommandHandler
+	mu              sync.RWMutex
+}
+
+// CommandHandler 指令处理函数类型
+type CommandHandler func(update *tgbotapi.Update) string
+
+// NewTelegramWebhook 创建 Telegram Webhook 服务
+func NewTelegramWebhook(token string, chatID int64) (*TelegramWebhook, error) {
+	if token == "" || chatID == 0 {
+		return &TelegramWebhook{enabled: false}, nil
+	}
+
+	bot, err := tgbotapi.NewBotAPI(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create telegram bot: %w", err)
+	}
+
+	logger.Infof("✓ Telegram webhook bot initialized: @%s", bot.Self.UserName)
+
+	return &TelegramWebhook{
+		bot:             bot,
+		chatID:          chatID,
+		enabled:         true,
+		commandChan:     make(chan *tgbotapi.Update, 100),
+		stopChan:        make(chan struct{}),
+		commandHandlers: make(map[string]CommandHandler),
+	}, nil
+}
+
+// StartWebhook 启动 Webhook 监听
+func (tw *TelegramWebhook) StartWebhook(webhookURL string) error {
+	if !tw.enabled {
+		return nil
+	}
+
+	// 验证 Webhook URL
+	if err := validateWebhookURL(webhookURL); err != nil {
+		return fmt.Errorf("invalid webhook URL: %w", err)
+	}
+
+	// 设置 Webhook
+	wh, err := tgbotapi.NewWebhook(webhookURL)
+	if err != nil {
+		return fmt.Errorf("failed to create webhook: %w", err)
+	}
+
+	_, err = tw.bot.Request(wh)
+	if err != nil {
+		return fmt.Errorf("failed to set webhook: %w", err)
+	}
+
+	// 启动命令处理协程
+	go tw.processCommands()
+
+	logger.Infof("✓ Telegram webhook started: %s", webhookURL)
+	return nil
+}
+
+// validateWebhookURL 验证 Webhook URL 是否符合 Telegram 要求
+func validateWebhookURL(webhookURL string) error {
+	parsedURL, err := url.Parse(webhookURL)
+	if err != nil {
+		return fmt.Errorf("invalid URL format: %w", err)
+	}
+
+	// 1. 必须使用 HTTPS
+	if parsedURL.Scheme != "https" {
+		return fmt.Errorf("webhook URL must use HTTPS (got: %s). Telegram requires HTTPS for security", parsedURL.Scheme)
+	}
+
+	// 2. 检查端口（Telegram 只支持 443, 80, 88, 8443）
+	port := parsedURL.Port()
+	if port != "" {
+		allowedPorts := map[string]bool{
+			"443":  true,
+			"80":   true,
+			"88":   true,
+			"8443": true,
+		}
+		if !allowedPorts[port] {
+			return fmt.Errorf("port %s is not allowed. Telegram only supports ports: 443, 80, 88, 8443", port)
+		}
+	} else {
+		// 默认端口 443 (HTTPS)
+		logger.Infof("No port specified, using default HTTPS port 443")
+	}
+
+	// 3. 验证主机名（可以是域名或 IP 地址）
+	host := parsedURL.Hostname()
+	if host == "" {
+		return fmt.Errorf("hostname is required")
+	}
+
+	// 检查是否为 localhost（生产环境不允许）
+	if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+		return fmt.Errorf("localhost is not accessible from Telegram servers. Use a public IP address or domain name")
+	}
+
+	// 验证 IP 地址格式（如果使用 IP）
+	ipRegex := regexp.MustCompile(`^(\d{1,3}\.){3}\d{1,3}$`)
+	if ipRegex.MatchString(host) {
+		logger.Warnf("⚠️ Using IP address for webhook: %s. Make sure your SSL certificate's CN matches this IP address", host)
+		logger.Warnf("⚠️ For IP addresses, you need a self-signed certificate with CN set to the IP address")
+	} else {
+		// 验证域名格式（基本检查）
+		domainRegex := regexp.MustCompile(`^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$`)
+		if !domainRegex.MatchString(host) {
+			return fmt.Errorf("invalid hostname format: %s", host)
+		}
+	}
+
+	// 4. 路径不能为空
+	if parsedURL.Path == "" {
+		return fmt.Errorf("webhook URL path is required (e.g., /api/telegram/webhook)")
+	}
+
+	return nil
+}
+
+// StopWebhook 停止 Webhook
+func (tw *TelegramWebhook) StopWebhook() {
+	if !tw.enabled {
+		return
+	}
+
+	close(tw.stopChan)
+
+	// 删除 Webhook
+	_, _ = tw.bot.Request(tgbotapi.DeleteWebhookConfig{DropPendingUpdates: true})
+	logger.Info("✓ Telegram webhook stopped")
+}
+
+// HandleUpdate 处理 Webhook 更新
+func (tw *TelegramWebhook) HandleUpdate(update *tgbotapi.Update) {
+	if !tw.enabled {
+		return
+	}
+
+	// 只处理来自配置的 chatID 的消息
+	if update.Message != nil && update.Message.Chat.ID != tw.chatID {
+		return
+	}
+
+	// 发送到命令处理通道
+	select {
+	case tw.commandChan <- update:
+	default:
+		logger.Warnf("Command channel full, dropping update")
+	}
+}
+
+// RegisterCommand 注册指令处理器
+func (tw *TelegramWebhook) RegisterCommand(command string, handler CommandHandler) {
+	tw.mu.Lock()
+	defer tw.mu.Unlock()
+	tw.commandHandlers[command] = handler
+}
+
+// SendMessage 发送消息
+func (tw *TelegramWebhook) SendMessage(text string) error {
+	if !tw.enabled {
+		return nil
+	}
+
+	msg := tgbotapi.NewMessage(tw.chatID, text)
+	msg.ParseMode = "HTML"
+
+	_, err := tw.bot.Send(msg)
+	if err != nil {
+		logger.Errorf("Failed to send telegram message: %v", err)
+		return err
+	}
+	return nil
+}
+
+// SendWelcomeMessage 发送欢迎消息和使用说明
+func (tw *TelegramWebhook) SendWelcomeMessage() error {
+	helpText := `🤖 <b>NOFX 交易机器人已启动</b>
+
+📋 <b>可用指令：</b>
+
+/account - 查看账户及持仓信息
+/price [币种] - 查看币种当前价格
+  示例: /price BTCUSDT
+
+/sl [币种] [止损价] - 设置止损
+  示例: /sl BTCUSDT 42000
+
+/tp [币种] [止盈价] - 设置止盈
+  示例: /tp BTCUSDT 45000
+
+/close [币种] [方向] - 平仓
+  示例: /close BTCUSDT long
+  示例: /close ETHUSDT short
+
+/help - 显示此帮助信息
+
+💡 <b>提示：</b>
+- 币种格式: BTCUSDT, ETHUSDT 等
+- 方向: long (做多) 或 short (做空)
+- 价格请使用数字，无需单位`
+
+	return tw.SendMessage(helpText)
+}
+
+// processCommands 处理命令
+func (tw *TelegramWebhook) processCommands() {
+	for {
+		select {
+		case <-tw.stopChan:
+			return
+		case update := <-tw.commandChan:
+			if update.Message == nil {
+				continue
+			}
+
+			text := update.Message.Text
+			if text == "" {
+				continue
+			}
+
+			// 解析命令
+			parts := strings.Fields(text)
+			if len(parts) == 0 {
+				continue
+			}
+
+			command := strings.ToLower(parts[0])
+			args := parts[1:]
+
+			tw.mu.RLock()
+			handler, ok := tw.commandHandlers[command]
+			tw.mu.RUnlock()
+
+			var response string
+			if ok {
+				// 创建带参数的更新对象
+				updateWithArgs := *update
+				updateWithArgs.Message.Text = strings.Join(args, " ")
+				response = handler(&updateWithArgs)
+			} else {
+				response = "❌ 未知指令。发送 /help 查看帮助。"
+			}
+
+			// 发送响应
+			if response != "" {
+				if err := tw.SendMessage(response); err != nil {
+					logger.Errorf("Failed to send command response: %v", err)
+				}
+			}
+		}
+	}
+}
+
+// GetBot 获取 Bot 实例（用于发送消息）
+func (tw *TelegramWebhook) GetBot() *tgbotapi.BotAPI {
+	return tw.bot
+}
+

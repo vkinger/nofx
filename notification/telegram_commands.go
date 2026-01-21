@@ -1,0 +1,406 @@
+package notification
+
+import (
+	"fmt"
+	"nofx/auth"
+	"nofx/kernel"
+	"nofx/manager"
+	"nofx/market"
+	"strconv"
+	"strings"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+)
+
+// UserInterface 用户接口（避免循环导入）
+type UserInterface interface {
+	GetID() string
+	GetOTPSecret() string
+	IsOTPVerified() bool
+}
+
+// UserStoreInterface 用户存储接口（避免循环导入）
+type UserStoreInterface interface {
+	GetByID(userID string) (UserInterface, error)
+}
+
+// CommandContext 指令处理上下文
+type CommandContext struct {
+	TraderManager *manager.TraderManager
+	UserStore     UserStoreInterface
+}
+
+// CreateCommandHandlers 创建指令处理器
+func CreateCommandHandlers(ctx *CommandContext) map[string]CommandHandler {
+	handlers := make(map[string]CommandHandler)
+
+	// /account - 查看账户及持仓（无需 OTP）
+	handlers["/account"] = func(update *tgbotapi.Update) string {
+		return handleAccountCommand(ctx)
+	}
+
+	// /price - 查看币种价格（无需 OTP）
+	handlers["/price"] = func(update *tgbotapi.Update) string {
+		args := strings.Fields(update.Message.Text)
+		if len(args) < 1 {
+			return "❌ 请指定币种\n示例: /price BTCUSDT"
+		}
+		return handlePriceCommand(ctx, args[0])
+	}
+
+	// /sl - 设置止损（需要用户ID和OTP）
+	handlers["/sl"] = func(update *tgbotapi.Update) string {
+		return handleCommandWithUserIDAndOTP(ctx, update, handleStopLossCommandWithOTP)
+	}
+
+	// /tp - 设置止盈（需要用户ID和OTP）
+	handlers["/tp"] = func(update *tgbotapi.Update) string {
+		return handleCommandWithUserIDAndOTP(ctx, update, handleTakeProfitCommandWithOTP)
+	}
+
+	// /close - 平仓（需要用户ID和OTP）
+	handlers["/close"] = func(update *tgbotapi.Update) string {
+		return handleCommandWithUserIDAndOTP(ctx, update, handleCloseCommandWithOTP)
+	}
+
+	// /help - 帮助
+	handlers["/help"] = func(update *tgbotapi.Update) string {
+		return `📋 <b>可用指令：</b>
+
+/account - 查看账户及持仓信息
+/price [币种] - 查看币种当前价格
+  示例: /price BTCUSDT
+
+<b>需要用户ID和 2FA 验证码的操作：</b>
+/sl [用户ID] [币种] [止损价] [OTP码] - 设置止损
+  示例: /sl user_abc123 BTCUSDT 42000 123456
+
+/tp [用户ID] [币种] [止盈价] [OTP码] - 设置止盈
+  示例: /tp user_abc123 BTCUSDT 45000 123456
+
+/close [用户ID] [币种] [方向] [OTP码] - 平仓
+  示例: /close user_abc123 BTCUSDT long 123456
+
+/help - 显示帮助信息
+
+💡 <b>提示：</b>
+- 查询类指令（/account, /price）无需验证码
+- 操作类指令（/sl, /tp, /close）需要提供用户ID和 Google Authenticator 验证码
+- 用户ID可以从 Web 界面获取
+- OTP 码来自你的 Google Authenticator 等 2FA 应用`
+	}
+
+	return handlers
+}
+
+// getFirstTrader 获取第一个运行中的交易员
+// 返回一个包含必要方法的接口，避免循环导入
+func getFirstTrader(ctx *CommandContext) (interface {
+	GetName() string
+	GetAccountInfo() (map[string]interface{}, error)
+	GetPositions() ([]map[string]interface{}, error)
+	ExecuteDecision(*kernel.Decision) error
+	GetTrader() interface {
+		SetStopLoss(symbol string, positionSide string, quantity, stopPrice float64) error
+		SetTakeProfit(symbol string, positionSide string, quantity, takeProfitPrice float64) error
+	}
+}, error) {
+	traders := ctx.TraderManager.GetAllTraders()
+	if len(traders) == 0 {
+		return nil, fmt.Errorf("没有找到运行中的交易员")
+	}
+
+	// 使用第一个交易员
+	// 由于 GetAllTraders 返回 *trader.AutoTrader，我们需要通过反射或类型断言
+	// 但为了避免循环导入，我们直接使用 interface{} 并动态调用
+	var firstTrader interface{}
+	for _, t := range traders {
+		firstTrader = t
+		break
+	}
+
+	if firstTrader == nil {
+		return nil, fmt.Errorf("没有找到运行中的交易员")
+	}
+
+	// 使用类型断言转换为需要的接口
+	// 由于 *trader.AutoTrader 实现了所有需要的方法，可以直接断言
+	return firstTrader.(interface {
+		GetName() string
+		GetAccountInfo() (map[string]interface{}, error)
+		GetPositions() ([]map[string]interface{}, error)
+		ExecuteDecision(*kernel.Decision) error
+		GetTrader() interface {
+			SetStopLoss(symbol string, positionSide string, quantity, stopPrice float64) error
+			SetTakeProfit(symbol string, positionSide string, quantity, takeProfitPrice float64) error
+		}
+	}), nil
+}
+
+// handleCommandWithUserIDAndOTP 处理需要用户ID和OTP验证的指令
+func handleCommandWithUserIDAndOTP(ctx *CommandContext, update *tgbotapi.Update, handler func(*CommandContext, *tgbotapi.Update, UserInterface) string) string {
+	args := strings.Fields(update.Message.Text)
+
+	if len(args) < 3 {
+		return "❌ 参数不足。操作指令需要用户ID和 Google Authenticator 验证码。\n示例: /sl user_abc123 BTCUSDT 42000 123456"
+	}
+
+	// 第一个参数是用户ID，最后一个参数是 OTP
+	userID := args[1]
+	otpCode := args[len(args)-1]
+
+	// 获取用户信息
+	user, err := ctx.UserStore.GetByID(userID)
+	if err != nil {
+		return fmt.Sprintf("❌ 用户不存在: %s\n\n请确认用户ID是否正确。用户ID可以从 Web 界面获取。", userID)
+	}
+
+	// 检查用户是否已启用 OTP
+	if !user.IsOTPVerified() {
+		return "❌ 该账户尚未完成 2FA 设置。请先在 Web 界面完成 2FA 配置。"
+	}
+
+	// 验证 OTP
+	if !auth.VerifyOTP(user.GetOTPSecret(), otpCode) {
+		return "❌ OTP 验证码错误。请使用 Google Authenticator 应用中的当前验证码。"
+	}
+
+	// 移除用户ID和OTP参数，保留中间的操作参数
+	// 格式: /sl userID symbol price OTP -> symbol price
+	update.Message.Text = strings.Join(args[2:len(args)-1], " ")
+	return handler(ctx, update, user)
+}
+
+// handleAccountCommand 处理账户查询指令
+func handleAccountCommand(ctx *CommandContext) string {
+	firstTrader, err := getFirstTrader(ctx)
+	if err != nil {
+		return fmt.Sprintf("❌ %s", err.Error())
+	}
+
+	// 获取账户信息
+	accountInfo, err := firstTrader.GetAccountInfo()
+	if err != nil {
+		return fmt.Sprintf("❌ 获取账户信息失败: %v", err)
+	}
+
+	// 获取持仓信息
+	positions, err := firstTrader.GetPositions()
+	if err != nil {
+		return fmt.Sprintf("❌ 获取持仓信息失败: %v", err)
+	}
+
+	// 格式化消息
+	msg := FormatAccountInfoMessage(firstTrader.GetName(), accountInfo)
+	if len(positions) > 0 {
+		msg += "\n\n" + FormatPositionsMessage(firstTrader.GetName(), positions)
+	}
+
+	return msg
+}
+
+// handlePriceCommand 处理价格查询指令
+func handlePriceCommand(ctx *CommandContext, symbol string) string {
+	symbol = market.Normalize(symbol)
+
+	// 获取市场价格
+	marketData, err := market.Get(symbol)
+	if err != nil {
+		return fmt.Sprintf("❌ 获取 %s 价格失败: %v", symbol, err)
+	}
+
+	msg := fmt.Sprintf("💰 <b>%s 当前价格</b>\n\n", symbol)
+	msg += fmt.Sprintf("📊 价格: $%.2f\n", marketData.CurrentPrice)
+
+	// 计算24h价格变化（使用4h数据作为近似）
+	if marketData.PriceChange4h != 0 {
+		msg += fmt.Sprintf("📈 4h 涨跌: %.2f%%\n", marketData.PriceChange4h)
+	}
+	if marketData.PriceChange1h != 0 {
+		msg += fmt.Sprintf("📈 1h 涨跌: %.2f%%\n", marketData.PriceChange1h)
+	}
+
+	// 从K线数据获取最高最低价
+	if marketData.TimeframeData != nil {
+		if tfData, ok := marketData.TimeframeData["5m"]; ok && len(tfData.Klines) > 0 {
+			klines := tfData.Klines
+			high := klines[0].High
+			low := klines[0].Low
+			for _, k := range klines {
+				if k.High > high {
+					high = k.High
+				}
+				if k.Low < low {
+					low = k.Low
+				}
+			}
+			msg += fmt.Sprintf("📊 区间最高: $%.2f\n", high)
+			msg += fmt.Sprintf("📊 区间最低: $%.2f", low)
+		}
+	}
+
+	return msg
+}
+
+// handleStopLossCommandWithOTP 处理止损指令（带用户 OTP 验证）
+func handleStopLossCommandWithOTP(ctx *CommandContext, update *tgbotapi.Update, user UserInterface) string {
+	args := strings.Fields(update.Message.Text)
+	if len(args) < 2 {
+		return "❌ 请指定币种和止损价\n示例: /sl user_abc123 BTCUSDT 42000 123456"
+	}
+
+	price, err := strconv.ParseFloat(args[1], 64)
+	if err != nil {
+		return fmt.Sprintf("❌ 无效的价格: %s", args[1])
+	}
+
+	return handleStopLossCommand(ctx, args[0], price)
+}
+
+// handleStopLossCommand 处理止损设置指令（内部函数）
+func handleStopLossCommand(ctx *CommandContext, symbol string, stopPrice float64) string {
+	symbol = market.Normalize(symbol)
+
+	firstTrader, err := getFirstTrader(ctx)
+	if err != nil {
+		return fmt.Sprintf("❌ %s", err.Error())
+	}
+
+	// 获取持仓信息，找到该币种的持仓
+	positions, err := firstTrader.GetPositions()
+	if err != nil {
+		return fmt.Sprintf("❌ 获取持仓信息失败: %v", err)
+	}
+
+	var targetPosition map[string]interface{}
+	for _, pos := range positions {
+		if pos["symbol"] == symbol {
+			targetPosition = pos
+			break
+		}
+	}
+
+	if targetPosition == nil {
+		return fmt.Sprintf("❌ 未找到 %s 的持仓", symbol)
+	}
+
+	// 获取持仓方向和数量
+	side, _ := targetPosition["side"].(string)
+	quantity, _ := targetPosition["positionAmt"].(float64)
+	if quantity < 0 {
+		quantity = -quantity
+	}
+
+	positionSide := "LONG"
+	if side == "short" {
+		positionSide = "SHORT"
+	}
+
+	// 设置止损
+	traderInstance := firstTrader.GetTrader()
+	if err := traderInstance.SetStopLoss(symbol, positionSide, quantity, stopPrice); err != nil {
+		return fmt.Sprintf("❌ 设置止损失败: %v", err)
+	}
+
+	return fmt.Sprintf("✅ 已设置 %s %s 止损: $%.2f", symbol, side, stopPrice)
+}
+
+// handleTakeProfitCommandWithOTP 处理止盈指令（带用户 OTP 验证）
+func handleTakeProfitCommandWithOTP(ctx *CommandContext, update *tgbotapi.Update, user UserInterface) string {
+	args := strings.Fields(update.Message.Text)
+	if len(args) < 2 {
+		return "❌ 请指定币种和止盈价\n示例: /tp user_abc123 BTCUSDT 45000 123456"
+	}
+
+	price, err := strconv.ParseFloat(args[1], 64)
+	if err != nil {
+		return fmt.Sprintf("❌ 无效的价格: %s", args[1])
+	}
+
+	return handleTakeProfitCommand(ctx, args[0], price)
+}
+
+// handleTakeProfitCommand 处理止盈设置指令（内部函数）
+func handleTakeProfitCommand(ctx *CommandContext, symbol string, takeProfitPrice float64) string {
+	symbol = market.Normalize(symbol)
+
+	firstTrader, err := getFirstTrader(ctx)
+	if err != nil {
+		return fmt.Sprintf("❌ %s", err.Error())
+	}
+
+	// 获取持仓信息，找到该币种的持仓
+	positions, err := firstTrader.GetPositions()
+	if err != nil {
+		return fmt.Sprintf("❌ 获取持仓信息失败: %v", err)
+	}
+
+	var targetPosition map[string]interface{}
+	for _, pos := range positions {
+		if pos["symbol"] == symbol {
+			targetPosition = pos
+			break
+		}
+	}
+
+	if targetPosition == nil {
+		return fmt.Sprintf("❌ 未找到 %s 的持仓", symbol)
+	}
+
+	// 获取持仓方向和数量
+	side, _ := targetPosition["side"].(string)
+	quantity, _ := targetPosition["positionAmt"].(float64)
+	if quantity < 0 {
+		quantity = -quantity
+	}
+
+	positionSide := "LONG"
+	if side == "short" {
+		positionSide = "SHORT"
+	}
+
+	// 设置止盈
+	traderInstance := firstTrader.GetTrader()
+	if err := traderInstance.SetTakeProfit(symbol, positionSide, quantity, takeProfitPrice); err != nil {
+		return fmt.Sprintf("❌ 设置止盈失败: %v", err)
+	}
+
+	return fmt.Sprintf("✅ 已设置 %s %s 止盈: $%.2f", symbol, side, takeProfitPrice)
+}
+
+// handleCloseCommandWithOTP 处理平仓指令（带用户 OTP 验证）
+func handleCloseCommandWithOTP(ctx *CommandContext, update *tgbotapi.Update, user UserInterface) string {
+	args := strings.Fields(update.Message.Text)
+	if len(args) < 2 {
+		return "❌ 请指定币种和方向\n示例: /close user_abc123 BTCUSDT long 123456"
+	}
+
+	return handleCloseCommand(ctx, args[0], args[1])
+}
+
+// handleCloseCommand 处理平仓指令（内部函数）
+func handleCloseCommand(ctx *CommandContext, symbol string, side string) string {
+	symbol = market.Normalize(symbol)
+	side = strings.ToLower(side)
+
+	if side != "long" && side != "short" {
+		return "❌ 方向必须是 long 或 short"
+	}
+
+	firstTrader, err := getFirstTrader(ctx)
+	if err != nil {
+		return fmt.Sprintf("❌ %s", err.Error())
+	}
+
+	// 执行平仓
+	decision := &kernel.Decision{
+		Symbol: symbol,
+		Action: fmt.Sprintf("close_%s", side),
+	}
+
+	if err := firstTrader.ExecuteDecision(decision); err != nil {
+		return fmt.Sprintf("❌ 平仓失败: %v", err)
+	}
+
+	return fmt.Sprintf("✅ 已平仓 %s %s", symbol, side)
+}
