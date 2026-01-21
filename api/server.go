@@ -3723,12 +3723,30 @@ func (s *Server) telegramWebhookIPWhitelist() gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-		// 获取客户端 IP（会从 X-Real-IP 或 X-Forwarded-For 中获取）
-		clientIP := c.ClientIP()
+		// 优先从 X-Forwarded-For 头中提取第一个 IP（最可靠的来源）
+		// X-Forwarded-For 格式: "client_ip, proxy1_ip, proxy2_ip, ..."
+		var clientIP string
+		xForwardedFor := c.GetHeader("X-Forwarded-For")
+		if xForwardedFor != "" {
+			// 取第一个 IP（真实的客户端 IP）
+			ips := strings.Split(strings.TrimSpace(xForwardedFor), ",")
+			if len(ips) > 0 {
+				clientIP = strings.TrimSpace(ips[0])
+			}
+		}
+		
+		// 如果 X-Forwarded-For 为空，尝试使用 X-Real-IP
+		if clientIP == "" {
+			clientIP = c.GetHeader("X-Real-IP")
+		}
+		
+		// 如果都为空，使用 ClientIP() 作为后备
+		if clientIP == "" {
+			clientIP = c.ClientIP()
+		}
 		
 		// 添加调试日志，帮助排查问题
 		xRealIP := c.GetHeader("X-Real-IP")
-		xForwardedFor := c.GetHeader("X-Forwarded-For")
 		logger.Infof("Telegram webhook request - ClientIP: %s, X-Real-IP: %s, X-Forwarded-For: %s, RemoteAddr: %s", 
 			clientIP, xRealIP, xForwardedFor, c.Request.RemoteAddr)
 
