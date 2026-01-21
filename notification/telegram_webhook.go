@@ -14,12 +14,17 @@ import (
 // TelegramWebhook Telegram Webhook 服务
 type TelegramWebhook struct {
 	bot             *tgbotapi.BotAPI
-	chatID          int64
+	chatID          int64 // ChatID 用于识别不同的 bot（导出以便外部访问）
 	enabled         bool
 	commandChan     chan *tgbotapi.Update
 	stopChan        chan struct{}
 	commandHandlers map[string]CommandHandler
 	mu              sync.RWMutex
+}
+
+// GetChatID 获取 ChatID（用于多 webhook 路由）
+func (tw *TelegramWebhook) GetChatID() int64 {
+	return tw.chatID
 }
 
 // CommandHandler 指令处理函数类型
@@ -167,14 +172,14 @@ func (tw *TelegramWebhook) HandleUpdate(update *tgbotapi.Update) {
 	// 只处理来自配置的 chatID 的消息
 	// 注意：频道消息的 ChatID 是负数，个人聊天的 ChatID 是正数
 	if update.Message.Chat.ID != tw.chatID {
-		logger.Warnf("Telegram webhook message from unauthorized chatID: %d (expected: %d), ignoring. Chat type: %s", 
+		logger.Warnf("Telegram webhook message from unauthorized chatID: %d (expected: %d), ignoring. Chat type: %s",
 			update.Message.Chat.ID, tw.chatID, update.Message.Chat.Type)
-		logger.Infof("Please check your TELEGRAM_CHAT_ID configuration. Current message chatID: %d, configured chatID: %d", 
+		logger.Infof("Please check your TELEGRAM_CHAT_ID configuration. Current message chatID: %d, configured chatID: %d",
 			update.Message.Chat.ID, tw.chatID)
 		return
 	}
 
-	logger.Infof("Telegram webhook message accepted, sending to command channel - ChatID: %d, Text: %s", 
+	logger.Infof("Telegram webhook message accepted, sending to command channel - ChatID: %d, Text: %s",
 		update.Message.Chat.ID, update.Message.Text)
 
 	// 发送到命令处理通道
@@ -318,4 +323,3 @@ func (tw *TelegramWebhook) processCommands() {
 func (tw *TelegramWebhook) GetBot() *tgbotapi.BotAPI {
 	return tw.bot
 }
-

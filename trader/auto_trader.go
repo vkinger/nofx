@@ -37,13 +37,13 @@ type AutoTraderConfig struct {
 	BybitSecretKey string
 
 	// OKX API configuration
-	OKXAPIKey    string
-	OKXSecretKey string
+	OKXAPIKey     string
+	OKXSecretKey  string
 	OKXPassphrase string
 
 	// Bitget API configuration
-	BitgetAPIKey    string
-	BitgetSecretKey string
+	BitgetAPIKey     string
+	BitgetSecretKey  string
 	BitgetPassphrase string
 
 	// Hyperliquid configuration
@@ -105,9 +105,9 @@ type AutoTrader struct {
 	config                AutoTraderConfig
 	trader                Trader // Use Trader interface (supports multiple platforms)
 	mcpClient             mcp.AIClient
-	store                 *store.Store             // Data storage (decision records, etc.)
+	store                 *store.Store           // Data storage (decision records, etc.)
 	strategyEngine        *kernel.StrategyEngine // Strategy engine (uses strategy configuration)
-	cycleNumber           int                      // Current cycle number
+	cycleNumber           int                    // Current cycle number
 	initialBalance        float64
 	dailyPnL              float64
 	customPrompt          string // Custom trading strategy prompt
@@ -115,18 +115,18 @@ type AutoTrader struct {
 	lastResetTime         time.Time
 	stopUntil             time.Time
 	isRunning             bool
-	isRunningMutex        sync.RWMutex       // Mutex to protect isRunning flag
-	startTime             time.Time          // System start time
-	callCount             int                // AI call count
-	positionFirstSeenTime map[string]int64   // Position first seen time (symbol_side -> timestamp in milliseconds)
-	stopMonitorCh         chan struct{}      // Used to stop monitoring goroutine
-	monitorWg             sync.WaitGroup     // Used to wait for monitoring goroutine to finish
-	peakPnLCache          map[string]float64 // Peak profit cache (symbol -> peak P&L percentage)
-	peakPnLCacheMutex     sync.RWMutex       // Cache read-write lock
-	lastBalanceSyncTime   time.Time          // Last balance sync time
-	userID                string             // User ID
-	gridState             *GridState         // Grid trading state (only used when StrategyType == "grid_trading")
-    telegramNotifier       *notification.TelegramNotifier // Telegram通知服务
+	isRunningMutex        sync.RWMutex                        // Mutex to protect isRunning flag
+	startTime             time.Time                           // System start time
+	callCount             int                                 // AI call count
+	positionFirstSeenTime map[string]int64                    // Position first seen time (symbol_side -> timestamp in milliseconds)
+	stopMonitorCh         chan struct{}                       // Used to stop monitoring goroutine
+	monitorWg             sync.WaitGroup                      // Used to wait for monitoring goroutine to finish
+	peakPnLCache          map[string]float64                  // Peak profit cache (symbol -> peak P&L percentage)
+	peakPnLCacheMutex     sync.RWMutex                        // Cache read-write lock
+	lastBalanceSyncTime   time.Time                           // Last balance sync time
+	userID                string                              // User ID
+	gridState             *GridState                          // Grid trading state (only used when StrategyType == "grid_trading")
+	telegramNotifier      *notification.MultiTelegramNotifier // Telegram通知服务（支持多bot）
 }
 
 // NewAutoTrader creates an automatic trader
@@ -317,37 +317,38 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 	strategyEngine := kernel.NewStrategyEngine(config.StrategyConfig)
 	logger.Infof("✓ [%s] Using strategy engine (strategy configuration loaded)", config.Name)
 
-	// Initialize Telegram notifier (from global config, fallback to strategy config for backward compatibility)
-	var telegramNotifier *notification.TelegramNotifier
+	// Initialize Telegram notifier (支持多 bot)
+	var telegramNotifier *notification.MultiTelegramNotifier
 	globalCfg := globalconfig.Get()
 
-	// Priority: 1. Global config (from .env), 2. Strategy config (for backward compatibility)
-	var telegramToken string
-	var telegramChatID int64
-	var telegramEnabled bool
-
-	if globalCfg.TelegramEnabled && globalCfg.TelegramToken != "" && globalCfg.TelegramChatID != 0 {
-		// Use global config from .env
-		telegramEnabled = true
-		telegramToken = globalCfg.TelegramToken
-		telegramChatID = globalCfg.TelegramChatID
-		logger.Infof("📱 [%s] Using Telegram config from environment variables", config.Name)
-	} else if config.StrategyConfig != nil && config.StrategyConfig.Telegram.IsValid() {
-		// Fallback to strategy config (backward compatibility)
-		// Only use strategy config if it's valid (enabled, token and chat_id are set)
-		telegramEnabled = true
-		telegramToken = config.StrategyConfig.Telegram.Token
-		telegramChatID = config.StrategyConfig.Telegram.ChatID
-		logger.Infof("📱 [%s] Using Telegram config from strategy (deprecated, use .env instead)", config.Name)
-	}
-
-	if telegramEnabled && telegramToken != "" && telegramChatID != 0 {
-		var err error
-		telegramNotifier, err = notification.NewTelegramNotifier(telegramToken, telegramChatID)
+	// Priority: 1. Multi bot config (from TELEGRAM_BOTS), 2. Single bot config (backward compatibility), 3. Strategy config (deprecated)
+	botConfigs, err := globalconfig.GetTelegramBotConfigs()
+	if err == nil && len(botConfigs) > 0 {
+		// 使用多 bot 配置
+		telegramNotifier, err = notification.NewMultiTelegramNotifier()
+		if err != nil {
+			logger.Warnf("⚠️ [%s] Failed to initialize MultiTelegramNotifier: %v", config.Name, err)
+		} else if telegramNotifier != nil && telegramNotifier.IsEnabled() {
+			logger.Infof("✓ [%s] MultiTelegramNotifier enabled with %d bot(s)", config.Name, telegramNotifier.GetNotifierCount())
+		}
+	} else if globalCfg.TelegramEnabled && globalCfg.TelegramToken != "" && globalCfg.TelegramChatID != 0 {
+		// 向后兼容：使用单 bot 配置
+		telegramNotifier, err = notification.NewMultiTelegramNotifier()
 		if err != nil {
 			logger.Warnf("⚠️ [%s] Failed to initialize Telegram notifier: %v", config.Name, err)
-		} else if telegramNotifier != nil {
-			logger.Infof("✓ [%s] Telegram notifications enabled", config.Name)
+		} else if telegramNotifier != nil && telegramNotifier.IsEnabled() {
+			logger.Infof("✓ [%s] Telegram notifications enabled (single bot mode)", config.Name)
+		}
+	} else if config.StrategyConfig != nil && config.StrategyConfig.Telegram.IsValid() {
+		// 向后兼容：使用策略配置（已废弃）
+		// 创建单 bot notifier 并包装为 MultiTelegramNotifier
+		singleNotifier, err := notification.NewTelegramNotifier(
+			config.StrategyConfig.Telegram.Token,
+			config.StrategyConfig.Telegram.ChatID,
+		)
+		if err == nil && singleNotifier != nil {
+			telegramNotifier = notification.NewMultiTelegramNotifierFromSingle(singleNotifier)
+			logger.Infof("📱 [%s] Using Telegram config from strategy (deprecated, use TELEGRAM_BOTS instead)", config.Name)
 		}
 	}
 
@@ -2167,22 +2168,22 @@ func (at *AutoTrader) recordOrderFill(orderRecordID int64, exchangeOrderID, symb
 	normalizedSymbol := market.Normalize(symbol)
 
 	fill := &store.TraderFill{
-		TraderID:         at.id,
-		ExchangeID:       at.exchangeID,
-		ExchangeType:     at.exchange,
-		OrderID:          orderRecordID,
-		ExchangeOrderID:  exchangeOrderID,
-		ExchangeTradeID:  tradeID,
-		Symbol:           normalizedSymbol,
-		Side:             side,
-		Price:            price,
-		Quantity:         quantity,
-		QuoteQuantity:    price * quantity,
-		Commission:       fee,
-		CommissionAsset:  "USDT",
-		RealizedPnL:      0, // Will be calculated for close orders
-		IsMaker:          false, // Market orders are usually taker
-		CreatedAt:        time.Now().UTC().UnixMilli(),
+		TraderID:        at.id,
+		ExchangeID:      at.exchangeID,
+		ExchangeType:    at.exchange,
+		OrderID:         orderRecordID,
+		ExchangeOrderID: exchangeOrderID,
+		ExchangeTradeID: tradeID,
+		Symbol:          normalizedSymbol,
+		Side:            side,
+		Price:           price,
+		Quantity:        quantity,
+		QuoteQuantity:   price * quantity,
+		Commission:      fee,
+		CommissionAsset: "USDT",
+		RealizedPnL:     0,     // Will be calculated for close orders
+		IsMaker:         false, // Market orders are usually taker
+		CreatedAt:       time.Now().UTC().UnixMilli(),
 	}
 
 	// Calculate realized PnL for close orders
