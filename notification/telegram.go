@@ -153,7 +153,7 @@ func FormatPositionsMessage(traderName string, positions []map[string]interface{
 	for i, pos := range positions {
 		symbol, _ := pos["symbol"].(string)
 		side, _ := pos["side"].(string)
-		
+
 		// 支持两种字段名格式：驼峰格式（positionAmt）和下划线格式（quantity）
 		var quantity float64
 		if qty, ok := pos["quantity"].(float64); ok {
@@ -164,7 +164,7 @@ func FormatPositionsMessage(traderName string, positions []map[string]interface{
 		if quantity < 0 {
 			quantity = -quantity
 		}
-		
+
 		// 支持两种字段名格式：驼峰格式（entryPrice）和下划线格式（entry_price）
 		var entryPrice float64
 		if ep, ok := pos["entry_price"].(float64); ok {
@@ -172,7 +172,7 @@ func FormatPositionsMessage(traderName string, positions []map[string]interface{
 		} else if ep, ok := pos["entryPrice"].(float64); ok {
 			entryPrice = ep
 		}
-		
+
 		// 支持两种字段名格式：驼峰格式（markPrice）和下划线格式（mark_price）
 		var markPrice float64
 		if mp, ok := pos["mark_price"].(float64); ok {
@@ -180,7 +180,7 @@ func FormatPositionsMessage(traderName string, positions []map[string]interface{
 		} else if mp, ok := pos["markPrice"].(float64); ok {
 			markPrice = mp
 		}
-		
+
 		// 支持两种字段名格式：驼峰格式（unRealizedProfit）和下划线格式（unrealized_pnl）
 		var unrealizedPnl float64
 		if pnl, ok := pos["unrealized_pnl"].(float64); ok {
@@ -188,7 +188,7 @@ func FormatPositionsMessage(traderName string, positions []map[string]interface{
 		} else if pnl, ok := pos["unRealizedProfit"].(float64); ok {
 			unrealizedPnl = pnl
 		}
-		
+
 		// 杠杆
 		var leverage float64
 		if lev, ok := pos["leverage"].(float64); ok {
@@ -196,7 +196,7 @@ func FormatPositionsMessage(traderName string, positions []map[string]interface{
 		} else if lev, ok := pos["leverage"].(int); ok {
 			leverage = float64(lev)
 		}
-		
+
 		// 获取额外信息（如果存在）- 支持两种格式
 		var liquidationPrice float64
 		if lp, ok := pos["liquidation_price"].(float64); ok {
@@ -204,33 +204,33 @@ func FormatPositionsMessage(traderName string, positions []map[string]interface{
 		} else if lp, ok := pos["liquidationPrice"].(float64); ok {
 			liquidationPrice = lp
 		}
-		
+
 		var marginUsed float64
 		if mu, ok := pos["margin_used"].(float64); ok {
 			marginUsed = mu
 		} else if mu, ok := pos["marginUsed"].(float64); ok {
 			marginUsed = mu
 		}
-		
+
 		var positionValue float64
 		if pv, ok := pos["positionValue"].(float64); ok {
 			positionValue = pv
 		} else if pv, ok := pos["position_value"].(float64); ok {
 			positionValue = pv
 		}
-		
+
 		unrealizedPnlPct, _ := pos["unrealized_pnl_pct"].(float64)
-		
+
 		// 如果没有 positionValue，计算它
 		if positionValue == 0 && markPrice > 0 && quantity > 0 {
 			positionValue = quantity * markPrice
 		}
-		
+
 		// 如果没有 marginUsed，计算它
 		if marginUsed == 0 && leverage > 0 && positionValue > 0 {
 			marginUsed = positionValue / leverage
 		}
-		
+
 		// 计算价格变化百分比
 		var priceChangePct float64
 		if entryPrice > 0 {
@@ -240,7 +240,7 @@ func FormatPositionsMessage(traderName string, positions []map[string]interface{
 				priceChangePct = ((entryPrice - markPrice) / entryPrice) * 100
 			}
 		}
-		
+
 		// 如果没有 unrealizedPnlPct，计算它
 		if unrealizedPnlPct == 0 && marginUsed > 0 {
 			unrealizedPnlPct = (unrealizedPnl / marginUsed) * 100
@@ -253,40 +253,40 @@ func FormatPositionsMessage(traderName string, positions []map[string]interface{
 
 		// 持仓标题
 		msg += fmt.Sprintf("<b>%d. %s %s %s</b>\n", i+1, sideEmoji, symbol, strings.ToUpper(side))
-		
+
 		// 基础信息
 		msg += fmt.Sprintf("   💰 数量: <b>%.8f</b> | 杠杆: <b>%.0fx</b>\n", quantity, leverage)
-		
+
 		// 价格信息
 		priceChangeEmoji := "📈"
 		if priceChangePct < 0 {
 			priceChangeEmoji = "📉"
 		}
-		msg += fmt.Sprintf("   💵 开仓价: <b>%.2f</b> | 标记价: <b>%.2f</b> (%s%.2f%%)\n", 
+		msg += fmt.Sprintf("   💵 开仓价: <b>%.2f</b> | 标记价: <b>%.2f</b> (%s%.2f%%)\n",
 			entryPrice, markPrice, priceChangeEmoji, priceChangePct)
-		
+
 		// 持仓价值
 		if positionValue > 0 {
 			msg += fmt.Sprintf("   💎 持仓价值: <b>$%.2f</b>\n", positionValue)
 		}
-		
+
 		// 保证金信息
 		if marginUsed > 0 {
 			msg += fmt.Sprintf("   🔒 已用保证金: <b>$%.2f</b>\n", marginUsed)
 		}
-		
+
 		// 盈亏信息
 		pnlEmoji := "📈"
 		if unrealizedPnl < 0 {
 			pnlEmoji = "📉"
 		}
 		if unrealizedPnlPct != 0 {
-			msg += fmt.Sprintf("   %s 未实现盈亏: <b>$%.2f</b> (<b>%.2f%%</b>)\n", 
+			msg += fmt.Sprintf("   %s 未实现盈亏: <b>$%.2f</b> (<b>%.2f%%</b>)\n",
 				pnlEmoji, unrealizedPnl, unrealizedPnlPct)
 		} else {
 			msg += fmt.Sprintf("   %s 未实现盈亏: <b>$%.2f</b>\n", pnlEmoji, unrealizedPnl)
 		}
-		
+
 		// 强平价
 		if liquidationPrice > 0 {
 			liqDistance := 0.0
@@ -295,10 +295,10 @@ func FormatPositionsMessage(traderName string, positions []map[string]interface{
 			} else {
 				liqDistance = ((liquidationPrice - markPrice) / markPrice) * 100
 			}
-			msg += fmt.Sprintf("   ⚠️ 强平价: <b>%.2f</b> (距离: <b>%.2f%%</b>)\n", 
+			msg += fmt.Sprintf("   ⚠️ 强平价: <b>%.2f</b> (距离: <b>%.2f%%</b>)\n",
 				liquidationPrice, liqDistance)
 		}
-		
+
 		msg += "\n"
 	}
 

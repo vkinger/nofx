@@ -2394,14 +2394,7 @@ func (at *AutoTrader) sendAccountSummary() {
 	}
 
 	// 计算持仓数量
-	positionCount := 0
-	for _, pos := range positions {
-		if amt, ok := pos["positionAmt"].(float64); ok {
-			if amt != 0 {
-				positionCount++
-			}
-		}
-	}
+	positionCount := positions.len
 	accountInfo["position_count"] = positionCount
 
 	// 发送账户信息
