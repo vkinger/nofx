@@ -3,6 +3,7 @@ package notification
 import (
 	"fmt"
 	"nofx/logger"
+	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -141,7 +142,7 @@ func FormatAccountInfoMessage(traderName string, accountInfo map[string]interfac
 	return msg
 }
 
-// FormatPositionsMessage 格式化持仓信息消息
+// FormatPositionsMessage 格式化持仓信息消息（详细版）
 func FormatPositionsMessage(traderName string, positions []map[string]interface{}) string {
 	if len(positions) == 0 {
 		return fmt.Sprintf("📋 <b>%s - 持仓信息</b>\n\n无持仓", traderName)
@@ -160,21 +161,92 @@ func FormatPositionsMessage(traderName string, positions []map[string]interface{
 		markPrice, _ := pos["markPrice"].(float64)
 		unrealizedPnl, _ := pos["unRealizedProfit"].(float64)
 		leverage, _ := pos["leverage"].(float64)
+		
+		// 获取额外信息（如果存在）
+		liquidationPrice, _ := pos["liquidationPrice"].(float64)
+		marginUsed, _ := pos["marginUsed"].(float64)
+		positionValue, _ := pos["positionValue"].(float64)
+		unrealizedPnlPct, _ := pos["unrealized_pnl_pct"].(float64)
+		
+		// 如果没有 positionValue，计算它
+		if positionValue == 0 && markPrice > 0 && quantity > 0 {
+			positionValue = quantity * markPrice
+		}
+		
+		// 如果没有 marginUsed，计算它
+		if marginUsed == 0 && leverage > 0 && positionValue > 0 {
+			marginUsed = positionValue / leverage
+		}
+		
+		// 计算价格变化百分比
+		var priceChangePct float64
+		if entryPrice > 0 {
+			if side == "long" {
+				priceChangePct = ((markPrice - entryPrice) / entryPrice) * 100
+			} else {
+				priceChangePct = ((entryPrice - markPrice) / entryPrice) * 100
+			}
+		}
+		
+		// 如果没有 unrealizedPnlPct，计算它
+		if unrealizedPnlPct == 0 && marginUsed > 0 {
+			unrealizedPnlPct = (unrealizedPnl / marginUsed) * 100
+		}
 
 		sideEmoji := "📈"
 		if side == "short" {
 			sideEmoji = "📉"
 		}
 
-		msg += fmt.Sprintf("%d. %s %s %s\n", i+1, sideEmoji, symbol, side)
-		msg += fmt.Sprintf("   数量: %.8f | 杠杆: %.0fx\n", quantity, leverage)
-		msg += fmt.Sprintf("   开仓价: %.2f | 标记价: %.2f\n", entryPrice, markPrice)
-
+		// 持仓标题
+		msg += fmt.Sprintf("<b>%d. %s %s %s</b>\n", i+1, sideEmoji, symbol, strings.ToUpper(side))
+		
+		// 基础信息
+		msg += fmt.Sprintf("   💰 数量: <b>%.8f</b> | 杠杆: <b>%.0fx</b>\n", quantity, leverage)
+		
+		// 价格信息
+		priceChangeEmoji := "📈"
+		if priceChangePct < 0 {
+			priceChangeEmoji = "📉"
+		}
+		msg += fmt.Sprintf("   💵 开仓价: <b>%.2f</b> | 标记价: <b>%.2f</b> (%s%.2f%%)\n", 
+			entryPrice, markPrice, priceChangeEmoji, priceChangePct)
+		
+		// 持仓价值
+		if positionValue > 0 {
+			msg += fmt.Sprintf("   💎 持仓价值: <b>$%.2f</b>\n", positionValue)
+		}
+		
+		// 保证金信息
+		if marginUsed > 0 {
+			msg += fmt.Sprintf("   🔒 已用保证金: <b>$%.2f</b>\n", marginUsed)
+		}
+		
+		// 盈亏信息
 		pnlEmoji := "📈"
 		if unrealizedPnl < 0 {
 			pnlEmoji = "📉"
 		}
-		msg += fmt.Sprintf("   %s 未实现盈亏: $%.2f\n\n", pnlEmoji, unrealizedPnl)
+		if unrealizedPnlPct != 0 {
+			msg += fmt.Sprintf("   %s 未实现盈亏: <b>$%.2f</b> (<b>%.2f%%</b>)\n", 
+				pnlEmoji, unrealizedPnl, unrealizedPnlPct)
+		} else {
+			msg += fmt.Sprintf("   %s 未实现盈亏: <b>$%.2f</b>\n", pnlEmoji, unrealizedPnl)
+		}
+		
+		// 强平价
+		if liquidationPrice > 0 {
+			liqDistance := 0.0
+			if side == "long" {
+				liqDistance = ((markPrice - liquidationPrice) / markPrice) * 100
+			} else {
+				liqDistance = ((liquidationPrice - markPrice) / markPrice) * 100
+			}
+			msg += fmt.Sprintf("   ⚠️ 强平价: <b>%.2f</b> (距离: <b>%.2f%%</b>)\n", 
+				liquidationPrice, liqDistance)
+		}
+		
+		msg += "\n"
 	}
 
 	return msg
