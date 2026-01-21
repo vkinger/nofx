@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"nofx/experience"
 	"nofx/mcp"
 	"os"
@@ -10,6 +11,13 @@ import (
 
 // Global configuration instance
 var global *Config
+
+// TelegramBotConfig 单个 Telegram Bot 配置
+type TelegramBotConfig struct {
+	Token      string `json:"token"`       // Bot Token
+	ChatID     int64  `json:"chat_id"`     // Chat ID
+	WebhookURL string `json:"webhook_url"` // Webhook URL (可选)
+}
 
 // Config is the global configuration (loaded from .env)
 // Only contains truly global config, trading related config is at trader/strategy level
@@ -47,9 +55,13 @@ type Config struct {
 
 	// Telegram notification configuration
 	TelegramEnabled  bool   // Whether Telegram notifications are enabled
-	TelegramToken    string // Telegram Bot Token
-	TelegramChatID   int64  // Telegram Chat ID
-	TelegramWebhookURL string // Telegram Webhook URL (optional, for command handling)
+	TelegramToken    string // Telegram Bot Token (deprecated, use TelegramBots instead)
+	TelegramChatID   int64  // Telegram Chat ID (deprecated, use TelegramBots instead)
+	TelegramWebhookURL string // Telegram Webhook URL (deprecated, use TelegramBots instead)
+	
+	// TelegramBots 多个 Telegram Bot 配置（JSON 格式）
+	// 格式: [{"token":"xxx","chat_id":123,"webhook_url":"https://..."}]
+	TelegramBots string // JSON array of bot configs
 }
 
 // Init initializes global configuration (from .env)
@@ -149,6 +161,9 @@ func Init() {
 		}
 	}
 	cfg.TelegramWebhookURL = os.Getenv("TELEGRAM_WEBHOOK_URL")
+	
+	// 解析多个 Telegram Bot 配置
+	cfg.TelegramBots = os.Getenv("TELEGRAM_BOTS")
 
 	global = cfg
 
@@ -172,4 +187,31 @@ func Get() *Config {
 		Init()
 	}
 	return global
+}
+
+// GetTelegramBotConfigs 解析并返回所有 Telegram Bot 配置
+func GetTelegramBotConfigs() ([]TelegramBotConfig, error) {
+	cfg := Get()
+	
+	// 如果配置了新的多 bot 格式，优先使用
+	if cfg.TelegramBots != "" {
+		var bots []TelegramBotConfig
+		if err := json.Unmarshal([]byte(cfg.TelegramBots), &bots); err != nil {
+			return nil, err
+		}
+		return bots, nil
+	}
+	
+	// 向后兼容：如果配置了旧的单 bot 格式，转换为新格式
+	if cfg.TelegramEnabled && cfg.TelegramToken != "" && cfg.TelegramChatID != 0 {
+		return []TelegramBotConfig{
+			{
+				Token:      cfg.TelegramToken,
+				ChatID:     cfg.TelegramChatID,
+				WebhookURL: cfg.TelegramWebhookURL,
+			},
+		}, nil
+	}
+	
+	return []TelegramBotConfig{}, nil
 }

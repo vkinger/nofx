@@ -136,7 +136,7 @@ type AutoTrader struct {
 	lastBalanceSyncTime    time.Time // Last balance sync time
 	userID                 string    // User ID
 	gridState             *GridState         // Grid trading state (only used when StrategyType == "grid_trading")
-	telegramNotifier       *notification.TelegramNotifier // Telegram通知服务
+	telegramNotifier       *notification.MultiTelegramNotifier // Telegram通知服务
 }
 
 // TrailingState stores peak information per position
@@ -350,37 +350,38 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 	strategyEngine := kernel.NewStrategyEngine(config.StrategyConfig)
 	logger.Infof("✓ [%s] Using strategy engine (strategy configuration loaded)", config.Name)
 
-	// Initialize Telegram notifier (from global config, fallback to strategy config for backward compatibility)
-	var telegramNotifier *notification.TelegramNotifier
+	// Initialize Telegram notifier (支持多 bot)
+	var telegramNotifier *notification.MultiTelegramNotifier
 	globalCfg := globalconfig.Get()
 
-	// Priority: 1. Global config (from .env), 2. Strategy config (for backward compatibility)
-	var telegramToken string
-	var telegramChatID int64
-	var telegramEnabled bool
-
-	if globalCfg.TelegramEnabled && globalCfg.TelegramToken != "" && globalCfg.TelegramChatID != 0 {
-		// Use global config from .env
-		telegramEnabled = true
-		telegramToken = globalCfg.TelegramToken
-		telegramChatID = globalCfg.TelegramChatID
-		logger.Infof("📱 [%s] Using Telegram config from environment variables", config.Name)
-	} else if config.StrategyConfig != nil && config.StrategyConfig.Telegram.IsValid() {
-		// Fallback to strategy config (backward compatibility)
-		// Only use strategy config if it's valid (enabled, token and chat_id are set)
-		telegramEnabled = true
-		telegramToken = config.StrategyConfig.Telegram.Token
-		telegramChatID = config.StrategyConfig.Telegram.ChatID
-		logger.Infof("📱 [%s] Using Telegram config from strategy (deprecated, use .env instead)", config.Name)
-	}
-
-	if telegramEnabled && telegramToken != "" && telegramChatID != 0 {
-		var err error
-		telegramNotifier, err = notification.NewTelegramNotifier(telegramToken, telegramChatID)
+	// Priority: 1. Multi bot config (from TELEGRAM_BOTS), 2. Single bot config (backward compatibility), 3. Strategy config (deprecated)
+	botConfigs, err := globalconfig.GetTelegramBotConfigs()
+	if err == nil && len(botConfigs) > 0 {
+		// 使用多 bot 配置
+		telegramNotifier, err = notification.NewMultiTelegramNotifier()
+		if err != nil {
+			logger.Warnf("⚠️ [%s] Failed to initialize MultiTelegramNotifier: %v", config.Name, err)
+		} else if telegramNotifier != nil && telegramNotifier.IsEnabled() {
+			logger.Infof("✓ [%s] MultiTelegramNotifier enabled with %d bot(s)", config.Name, telegramNotifier.GetNotifierCount())
+		}
+	} else if globalCfg.TelegramEnabled && globalCfg.TelegramToken != "" && globalCfg.TelegramChatID != 0 {
+		// 向后兼容：使用单 bot 配置
+		telegramNotifier, err = notification.NewMultiTelegramNotifier()
 		if err != nil {
 			logger.Warnf("⚠️ [%s] Failed to initialize Telegram notifier: %v", config.Name, err)
-		} else if telegramNotifier != nil {
-			logger.Infof("✓ [%s] Telegram notifications enabled", config.Name)
+		} else if telegramNotifier != nil && telegramNotifier.IsEnabled() {
+			logger.Infof("✓ [%s] Telegram notifications enabled (single bot mode)", config.Name)
+		}
+	} else if config.StrategyConfig != nil && config.StrategyConfig.Telegram.IsValid() {
+		// 向后兼容：使用策略配置（已废弃）
+		// 创建单 bot notifier 并包装为 MultiTelegramNotifier
+		singleNotifier, err := notification.NewTelegramNotifier(
+			config.StrategyConfig.Telegram.Token,
+			config.StrategyConfig.Telegram.ChatID,
+		)
+		if err == nil && singleNotifier != nil {
+			telegramNotifier = notification.NewMultiTelegramNotifierFromSingle(singleNotifier)
+			logger.Infof("📱 [%s] Using Telegram config from strategy (deprecated, use TELEGRAM_BOTS instead)", config.Name)
 		}
 	}
 

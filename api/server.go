@@ -35,15 +35,16 @@ import (
 
 // Server HTTP API server
 type Server struct {
-	router          *gin.Engine
-	traderManager   *manager.TraderManager
-	store           *store.Store
-	cryptoHandler   *CryptoHandler
-	backtestManager *backtest.Manager
-	debateHandler   *DebateHandler
-	httpServer      *http.Server
-	port            int
-	telegramWebhook *notification.TelegramWebhook
+	router               *gin.Engine
+	traderManager        *manager.TraderManager
+	store                *store.Store
+	cryptoHandler        *CryptoHandler
+	backtestManager      *backtest.Manager
+	debateHandler        *DebateHandler
+	httpServer           *http.Server
+	port                 int
+	telegramWebhook      *notification.TelegramWebhook      // 单个 webhook（向后兼容）
+	multiTelegramWebhook *notification.MultiTelegramWebhook // 多 webhook 管理器
 }
 
 // NewServer Creates API server
@@ -3700,9 +3701,14 @@ func (s *Server) handleGetPublicTraderConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
-// SetTelegramWebhook 设置 Telegram Webhook 实例
+// SetTelegramWebhook 设置 Telegram Webhook 实例（向后兼容）
 func (s *Server) SetTelegramWebhook(webhook *notification.TelegramWebhook) {
 	s.telegramWebhook = webhook
+}
+
+// SetMultiTelegramWebhook 设置多 Telegram Webhook 管理器
+func (s *Server) SetMultiTelegramWebhook(multiWebhook *notification.MultiTelegramWebhook) {
+	s.multiTelegramWebhook = multiWebhook
 }
 
 // telegramWebhookIPWhitelist IP 白名单中间件（只允许 Telegram 官方 IP 段）
@@ -3953,7 +3959,32 @@ func (s *Server) handleTelegramWebhook(c *gin.Context) {
 		return
 	}
 
-	if s.telegramWebhook != nil {
+	// 优先使用多 webhook 管理器
+	if s.multiTelegramWebhook != nil {
+		// 根据消息的 chatID 找到对应的 webhook
+		var targetChatID int64
+		if update.Message != nil {
+			targetChatID = update.Message.Chat.ID
+		} else if update.ChannelPost != nil {
+			targetChatID = update.ChannelPost.Chat.ID
+		} else if update.EditedMessage != nil {
+			targetChatID = update.EditedMessage.Chat.ID
+		} else if update.EditedChannelPost != nil {
+			targetChatID = update.EditedChannelPost.Chat.ID
+		}
+
+		if targetChatID != 0 {
+			// 直接根据 chatID 获取对应的 webhook
+			webhook := s.multiTelegramWebhook.GetWebhookByChatID(targetChatID)
+			if webhook != nil {
+				webhook.HandleUpdate(&update)
+				logger.Debugf("Telegram webhook update handled by bot (ChatID: %d)", targetChatID)
+			} else {
+				logger.Warnf("Telegram webhook update for ChatID %d not handled (no matching webhook found)", targetChatID)
+			}
+		}
+	} else if s.telegramWebhook != nil {
+		// 向后兼容：使用单个 webhook
 		s.telegramWebhook.HandleUpdate(&update)
 	} else {
 		logger.Warnf("Telegram webhook handler is nil, message not processed")

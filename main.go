@@ -231,57 +231,104 @@ func main() {
 		}
 	}()
 
-	// Initialize Telegram Webhook if enabled
-	if cfg.TelegramEnabled && cfg.TelegramToken != "" && cfg.TelegramChatID != 0 {
-		// Wait a bit for server to start
-		time.Sleep(2 * time.Second)
+	// Initialize Telegram Webhook (支持多 bot)
+	// Wait a bit for server to start
+	time.Sleep(2 * time.Second)
 
-		// Webhook URL is required
+	// 尝试使用多 webhook 配置
+	multiWebhook, err := notification.NewMultiTelegramWebhook()
+	if err == nil && multiWebhook != nil && multiWebhook.GetWebhookCount() > 0 {
+		// 获取统一的 webhook URL（优先使用配置中的第一个，或从环境变量获取）
 		webhookURL := cfg.TelegramWebhookURL
+		botConfigs, err := config.GetTelegramBotConfigs()
+		if err == nil && len(botConfigs) > 0 && botConfigs[0].WebhookURL != "" {
+			// 使用第一个 bot 的 webhook URL 作为统一 URL
+			webhookURL = botConfigs[0].WebhookURL
+		}
+
 		if webhookURL == "" {
 			logger.Warnf("⚠️ TELEGRAM_WEBHOOK_URL is not set. Telegram Webhook will not be initialized.")
 			logger.Warnf("⚠️ To enable Telegram Webhook, please set TELEGRAM_WEBHOOK_URL in your .env file:")
 			logger.Warnf("⚠️   - For domain: https://your-domain.com/api/telegram/webhook")
 			logger.Warnf("⚠️   - For IP: https://123.45.67.89:443/api/telegram/webhook (requires self-signed cert with IP as CN)")
-			logger.Warnf("⚠️ Requirements:")
-			logger.Warnf("⚠️   - Must use HTTPS (not HTTP)")
-			logger.Warnf("⚠️   - Port must be one of: 443, 80, 88, 8443")
-			logger.Warnf("⚠️   - Must be publicly accessible (not localhost)")
-			logger.Warnf("⚠️   - For IP addresses, SSL certificate CN must match the IP")
 		} else {
-			logger.Infof("📱 Initializing Telegram Webhook - ChatID: %d", cfg.TelegramChatID)
-			telegramWebhook, err := notification.NewTelegramWebhook(
-				cfg.TelegramToken,
-				cfg.TelegramChatID,
-			)
-			if err == nil && telegramWebhook != nil {
-				// 注册指令处理器
-				// 创建用户存储适配器（在 main.go 中创建以避免循环导入）
-				userStoreAdapter := &userStoreAdapterImpl{store: st.User()}
-				// 创建交易员管理器适配器（在 main.go 中创建以避免循环导入）
-				traderManagerAdapter := &traderManagerAdapterImpl{traderManager: traderManager}
-				commandCtx := &notification.CommandContext{
-					TraderManager: traderManagerAdapter,
-					UserStore:     userStoreAdapter,
-				}
-				handlers := notification.CreateCommandHandlers(commandCtx)
-				for cmd, handler := range handlers {
-					telegramWebhook.RegisterCommand(cmd, handler)
-				}
+			// 注册指令处理器
+			// 创建用户存储适配器（在 main.go 中创建以避免循环导入）
+			userStoreAdapter := &userStoreAdapterImpl{store: st.User()}
+			// 创建交易员管理器适配器（在 main.go 中创建以避免循环导入）
+			traderManagerAdapter := &traderManagerAdapterImpl{traderManager: traderManager}
+			commandCtx := &notification.CommandContext{
+				TraderManager: traderManagerAdapter,
+				UserStore:     userStoreAdapter,
+			}
+			handlers := notification.CreateCommandHandlers(commandCtx)
 
-				// 启动 Webhook
-				if err := telegramWebhook.StartWebhook(webhookURL); err == nil {
-					server.SetTelegramWebhook(telegramWebhook)
-					// 发送欢迎消息
-					time.Sleep(1 * time.Second)
-					telegramWebhook.SendWelcomeMessage()
-					logger.Info("✓ Telegram Webhook initialized and welcome message sent")
-				} else {
-					logger.Warnf("⚠️ Failed to start Telegram webhook: %v", err)
-					logger.Warnf("⚠️ Please check your TELEGRAM_WEBHOOK_URL configuration")
+			// 为所有 webhook 注册命令处理器
+			for cmd, handler := range handlers {
+				multiWebhook.RegisterCommandForAll(cmd, handler)
+			}
+
+			// 启动所有 Webhook（使用统一的 webhook URL）
+			logger.Infof("📱 Starting %d Telegram webhook(s) with unified URL: %s",
+				multiWebhook.GetWebhookCount(), webhookURL)
+			if err := multiWebhook.StartAllWebhooks(webhookURL); err != nil {
+				logger.Warnf("⚠️ Some Telegram webhooks failed to start: %v", err)
+			} else {
+				server.SetMultiTelegramWebhook(multiWebhook)
+				// 发送欢迎消息到所有 bot
+				time.Sleep(1 * time.Second)
+				multiWebhook.SendWelcomeMessageToAll()
+				logger.Infof("✓ MultiTelegramWebhook initialized with %d webhook(s), all using unified URL: %s",
+					multiWebhook.GetWebhookCount(), webhookURL)
+			}
+		}
+	} else {
+		// 向后兼容：尝试使用单 bot 配置
+		if cfg.TelegramEnabled && cfg.TelegramToken != "" && cfg.TelegramChatID != 0 {
+			webhookURL := cfg.TelegramWebhookURL
+			if webhookURL == "" {
+				logger.Warnf("⚠️ TELEGRAM_WEBHOOK_URL is not set. Telegram Webhook will not be initialized.")
+				logger.Warnf("⚠️ To enable Telegram Webhook, please set TELEGRAM_WEBHOOK_URL in your .env file:")
+				logger.Warnf("⚠️   - For domain: https://your-domain.com/api/telegram/webhook")
+				logger.Warnf("⚠️   - For IP: https://123.45.67.89:443/api/telegram/webhook (requires self-signed cert with IP as CN)")
+				logger.Warnf("⚠️ Requirements:")
+				logger.Warnf("⚠️   - Must use HTTPS (not HTTP)")
+				logger.Warnf("⚠️   - Port must be one of: 443, 80, 88, 8443")
+				logger.Warnf("⚠️   - Must be publicly accessible (not localhost)")
+				logger.Warnf("⚠️   - For IP addresses, SSL certificate CN must match the IP")
+			} else {
+				logger.Infof("📱 Initializing Telegram Webhook (single bot mode) - ChatID: %d", cfg.TelegramChatID)
+				telegramWebhook, err := notification.NewTelegramWebhook(
+					cfg.TelegramToken,
+					cfg.TelegramChatID,
+				)
+				if err == nil && telegramWebhook != nil {
+					// 注册指令处理器
+					userStoreAdapter := &userStoreAdapterImpl{store: st.User()}
+					traderManagerAdapter := &traderManagerAdapterImpl{traderManager: traderManager}
+					commandCtx := &notification.CommandContext{
+						TraderManager: traderManagerAdapter,
+						UserStore:     userStoreAdapter,
+					}
+					handlers := notification.CreateCommandHandlers(commandCtx)
+					for cmd, handler := range handlers {
+						telegramWebhook.RegisterCommand(cmd, handler)
+					}
+
+					// 启动 Webhook
+					if err := telegramWebhook.StartWebhook(webhookURL); err == nil {
+						server.SetTelegramWebhook(telegramWebhook)
+						// 发送欢迎消息
+						time.Sleep(1 * time.Second)
+						telegramWebhook.SendWelcomeMessage()
+						logger.Info("✓ Telegram Webhook initialized and welcome message sent")
+					} else {
+						logger.Warnf("⚠️ Failed to start Telegram webhook: %v", err)
+						logger.Warnf("⚠️ Please check your TELEGRAM_WEBHOOK_URL configuration")
+					}
+				} else if err != nil {
+					logger.Warnf("⚠️ Failed to create Telegram webhook: %v", err)
 				}
-			} else if err != nil {
-				logger.Warnf("⚠️ Failed to create Telegram webhook: %v", err)
 			}
 		}
 	}
