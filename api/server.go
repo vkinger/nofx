@@ -1,9 +1,11 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"nofx/auth"
@@ -27,8 +29,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/google/uuid"
 )
 
 // Server HTTP API server
@@ -3734,20 +3736,20 @@ func (s *Server) telegramWebhookIPWhitelist() gin.HandlerFunc {
 				clientIP = strings.TrimSpace(ips[0])
 			}
 		}
-		
+
 		// 如果 X-Forwarded-For 为空，尝试使用 X-Real-IP
 		if clientIP == "" {
 			clientIP = c.GetHeader("X-Real-IP")
 		}
-		
+
 		// 如果都为空，使用 ClientIP() 作为后备
 		if clientIP == "" {
 			clientIP = c.ClientIP()
 		}
-		
+
 		// 添加调试日志，帮助排查问题
 		xRealIP := c.GetHeader("X-Real-IP")
-		logger.Infof("Telegram webhook request - ClientIP: %s, X-Real-IP: %s, X-Forwarded-For: %s, RemoteAddr: %s", 
+		logger.Infof("Telegram webhook request - ClientIP: %s, X-Real-IP: %s, X-Forwarded-For: %s, RemoteAddr: %s",
 			clientIP, xRealIP, xForwardedFor, c.Request.RemoteAddr)
 
 		// 解析 IP 地址
@@ -3882,14 +3884,79 @@ func (s *Server) telegramWebhookRateLimit() gin.HandlerFunc {
 
 // handleTelegramWebhook 处理 Telegram Webhook 请求
 func (s *Server) handleTelegramWebhook(c *gin.Context) {
+	// 先读取原始请求体用于调试
+	bodyBytes, _ := c.GetRawData()
+	if len(bodyBytes) > 0 {
+		maxLen := 500
+		if len(bodyBytes) < maxLen {
+			maxLen = len(bodyBytes)
+		}
+		logger.Infof("Telegram webhook raw body (first %d chars): %s", maxLen, string(bodyBytes[:maxLen]))
+		// 重新设置请求体，因为 GetRawData 会消耗它
+		c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+	}
+
 	var update tgbotapi.Update
 	if err := c.ShouldBindJSON(&update); err != nil {
+		logger.Warnf("Failed to parse Telegram webhook update: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	// 添加调试日志，记录更新类型和完整结构
+	logger.Infof("Telegram webhook update parsed - UpdateID: %d, Message: %v, EditedMessage: %v, ChannelPost: %v, EditedChannelPost: %v, CallbackQuery: %v",
+		update.UpdateID,
+		update.Message != nil,
+		update.EditedMessage != nil,
+		update.ChannelPost != nil,
+		update.EditedChannelPost != nil,
+		update.CallbackQuery != nil)
+
+	// 处理普通消息
+	if update.Message != nil {
+		logger.Infof("Telegram webhook received message - ChatID: %d, Text: %s, From: %s (ID: %d)",
+			update.Message.Chat.ID,
+			update.Message.Text,
+			update.Message.From.UserName,
+			update.Message.From.ID)
+	} else if update.EditedMessage != nil {
+		// 将编辑的消息转换为普通消息处理
+		logger.Infof("Telegram webhook received edited message - ChatID: %d, Text: %s",
+			update.EditedMessage.Chat.ID,
+			update.EditedMessage.Text)
+		update.Message = update.EditedMessage
+	} else if update.ChannelPost != nil {
+		// 处理频道消息，将其转换为普通消息格式
+		logger.Infof("Telegram webhook received channel post - ChatID: %d, Text: %s",
+			update.ChannelPost.Chat.ID,
+			update.ChannelPost.Text)
+		update.Message = update.ChannelPost
+	} else if update.EditedChannelPost != nil {
+		// 处理编辑的频道消息
+		logger.Infof("Telegram webhook received edited channel post - ChatID: %d, Text: %s",
+			update.EditedChannelPost.Chat.ID,
+			update.EditedChannelPost.Text)
+		update.Message = update.EditedChannelPost
+	} else if update.CallbackQuery != nil {
+		logger.Infof("Telegram webhook received callback query - From: %s (ID: %d), Data: %s",
+			update.CallbackQuery.From.UserName,
+			update.CallbackQuery.From.ID,
+			update.CallbackQuery.Data)
+		// 回调查询暂时不处理，直接返回
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+		return
+	} else {
+		logger.Warnf("Telegram webhook received update with no message/channel_post/callback_query (UpdateID: %d) - ignoring",
+			update.UpdateID)
+		// 非消息类型的更新直接返回，不处理
+		c.JSON(http.StatusOK, gin.H{"ok": true})
 		return
 	}
 
 	if s.telegramWebhook != nil {
 		s.telegramWebhook.HandleUpdate(&update)
+	} else {
+		logger.Warnf("Telegram webhook handler is nil, message not processed")
 	}
 
 	c.JSON(http.StatusOK, gin.H{"ok": true})
