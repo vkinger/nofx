@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"nofx/auth"
 	"nofx/kernel"
-	"nofx/manager"
 	"nofx/market"
 	"strconv"
 	"strings"
@@ -24,9 +23,26 @@ type UserStoreInterface interface {
 	GetByID(userID string) (UserInterface, error)
 }
 
+// TraderInterface 交易员接口（避免循环导入）
+type TraderInterface interface {
+	GetName() string
+	GetAccountInfo() (map[string]interface{}, error)
+	GetPositions() ([]map[string]interface{}, error)
+	ExecuteDecision(*kernel.Decision) error
+	GetTrader() interface {
+		SetStopLoss(symbol string, positionSide string, quantity, stopPrice float64) error
+		SetTakeProfit(symbol string, positionSide string, quantity, takeProfitPrice float64) error
+	}
+}
+
+// TraderManagerInterface 交易员管理器接口（避免循环导入）
+type TraderManagerInterface interface {
+	GetAllTraders() map[string]TraderInterface
+}
+
 // CommandContext 指令处理上下文
 type CommandContext struct {
-	TraderManager *manager.TraderManager
+	TraderManager TraderManagerInterface
 	UserStore     UserStoreInterface
 }
 
@@ -94,47 +110,18 @@ func CreateCommandHandlers(ctx *CommandContext) map[string]CommandHandler {
 }
 
 // getFirstTrader 获取第一个运行中的交易员
-// 返回一个包含必要方法的接口，避免循环导入
-func getFirstTrader(ctx *CommandContext) (interface {
-	GetName() string
-	GetAccountInfo() (map[string]interface{}, error)
-	GetPositions() ([]map[string]interface{}, error)
-	ExecuteDecision(*kernel.Decision) error
-	GetTrader() interface {
-		SetStopLoss(symbol string, positionSide string, quantity, stopPrice float64) error
-		SetTakeProfit(symbol string, positionSide string, quantity, takeProfitPrice float64) error
-	}
-}, error) {
+func getFirstTrader(ctx *CommandContext) (TraderInterface, error) {
 	traders := ctx.TraderManager.GetAllTraders()
 	if len(traders) == 0 {
 		return nil, fmt.Errorf("没有找到运行中的交易员")
 	}
 
 	// 使用第一个交易员
-	// 由于 GetAllTraders 返回 *trader.AutoTrader，我们需要通过反射或类型断言
-	// 但为了避免循环导入，我们直接使用 interface{} 并动态调用
-	var firstTrader interface{}
 	for _, t := range traders {
-		firstTrader = t
-		break
+		return t, nil
 	}
 
-	if firstTrader == nil {
-		return nil, fmt.Errorf("没有找到运行中的交易员")
-	}
-
-	// 使用类型断言转换为需要的接口
-	// 由于 *trader.AutoTrader 实现了所有需要的方法，可以直接断言
-	return firstTrader.(interface {
-		GetName() string
-		GetAccountInfo() (map[string]interface{}, error)
-		GetPositions() ([]map[string]interface{}, error)
-		ExecuteDecision(*kernel.Decision) error
-		GetTrader() interface {
-			SetStopLoss(symbol string, positionSide string, quantity, stopPrice float64) error
-			SetTakeProfit(symbol string, positionSide string, quantity, takeProfitPrice float64) error
-		}
-	}), nil
+	return nil, fmt.Errorf("没有找到运行中的交易员")
 }
 
 // handleCommandWithUserIDAndOTP 处理需要用户ID和OTP验证的指令
