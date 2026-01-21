@@ -679,6 +679,7 @@ func (at *AutoTrader) runCycle() error {
 	}
 
 	// Execute decisions and record results
+	hasSuccessfulDecision := false
 	for _, d := range sortedDecisions {
 		// Check if trader is stopped before each decision (allow immediate stop during execution)
 		at.isRunningMutex.RLock()
@@ -709,6 +710,7 @@ func (at *AutoTrader) runCycle() error {
 			record.ExecutionLog = append(record.ExecutionLog, fmt.Sprintf("❌ %s %s failed: %v", d.Symbol, d.Action, err))
 		} else {
 			actionRecord.Success = true
+			hasSuccessfulDecision = true
 			record.ExecutionLog = append(record.ExecutionLog, fmt.Sprintf("✓ %s %s succeeded", d.Symbol, d.Action))
 			// Brief delay after successful execution
 			time.Sleep(1 * time.Second)
@@ -722,8 +724,13 @@ func (at *AutoTrader) runCycle() error {
 		logger.Infof("⚠ Failed to save decision record: %v", err)
 	}
 
-	// 10. Send account and position summary via Telegram
-	at.sendAccountSummary()
+	// 10. Send account and position summary via Telegram (only if there were successful decisions)
+	// 延迟发送，确保所有决策通知都已发送完成
+	if hasSuccessfulDecision {
+		// 等待一小段时间，确保所有决策通知都已发送
+		time.Sleep(500 * time.Millisecond)
+		at.sendAccountSummary()
+	}
 
 	return nil
 }

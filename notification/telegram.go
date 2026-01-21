@@ -153,19 +153,72 @@ func FormatPositionsMessage(traderName string, positions []map[string]interface{
 	for i, pos := range positions {
 		symbol, _ := pos["symbol"].(string)
 		side, _ := pos["side"].(string)
-		quantity, _ := pos["positionAmt"].(float64)
+		
+		// 支持两种字段名格式：驼峰格式（positionAmt）和下划线格式（quantity）
+		var quantity float64
+		if qty, ok := pos["quantity"].(float64); ok {
+			quantity = qty
+		} else if qty, ok := pos["positionAmt"].(float64); ok {
+			quantity = qty
+		}
 		if quantity < 0 {
 			quantity = -quantity
 		}
-		entryPrice, _ := pos["entryPrice"].(float64)
-		markPrice, _ := pos["markPrice"].(float64)
-		unrealizedPnl, _ := pos["unRealizedProfit"].(float64)
-		leverage, _ := pos["leverage"].(float64)
 		
-		// 获取额外信息（如果存在）
-		liquidationPrice, _ := pos["liquidationPrice"].(float64)
-		marginUsed, _ := pos["marginUsed"].(float64)
-		positionValue, _ := pos["positionValue"].(float64)
+		// 支持两种字段名格式：驼峰格式（entryPrice）和下划线格式（entry_price）
+		var entryPrice float64
+		if ep, ok := pos["entry_price"].(float64); ok {
+			entryPrice = ep
+		} else if ep, ok := pos["entryPrice"].(float64); ok {
+			entryPrice = ep
+		}
+		
+		// 支持两种字段名格式：驼峰格式（markPrice）和下划线格式（mark_price）
+		var markPrice float64
+		if mp, ok := pos["mark_price"].(float64); ok {
+			markPrice = mp
+		} else if mp, ok := pos["markPrice"].(float64); ok {
+			markPrice = mp
+		}
+		
+		// 支持两种字段名格式：驼峰格式（unRealizedProfit）和下划线格式（unrealized_pnl）
+		var unrealizedPnl float64
+		if pnl, ok := pos["unrealized_pnl"].(float64); ok {
+			unrealizedPnl = pnl
+		} else if pnl, ok := pos["unRealizedProfit"].(float64); ok {
+			unrealizedPnl = pnl
+		}
+		
+		// 杠杆
+		var leverage float64
+		if lev, ok := pos["leverage"].(float64); ok {
+			leverage = lev
+		} else if lev, ok := pos["leverage"].(int); ok {
+			leverage = float64(lev)
+		}
+		
+		// 获取额外信息（如果存在）- 支持两种格式
+		var liquidationPrice float64
+		if lp, ok := pos["liquidation_price"].(float64); ok {
+			liquidationPrice = lp
+		} else if lp, ok := pos["liquidationPrice"].(float64); ok {
+			liquidationPrice = lp
+		}
+		
+		var marginUsed float64
+		if mu, ok := pos["margin_used"].(float64); ok {
+			marginUsed = mu
+		} else if mu, ok := pos["marginUsed"].(float64); ok {
+			marginUsed = mu
+		}
+		
+		var positionValue float64
+		if pv, ok := pos["positionValue"].(float64); ok {
+			positionValue = pv
+		} else if pv, ok := pos["position_value"].(float64); ok {
+			positionValue = pv
+		}
+		
 		unrealizedPnlPct, _ := pos["unrealized_pnl_pct"].(float64)
 		
 		// 如果没有 positionValue，计算它
