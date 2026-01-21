@@ -226,9 +226,6 @@ func (cfg *BacktestConfig) ToStrategyConfig() *store.StrategyConfig {
 			result.CustomPrompt = cfg.CustomPrompt
 		}
 
-		// Normalize trailing stop defaults for legacy strategies
-		result.RiskControl.TrailingStop = result.RiskControl.TrailingStop.WithDefaults()
-
 		return &result
 	}
 
@@ -275,7 +272,6 @@ func (cfg *BacktestConfig) ToStrategyConfig() *store.StrategyConfig {
 		CustomPrompt: cfg.CustomPrompt,
 		RiskControl: store.RiskControlConfig{
 			MaxPositions:                 3,
-			TrailingStop:                 store.DefaultTrailingStopConfig(),
 			BTCETHMaxLeverage:            cfg.Leverage.BTCETHLeverage,
 			AltcoinMaxLeverage:           cfg.Leverage.AltcoinLeverage,
 			BTCETHMaxPositionValueRatio:  5.0,
