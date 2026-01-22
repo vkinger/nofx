@@ -229,7 +229,8 @@ func handlePriceCommand(ctx *CommandContext, symbol string) string {
 	}
 
 	msg := fmt.Sprintf("💰 <b>%s 当前价格</b>\n\n", symbol)
-	msg += fmt.Sprintf("📊 价格: $%.2f\n", marketData.CurrentPrice)
+	// 使用动态精度格式化价格（支持低价meme币到高价BTC）
+	msg += fmt.Sprintf("📊 价格: $%s\n", market.FormatPriceWithDynamicPrecision(marketData.CurrentPrice))
 
 	// 计算24h价格变化（使用4h数据作为近似）
 	if marketData.PriceChange4h != 0 {
@@ -253,8 +254,9 @@ func handlePriceCommand(ctx *CommandContext, symbol string) string {
 					low = k.Low
 				}
 			}
-			msg += fmt.Sprintf("📊 区间最高: $%.2f\n", high)
-			msg += fmt.Sprintf("📊 区间最低: $%.2f", low)
+			// 使用动态精度格式化高低价
+			msg += fmt.Sprintf("📊 区间最高: $%s\n", market.FormatPriceWithDynamicPrecision(high))
+			msg += fmt.Sprintf("📊 区间最低: $%s", market.FormatPriceWithDynamicPrecision(low))
 		}
 	}
 

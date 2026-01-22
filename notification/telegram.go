@@ -3,6 +3,7 @@ package notification
 import (
 	"fmt"
 	"nofx/logger"
+	"nofx/market"
 	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -73,7 +74,7 @@ func FormatDecisionMessage(traderName, symbol, action string, details map[string
 	msg := fmt.Sprintf("%s <b>%s</b> - %s %s\n", emoji, traderName, symbol, action)
 
 	if price, ok := details["price"].(float64); ok && price > 0 {
-		msg += fmt.Sprintf("💰 价格: %.2f\n", price)
+		msg += fmt.Sprintf("💰 价格: %s\n", market.FormatPriceWithDynamicPrecision(price))
 	}
 	if quantity, ok := details["quantity"].(float64); ok && quantity > 0 {
 		msg += fmt.Sprintf("📊 数量: %.8f\n", quantity)
@@ -85,16 +86,16 @@ func FormatDecisionMessage(traderName, symbol, action string, details map[string
 		msg += fmt.Sprintf("💵 仓位: $%.2f\n", positionSize)
 	}
 	if stopLoss, ok := details["stop_loss"].(float64); ok && stopLoss > 0 {
-		msg += fmt.Sprintf("🛑 止损: %.2f\n", stopLoss)
+		msg += fmt.Sprintf("🛑 止损: %s\n", market.FormatPriceWithDynamicPrecision(stopLoss))
 	}
 	if takeProfit, ok := details["take_profit"].(float64); ok && takeProfit > 0 {
-		msg += fmt.Sprintf("🎯 止盈: %.2f\n", takeProfit)
+		msg += fmt.Sprintf("🎯 止盈: %s\n", market.FormatPriceWithDynamicPrecision(takeProfit))
 	}
 	if confidence, ok := details["confidence"].(int); ok {
 		msg += fmt.Sprintf("🎲 信心度: %d%%\n", confidence)
 	}
 	if entryPrice, ok := details["entry_price"].(float64); ok && entryPrice > 0 {
-		msg += fmt.Sprintf("📥 开仓价: %.2f\n", entryPrice)
+		msg += fmt.Sprintf("📥 开仓价: %s\n", market.FormatPriceWithDynamicPrecision(entryPrice))
 	}
 	if pnl, ok := details["pnl"].(float64); ok {
 		pnlEmoji := "📈"
@@ -257,13 +258,15 @@ func FormatPositionsMessage(traderName string, positions []map[string]interface{
 		// 基础信息
 		msg += fmt.Sprintf("   💰 数量: <b>%.8f</b> | 杠杆: <b>%.0fx</b>\n", quantity, leverage)
 
-		// 价格信息
+		// 价格信息（使用动态精度）
 		priceChangeEmoji := "📈"
 		if priceChangePct < 0 {
 			priceChangeEmoji = "📉"
 		}
-		msg += fmt.Sprintf("   💵 开仓价: <b>%.2f</b> | 标记价: <b>%.2f</b> (%s%.2f%%)\n",
-			entryPrice, markPrice, priceChangeEmoji, priceChangePct)
+		msg += fmt.Sprintf("   💵 开仓价: <b>%s</b> | 标记价: <b>%s</b> (%s%.2f%%)\n",
+			market.FormatPriceWithDynamicPrecision(entryPrice),
+			market.FormatPriceWithDynamicPrecision(markPrice),
+			priceChangeEmoji, priceChangePct)
 
 		// 持仓价值
 		if positionValue > 0 {
@@ -287,7 +290,7 @@ func FormatPositionsMessage(traderName string, positions []map[string]interface{
 			msg += fmt.Sprintf("   %s 未实现盈亏: <b>$%.2f</b>\n", pnlEmoji, unrealizedPnl)
 		}
 
-		// 强平价
+		// 强平价（使用动态精度）
 		if liquidationPrice > 0 {
 			liqDistance := 0.0
 			if side == "long" {
@@ -295,8 +298,8 @@ func FormatPositionsMessage(traderName string, positions []map[string]interface{
 			} else {
 				liqDistance = ((liquidationPrice - markPrice) / markPrice) * 100
 			}
-			msg += fmt.Sprintf("   ⚠️ 强平价: <b>%.2f</b> (距离: <b>%.2f%%</b>)\n",
-				liquidationPrice, liqDistance)
+			msg += fmt.Sprintf("   ⚠️ 强平价: <b>%s</b> (距离: <b>%.2f%%</b>)\n",
+				market.FormatPriceWithDynamicPrecision(liquidationPrice), liqDistance)
 		}
 
 		msg += "\n"

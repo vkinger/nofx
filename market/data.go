@@ -1027,7 +1027,7 @@ func Format(data *Data) string {
 	var sb strings.Builder
 
 	// Format price with dynamic precision
-	priceStr := formatPriceWithDynamicPrecision(data.CurrentPrice)
+	priceStr := FormatPriceWithDynamicPrecision(data.CurrentPrice)
 	sb.WriteString(fmt.Sprintf("current_price = %s, current_ema20 = %.3f, current_macd = %.3f, current_rsi (7 period) = %.3f\n\n",
 		priceStr, data.CurrentEMA20, data.CurrentMACD, data.CurrentRSI7))
 
@@ -1036,8 +1036,8 @@ func Format(data *Data) string {
 
 	if data.OpenInterest != nil {
 		// Format OI data with dynamic precision
-		oiLatestStr := formatPriceWithDynamicPrecision(data.OpenInterest.Latest)
-		oiAverageStr := formatPriceWithDynamicPrecision(data.OpenInterest.Average)
+		oiLatestStr := FormatPriceWithDynamicPrecision(data.OpenInterest.Latest)
+		oiAverageStr := FormatPriceWithDynamicPrecision(data.OpenInterest.Average)
 		sb.WriteString(fmt.Sprintf("Open Interest: Latest: %s Average: %s\n\n",
 			oiLatestStr, oiAverageStr))
 	}
@@ -1162,9 +1162,10 @@ func formatTimeframeData(sb *strings.Builder, data *TimeframeSeriesData) {
 	sb.WriteString("\n")
 }
 
-// formatPriceWithDynamicPrecision dynamically selects precision based on price range
+// FormatPriceWithDynamicPrecision dynamically selects precision based on price range
 // This perfectly supports all coins from ultra-low price meme coins (< 0.0001) to BTC/ETH
-func formatPriceWithDynamicPrecision(price float64) string {
+// Exported for use by notification package
+func FormatPriceWithDynamicPrecision(price float64) string {
 	switch {
 	case price < 0.0001:
 		// Ultra-low price meme coins: 1000SATS, 1000WHY, DOGS
@@ -1197,7 +1198,7 @@ func formatPriceWithDynamicPrecision(price float64) string {
 func formatFloatSlice(values []float64) string {
 	strValues := make([]string, len(values))
 	for i, v := range values {
-		strValues[i] = formatPriceWithDynamicPrecision(v)
+		strValues[i] = FormatPriceWithDynamicPrecision(v)
 	}
 	return "[" + strings.Join(strValues, ", ") + "]"
 }
