@@ -1,5 +1,7 @@
 package kernel
 
+import "strings"
+
 // ============================================================================
 // Trading Data Schema - 交易数据字典
 // ============================================================================
@@ -17,6 +19,14 @@ type Language string
 const (
 	LangChinese Language = "zh-CN"
 	LangEnglish Language = "en-US"
+)
+
+// ModelSize 模型大小类型（影响术语说明的详细程度）
+type ModelSize string
+
+const (
+	ModelLarge ModelSize = "large" // 大模型(GPT-4o/Claude)使用精简版
+	ModelSmall ModelSize = "small" // 小模型(GPT-3.5/Haiku)使用完整版
 )
 
 // ========== 双语字段定义 ==========
@@ -450,12 +460,23 @@ var CommonMistakes = []CommonMistake{
 
 // ========== Prompt生成函数 ==========
 
-// GetSchemaPrompt 生成Schema说明文本，用于AI Prompt
+// GetSchemaPrompt 生成Schema说明文本，用于AI Prompt（默认大模型精简版）
 func GetSchemaPrompt(lang Language) string {
+	return GetSchemaPromptWithModelSize(lang, ModelLarge)
+}
+
+// GetSchemaPromptWithModelSize 生成带信号说明的Schema（支持指定模型大小）
+// modelSize: ModelLarge = 精简版信号说明, ModelSmall = 完整版信号说明
+func GetSchemaPromptWithModelSize(lang Language, modelSize ModelSize) string {
+	var prompt string
 	if lang == LangChinese {
-		return getSchemaPromptZH()
+		prompt = getSchemaPromptZH()
+	} else {
+		prompt = getSchemaPromptEN()
 	}
-	return getSchemaPromptEN()
+	// 追加信号说明
+	prompt += GetSignalExplanation(lang, modelSize)
+	return prompt
 }
 
 // getSchemaPromptZH 生成中文Prompt
@@ -487,12 +508,12 @@ func getSchemaPromptZH() string {
 		prompt += formatFieldDefZH(key, field)
 	}
 
-	// OI解读
-	prompt += "\n## 💹 持仓量(OI)变化解读\n\n"
-	prompt += "- **OI增加 + 价格上涨**: " + OIInterpretation.OIUp_PriceUp.ZH + "\n"
-	prompt += "- **OI增加 + 价格下跌**: " + OIInterpretation.OIUp_PriceDown.ZH + "\n"
-	prompt += "- **OI减少 + 价格上涨**: " + OIInterpretation.OIDown_PriceUp.ZH + "\n"
-	prompt += "- **OI减少 + 价格下跌**: " + OIInterpretation.OIDown_PriceDown.ZH + "\n"
+	// OI解读 - 已移至 SignalDictionary["OIPriceSignals"]，由 GetSignalExplanation 统一输出
+	// prompt += "\n## 💹 持仓量(OI)变化解读\n\n"
+	// prompt += "- **OI增加 + 价格上涨**: " + OIInterpretation.OIUp_PriceUp.ZH + "\n"
+	// prompt += "- **OI增加 + 价格下跌**: " + OIInterpretation.OIUp_PriceDown.ZH + "\n"
+	// prompt += "- **OI减少 + 价格上涨**: " + OIInterpretation.OIDown_PriceUp.ZH + "\n"
+	// prompt += "- **OI减少 + 价格下跌**: " + OIInterpretation.OIDown_PriceDown.ZH + "\n"
 
 	return prompt
 }
@@ -526,12 +547,12 @@ func getSchemaPromptEN() string {
 		prompt += formatFieldDefEN(key, field)
 	}
 
-	// OI Interpretation
-	prompt += "\n## 💹 Open Interest (OI) Change Interpretation\n\n"
-	prompt += "- **OI Up + Price Up**: " + OIInterpretation.OIUp_PriceUp.EN + "\n"
-	prompt += "- **OI Up + Price Down**: " + OIInterpretation.OIUp_PriceDown.EN + "\n"
-	prompt += "- **OI Down + Price Up**: " + OIInterpretation.OIDown_PriceUp.EN + "\n"
-	prompt += "- **OI Down + Price Down**: " + OIInterpretation.OIDown_PriceDown.EN + "\n"
+	// OI Interpretation - moved to SignalDictionary["OIPriceSignals"], output by GetSignalExplanation
+	// prompt += "\n## 💹 Open Interest (OI) Change Interpretation\n\n"
+	// prompt += "- **OI Up + Price Up**: " + OIInterpretation.OIUp_PriceUp.EN + "\n"
+	// prompt += "- **OI Up + Price Down**: " + OIInterpretation.OIUp_PriceDown.EN + "\n"
+	// prompt += "- **OI Down + Price Up**: " + OIInterpretation.OIDown_PriceUp.EN + "\n"
+	// prompt += "- **OI Down + Price Down**: " + OIInterpretation.OIDown_PriceDown.EN + "\n"
 
 	return prompt
 }
@@ -560,4 +581,173 @@ func formatFieldDefEN(key string, field BilingualFieldDef) string {
 	}
 	result += "\n"
 	return result
+}
+
+// ============================================================================
+// Signal Dictionary - 信号术语字典
+// ============================================================================
+// 用于向AI解释优化后的数据信号含义
+// 复用 BilingualFieldDef 结构，与 DataDictionary 风格统一
+// 支持大模型(精简版)和小模型(完整版)两种输出
+// ============================================================================
+
+// SignalCategoryNames 信号分类名称（双语）
+var SignalCategoryNames = map[string]struct{ ZH, EN string }{
+	"CandlestickPatterns": {"K线形态信号", "Candlestick Patterns"},
+	"TechnicalSignals":    {"技术指标信号", "Technical Indicator Signals"},
+	"VolumePriceSignals":  {"量价信号", "Volume-Price Signals"},
+	"OIPriceSignals":      {"OI-价格信号", "OI-Price Signals"},
+	"FundFlowSignals":     {"资金流信号", "Fund Flow Signals"},
+	"PriceChangeSignals":  {"涨跌幅信号", "Price Change Signals"},
+	"VolatilitySignals":   {"波动率信号", "Volatility Signals"},
+}
+
+// SignalCategoryOrder 信号分类顺序（用于遍历时保持顺序）
+var SignalCategoryOrder = []string{
+	"CandlestickPatterns",
+	"TechnicalSignals",
+	"VolumePriceSignals",
+	"OIPriceSignals",
+	"FundFlowSignals",
+	"PriceChangeSignals",
+	"VolatilitySignals",
+}
+
+// SignalDictionary 信号术语字典（复用 BilingualFieldDef 结构）
+// 结构与 DataDictionary 一致：map[分类名]map[信号Code]BilingualFieldDef
+var SignalDictionary = map[string]map[string]BilingualFieldDef{
+	"CandlestickPatterns": {
+		"BULLISH_ENGULFING":    {NameZH: "看涨吞没", NameEN: "Bullish Engulfing", DescZH: "阳线完全包裹前一阴线，强烈看涨反转信号", DescEN: "Bullish candle fully engulfs prior bearish candle, strong bullish reversal"},
+		"BEARISH_ENGULFING":    {NameZH: "看跌吞没", NameEN: "Bearish Engulfing", DescZH: "阴线完全包裹前一阳线，强烈看跌反转信号", DescEN: "Bearish candle fully engulfs prior bullish candle, strong bearish reversal"},
+		"HAMMER":               {NameZH: "锤子线", NameEN: "Hammer", DescZH: "下影线长，底部反转信号", DescEN: "Long lower shadow, bottom reversal signal"},
+		"INVERTED_HAMMER":      {NameZH: "倒锤子", NameEN: "Inverted Hammer", DescZH: "上影线长，底部反转信号", DescEN: "Long upper shadow, potential bottom reversal"},
+		"SHOOTING_STAR":        {NameZH: "射击之星", NameEN: "Shooting Star", DescZH: "上影线长，顶部反转信号", DescEN: "Long upper shadow at top, bearish reversal"},
+		"DOJI":                 {NameZH: "十字星", NameEN: "Doji", DescZH: "开盘≈收盘，市场犹豫，可能反转", DescEN: "Open≈Close, market indecision, potential reversal"},
+		"MORNING_STAR":         {NameZH: "启明星", NameEN: "Morning Star", DescZH: "三根K线组合，强烈底部反转", DescEN: "3-candle pattern, strong bottom reversal"},
+		"EVENING_STAR":         {NameZH: "黄昏星", NameEN: "Evening Star", DescZH: "三根K线组合，强烈顶部反转", DescEN: "3-candle pattern, strong top reversal"},
+		"THREE_WHITE_SOLDIERS": {NameZH: "三白兵", NameEN: "Three White Soldiers", DescZH: "连续三根阳线，强烈看涨延续", DescEN: "3 consecutive bullish candles, strong bullish continuation"},
+		"THREE_BLACK_CROWS":    {NameZH: "三乌鸦", NameEN: "Three Black Crows", DescZH: "连续三根阴线，强烈看跌延续", DescEN: "3 consecutive bearish candles, strong bearish continuation"},
+	},
+	"TechnicalSignals": {
+		"GOLDEN_CROSS":       {NameZH: "金叉", NameEN: "Golden Cross", DescZH: "EMA20上穿EMA50，中期看涨信号", DescEN: "EMA20 crosses above EMA50, bullish signal"},
+		"DEATH_CROSS":        {NameZH: "死叉", NameEN: "Death Cross", DescZH: "EMA20下穿EMA50，中期看跌信号", DescEN: "EMA20 crosses below EMA50, bearish signal"},
+		"BULLISH_DIVERGENCE": {NameZH: "看涨背离", NameEN: "Bullish Divergence", DescZH: "价格创新低但RSI未创新低，潜在反弹", DescEN: "Price makes lower low but RSI doesn't, potential bounce"},
+		"BEARISH_DIVERGENCE": {NameZH: "看跌背离", NameEN: "Bearish Divergence", DescZH: "价格创新高但RSI未创新高，潜在回调", DescEN: "Price makes higher high but RSI doesn't, potential pullback"},
+	},
+	"VolumePriceSignals": {
+		"HEALTHY_UPTREND":   {NameZH: "健康上涨", NameEN: "Healthy Uptrend", DescZH: "价涨量增，趋势健康可持续", DescEN: "Price up with volume increase, healthy sustainable trend"},
+		"HEALTHY_DOWNTREND": {NameZH: "健康下跌", NameEN: "Healthy Downtrend", DescZH: "价跌量增，下跌趋势确认", DescEN: "Price down with volume increase, downtrend confirmed"},
+		"DISTRIBUTION":      {NameZH: "派发", NameEN: "Distribution", DescZH: "价涨量缩，上涨动能减弱", DescEN: "Price up but volume decreasing, weakening momentum"},
+		"ACCUMULATION":      {NameZH: "吸筹", NameEN: "Accumulation", DescZH: "价跌量缩，抛压减弱", DescEN: "Price down but volume decreasing, selling pressure fading"},
+		"STRONG_BUY":        {NameZH: "强力买入", NameEN: "Strong Buy", DescZH: "价涨伴随成交量激增(>2倍)", DescEN: "Price up with volume surge (>2x average)"},
+		"STRONG_SELL":       {NameZH: "强力卖出", NameEN: "Strong Sell", DescZH: "价跌伴随成交量激增(>2倍)", DescEN: "Price down with volume surge (>2x average)"},
+	},
+	"OIPriceSignals": {
+		"LONG_BUILD":  {NameZH: "多头建仓", NameEN: "Long Build", DescZH: "OI↑+价格↑，新多头入场，看涨延续", DescEN: "OI up + Price up, new longs entering, bullish continuation"},
+		"SHORT_BUILD": {NameZH: "空头建仓", NameEN: "Short Build", DescZH: "OI↑+价格↓，新空头入场，看跌延续", DescEN: "OI up + Price down, new shorts entering, bearish continuation"},
+		"SHORT_COV":   {NameZH: "空头回补", NameEN: "Short Covering", DescZH: "OI↓+价格↑，空头平仓，警惕反转", DescEN: "OI down + Price up, shorts closing, watch for reversal"},
+		"LONG_LIQ":    {NameZH: "多头平仓", NameEN: "Long Liquidation", DescZH: "OI↓+价格↓，多头止损/清算", DescEN: "OI down + Price down, longs stopping out"},
+		"SQUEEZE":     {NameZH: "轧空", NameEN: "Short Squeeze", DescZH: "价格上涨但OI和资金流出，空头被迫平仓", DescEN: "Price up but OI/flow out, shorts forced to cover"},
+	},
+	"FundFlowSignals": {
+		"SMART_MONEY_ACCUMULATION": {NameZH: "聪明钱吸筹", NameEN: "Smart Money Accumulation", DescZH: "机构买入+散户卖出，强烈看多信号", DescEN: "Institution buying + Retail selling, strong bullish signal"},
+		"DISTRIBUTION_WARNING":     {NameZH: "派发警告", NameEN: "Distribution Warning", DescZH: "机构卖出+散户买入，强烈看空信号", DescEN: "Institution selling + Retail buying, strong bearish signal"},
+	},
+	"PriceChangeSignals": {
+		"STRONG":  {NameZH: "强势", NameEN: "Strong", DescZH: "涨幅大+OI增+资金流入，健康强势上涨", DescEN: "Price up + OI up + Flow in, healthy strong uptrend"},
+		"HEALTHY": {NameZH: "健康", NameEN: "Healthy", DescZH: "涨幅伴随OI或资金流支撑", DescEN: "Price move supported by OI or flow"},
+		"WEAK":    {NameZH: "弱势", NameEN: "Weak", DescZH: "跌幅大+OI减+资金流出，弱势下跌", DescEN: "Price down + OI down + Flow out, weak downtrend"},
+	},
+	"VolatilitySignals": {
+		"LOW_VOL":     {NameZH: "低波动", NameEN: "Low Volatility", DescZH: "ATR<价格1%，市场平静，可能酝酿突破", DescEN: "ATR<1% of price, quiet market, potential breakout brewing"},
+		"HIGH_VOL":    {NameZH: "高波动", NameEN: "High Volatility", DescZH: "ATR>价格3%，市场活跃，注意风险", DescEN: "ATR>3% of price, active market, watch risk"},
+		"EXTREME_VOL": {NameZH: "极端波动", NameEN: "Extreme Volatility", DescZH: "ATR>价格5%，极端行情，降低仓位", DescEN: "ATR>5% of price, extreme conditions, reduce position"},
+	},
+}
+
+// GetSignalExplanation 获取信号说明（根据语言和模型大小）
+// modelSize: ModelLarge = 精简版(~150 tokens), ModelSmall = 完整版(~350 tokens)
+func GetSignalExplanation(lang Language, modelSize ModelSize) string {
+	if lang == LangChinese {
+		return getSignalExplanationZH(modelSize)
+	}
+	return getSignalExplanationEN(modelSize)
+}
+
+// getSignalExplanationZH 生成中文信号说明
+func getSignalExplanationZH(modelSize ModelSize) string {
+	var sb strings.Builder
+
+	// ### 级别，作为"字段含义说明"的子章节
+	sb.WriteString("\n### 数据信号\n")
+
+	if modelSize == ModelSmall {
+		// 完整版 - 适用于小模型，复用 formatFieldDefZH 保持与 DataDictionary 格式一致
+		for _, catKey := range SignalCategoryOrder {
+			signals, ok := SignalDictionary[catKey]
+			if !ok {
+				continue
+			}
+			catName := SignalCategoryNames[catKey]
+			sb.WriteString("#### " + catName.ZH + "\n")
+			for code, field := range signals {
+				sb.WriteString(formatFieldDefZH(code, field))
+			}
+			sb.WriteString("\n")
+		}
+	} else {
+		// 精简版 - 适用于大模型
+		sb.WriteString("#### K线形态\n")
+		sb.WriteString("ENGULFING=吞没(强反转) | HAMMER=锤子(底部) | DOJI=十字星(犹豫) | MORNING/EVENING_STAR=启明/黄昏星 | THREE_WHITE/BLACK=三白兵/三乌鸦\n\n")
+
+		sb.WriteString("#### 技术指标\n")
+		sb.WriteString("GOLDEN_CROSS=金叉(看涨) | DEATH_CROSS=死叉(看空) | BULLISH_DIVERGENCE=看涨背离 | BEARISH_DIVERGENCE=看跌背离\n\n")
+
+		sb.WriteString("#### OI-价格\n")
+		sb.WriteString("LONG_BUILD=多头建仓(OI↑价↑) | SHORT_BUILD=空头建仓(OI↑价↓) | SHORT_COV=空头回补(OI↓价↑) | LONG_LIQ=多头平仓(OI↓价↓) | SQUEEZE=轧空\n\n")
+
+		sb.WriteString("#### 资金流\n")
+		sb.WriteString("SMART_MONEY_ACCUMULATION=机构买+散户卖(强看多) | DISTRIBUTION_WARNING=机构卖+散户买(强看空)\n\n")
+	}
+
+	return sb.String()
+}
+
+// getSignalExplanationEN 生成英文信号说明
+func getSignalExplanationEN(modelSize ModelSize) string {
+	var sb strings.Builder
+
+	// ### level, as sub-section of "Field Definitions"
+	sb.WriteString("\n### Signal Definitions\n")
+
+	if modelSize == ModelSmall {
+		// Full version - for smaller models，复用 formatFieldDefEN 保持与 DataDictionary 格式一致
+		for _, catKey := range SignalCategoryOrder {
+			signals, ok := SignalDictionary[catKey]
+			if !ok {
+				continue
+			}
+			catName := SignalCategoryNames[catKey]
+			sb.WriteString("#### " + catName.EN + "\n")
+			for code, field := range signals {
+				sb.WriteString(formatFieldDefEN(code, field))
+			}
+			sb.WriteString("\n")
+		}
+	} else {
+		// Compact version - for large models
+		sb.WriteString("#### Candlestick Patterns\n")
+		sb.WriteString("ENGULFING=strong reversal | HAMMER=bottom reversal | DOJI=indecision | MORNING/EVENING_STAR=reversal patterns | THREE_WHITE/BLACK=continuation\n\n")
+
+		sb.WriteString("#### Technical Signals\n")
+		sb.WriteString("GOLDEN_CROSS=bullish(EMA20>50) | DEATH_CROSS=bearish(EMA20<50) | BULLISH_DIVERGENCE=price low but RSI not | BEARISH_DIVERGENCE=price high but RSI not\n\n")
+
+		sb.WriteString("#### OI-Price\n")
+		sb.WriteString("LONG_BUILD=OI↑Price↑ | SHORT_BUILD=OI↑Price↓ | SHORT_COV=OI↓Price↑ | LONG_LIQ=OI↓Price↓ | SQUEEZE=price up but OI/flow out\n\n")
+
+		sb.WriteString("#### Fund Flow\n")
+		sb.WriteString("SMART_MONEY_ACCUMULATION=Inst buy+Retail sell(bullish) | DISTRIBUTION_WARNING=Inst sell+Retail buy(bearish)\n\n")
+	}
+
+	return sb.String()
 }

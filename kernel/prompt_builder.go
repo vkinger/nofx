@@ -13,20 +13,42 @@ import (
 
 // PromptBuilder 提示词构建器
 type PromptBuilder struct {
-	lang Language
+	lang      Language
+	modelSize ModelSize
 }
 
-// NewPromptBuilder 创建提示词构建器
+// NewPromptBuilder 创建提示词构建器（默认使用大模型精简版）
 func NewPromptBuilder(lang Language) *PromptBuilder {
-	return &PromptBuilder{lang: lang}
+	return &PromptBuilder{lang: lang, modelSize: ModelLarge}
+}
+
+// NewPromptBuilderWithModelSize 创建指定模型大小的提示词构建器
+// modelSize: ModelLarge = 精简版(GPT-4o/Claude), ModelSmall = 完整版(GPT-3.5/Haiku)
+func NewPromptBuilderWithModelSize(lang Language, modelSize ModelSize) *PromptBuilder {
+	return &PromptBuilder{lang: lang, modelSize: modelSize}
+}
+
+// SetModelSize 设置模型大小
+func (pb *PromptBuilder) SetModelSize(modelSize ModelSize) {
+	pb.modelSize = modelSize
 }
 
 // BuildSystemPrompt 构建系统提示词
+// 注意：信号说明已通过 GetSchemaPrompt/GetSchemaPromptWithModelSize 统一管理
+// 如果调用方同时使用了 GetSchemaPrompt，则无需在此重复添加信号说明
 func (pb *PromptBuilder) BuildSystemPrompt() string {
 	if pb.lang == LangChinese {
 		return pb.buildSystemPromptZH()
 	}
 	return pb.buildSystemPromptEN()
+}
+
+// BuildSystemPromptWithSignals 构建系统提示词（包含信号说明）
+// 当调用方未使用 GetSchemaPrompt 时，可使用此方法单独添加信号说明
+func (pb *PromptBuilder) BuildSystemPromptWithSignals() string {
+	basePrompt := pb.BuildSystemPrompt()
+	signalExplanation := GetSignalExplanation(pb.lang, pb.modelSize)
+	return basePrompt + signalExplanation
 }
 
 // BuildUserPrompt 构建用户提示词（包含完整的交易上下文）
