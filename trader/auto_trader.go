@@ -1062,9 +1062,9 @@ func (at *AutoTrader) getExchangeCredentials() *market.ExchangeCredentials {
 				SecretKey:    at.config.BitgetSecretKey,
 			}
 		}
-	// DEX exchanges don't have traditional API key/secret for fee queries
-	// case "hyperliquid", "aster", "lighter":
-	//     These use wallet-based auth, trading fees are typically fixed/known
+		// DEX exchanges don't have traditional API key/secret for fee queries
+		// case "hyperliquid", "aster", "lighter":
+		//     These use wallet-based auth, trading fees are typically fixed/known
 	}
 	return nil
 }
@@ -1403,6 +1403,9 @@ func (at *AutoTrader) executeCloseLongWithRecord(decision *kernel.Decision, acti
 		logger.Infof("  📊 Using exchange position data: qty=%.8f, entry=%.2f", quantity, entryPrice)
 	}
 
+	// Record quantity for notification pnl calculation
+	actionRecord.Quantity = quantity
+
 	// Close position
 	order, err := at.trader.CloseLong(decision.Symbol, 0) // 0 = close all
 	if err != nil {
@@ -1466,6 +1469,9 @@ func (at *AutoTrader) executeCloseShortWithRecord(decision *kernel.Decision, act
 		}
 		logger.Infof("  📊 Using exchange position data: qty=%.8f, entry=%.2f", quantity, entryPrice)
 	}
+
+	// Record quantity for notification pnl calculation
+	actionRecord.Quantity = quantity
 
 	// Close position
 	order, err := at.trader.CloseShort(decision.Symbol, 0) // 0 = close all
