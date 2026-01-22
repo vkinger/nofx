@@ -1,8 +1,8 @@
 package main
 
 import (
+	"fmt"
 	"nofx/api"
-	"nofx/auth"
 	"nofx/backtest"
 	"nofx/config"
 	"nofx/crypto"
@@ -82,9 +82,32 @@ func (tma *traderManagerAdapterImpl) GetAllTraders() map[string]notification.Tra
 	return result
 }
 
+// GetTrader 获取指定交易员
+func (tma *traderManagerAdapterImpl) GetTrader(traderID string) (notification.TraderInterface, error) {
+	trader, err := tma.traderManager.GetTrader(traderID)
+	if err != nil {
+		return nil, err
+	}
+	return &traderAdapterImpl{trader: trader}, nil
+}
+
+// LoadUserTradersFromStore 从存储加载用户交易员
+func (tma *traderManagerAdapterImpl) LoadUserTradersFromStore(store interface{}, userID string) error {
+	// 类型断言获取 store.Store
+	if storeAdapter, ok := store.(*storeAdapterImpl); ok {
+		return tma.traderManager.LoadUserTradersFromStore(storeAdapter.store, userID)
+	}
+	return fmt.Errorf("invalid store type")
+}
+
 // traderAdapterImpl 交易员适配器实现（在 main.go 中定义以避免循环导入）
 type traderAdapterImpl struct {
 	trader *trader.AutoTrader
+}
+
+// GetID 获取交易员ID
+func (ta *traderAdapterImpl) GetID() string {
+	return ta.trader.GetID()
 }
 
 // GetName 获取交易员名称
@@ -107,12 +130,128 @@ func (ta *traderAdapterImpl) ExecuteDecision(decision *kernel.Decision) error {
 	return ta.trader.ExecuteDecision(decision)
 }
 
+// GetStatus 获取交易员状态
+func (ta *traderAdapterImpl) GetStatus() map[string]interface{} {
+	return ta.trader.GetStatus()
+}
+
+// GetStore 获取存储接口
+func (ta *traderAdapterImpl) GetStore() interface {
+	Position() notification.PositionStoreInterface
+} {
+	return &positionStoreAdapterImpl{store: ta.trader.GetStore()}
+}
+
+// Run 启动交易员
+func (ta *traderAdapterImpl) Run() error {
+	return ta.trader.Run()
+}
+
+// Stop 停止交易员
+func (ta *traderAdapterImpl) Stop() {
+	ta.trader.Stop()
+}
+
 // GetTrader 获取底层交易员实例
 func (ta *traderAdapterImpl) GetTrader() interface {
 	SetStopLoss(symbol string, positionSide string, quantity, stopPrice float64) error
 	SetTakeProfit(symbol string, positionSide string, quantity, takeProfitPrice float64) error
 } {
 	return ta.trader.GetTrader()
+}
+
+// positionStoreAdapterImpl 持仓存储适配器实现
+type positionStoreAdapterImpl struct {
+	store *store.Store
+}
+
+// Position 获取持仓存储
+func (psa *positionStoreAdapterImpl) Position() notification.PositionStoreInterface {
+	return &positionStoreImpl{positionStore: psa.store.Position()}
+}
+
+// positionStoreImpl 持仓存储实现
+type positionStoreImpl struct {
+	positionStore *store.PositionStore
+}
+
+// GetRecentTrades 获取最近交易
+func (psi *positionStoreImpl) GetRecentTrades(traderID string, limit int) ([]map[string]interface{}, error) {
+	trades, err := psi.positionStore.GetRecentTrades(traderID, limit)
+	if err != nil {
+		return nil, err
+	}
+	
+	// 转换为 map 格式
+	result := make([]map[string]interface{}, len(trades))
+	for i, trade := range trades {
+		result[i] = map[string]interface{}{
+			"symbol":        trade.Symbol,
+			"side":          trade.Side,
+			"entry_price":   trade.EntryPrice,
+			"exit_price":    trade.ExitPrice,
+			"realized_pnl":  trade.RealizedPnL,
+			"pnl_pct":       trade.PnLPct,
+			"entry_time":    trade.EntryTime,
+			"exit_time":     trade.ExitTime,
+			"hold_duration": trade.HoldDuration,
+		}
+	}
+	return result, nil
+}
+
+// storeAdapterImpl 存储适配器实现
+type storeAdapterImpl struct {
+	store *store.Store
+}
+
+// Trader 获取交易员存储
+func (sa *storeAdapterImpl) Trader() notification.TraderStoreInterface {
+	return &traderStoreImpl{traderStore: sa.store.Trader()}
+}
+
+// traderStoreImpl 交易员存储实现
+type traderStoreImpl struct {
+	traderStore *store.TraderStore
+}
+
+// List 获取交易员列表
+func (tsi *traderStoreImpl) List(userID string) ([]notification.TraderInfo, error) {
+	traders, err := tsi.traderStore.List(userID)
+	if err != nil {
+		return nil, err
+	}
+	
+	result := make([]notification.TraderInfo, len(traders))
+	for i, trader := range traders {
+		result[i] = &traderInfoImpl{trader: trader}
+	}
+	return result, nil
+}
+
+// UpdateStatus 更新交易员状态
+func (tsi *traderStoreImpl) UpdateStatus(userID, traderID string, isRunning bool) error {
+	return tsi.traderStore.UpdateStatus(userID, traderID, isRunning)
+}
+
+// traderInfoImpl 交易员信息实现
+type traderInfoImpl struct {
+	trader *store.Trader
+}
+
+// GetID 获取交易员ID
+func (ti *traderInfoImpl) GetID() string {
+	return ti.trader.ID
+}
+
+// GetName 获取交易员名称
+func (ti *traderInfoImpl) GetName() string {
+	return ti.trader.Name
+}
+
+// IsRunning 获取运行状态
+func (ti *traderInfoImpl) IsRunning() bool {
+	return ti.trader.IsRunning
 }
 
 func main() {
@@ -147,56 +286,36 @@ func main() {
 	}
 	// Ensure data directory exists (for SQLite)
 	if cfg.DBType == "sqlite" {
-		if dir := filepath.Dir(cfg.DBPath); dir != "." {
-			if err := os.MkdirAll(dir, 0755); err != nil {
-				logger.Errorf("Failed to create data directory: %v", err)
-			}
+		dataDir := filepath.Dir(cfg.DBPath)
+		if err := os.MkdirAll(dataDir, 0755); err != nil {
+			logger.Fatalf("❌ Failed to create data directory: %v", err)
 		}
 	}
 
-	logger.Infof("📋 Initializing database (%s)...", cfg.DBType)
-	dbType := store.DBTypeSQLite
-	if cfg.DBType == "postgres" {
-		dbType = store.DBTypePostgres
-	}
-	st, err := store.NewWithConfig(store.DBConfig{
-		Type:     dbType,
+	logger.Info("💾 Initializing database...")
+	dbConfig := store.DBConfig{
+		Type:     store.DBType(cfg.DBType),
 		Path:     cfg.DBPath,
 		Host:     cfg.DBHost,
 		Port:     cfg.DBPort,
 		User:     cfg.DBUser,
 		Password: cfg.DBPassword,
 		DBName:   cfg.DBName,
-		SSLMode:  cfg.DBSSLMode,
-	})
+	}
+	st, err := store.NewWithConfig(dbConfig)
 	if err != nil {
 		logger.Fatalf("❌ Failed to initialize database: %v", err)
 	}
-	defer st.Close()
-	backtest.UseDatabaseWithType(st.DB(), st.DBType() == store.DBTypePostgres)
+	logger.Info("✅ Database initialized successfully")
 
-	// Initialize installation ID for experience improvement (anonymous statistics)
-	initInstallationID(st)
+	// Initialize backtest manager
+	logger.Info("🧪 Initializing backtest manager...")
+	backtestManager := backtest.NewManager(newSharedMCPClient())
+	logger.Info("✅ Backtest manager initialized successfully")
 
-	// Set JWT secret
-	auth.SetJWTSecret(cfg.JWTSecret)
-	logger.Info("🔑 JWT secret configured")
-
-	// WebSocket market monitor is NO LONGER USED
-	// All K-line data now comes from CoinAnk API instead of Binance WebSocket cache
-	// Commented out to reduce unnecessary connections:
-	// go market.NewWSMonitor(150).Start(nil)
-	// logger.Info("📊 WebSocket market monitor started")
-	// time.Sleep(500 * time.Millisecond)
-	logger.Info("📊 Using CoinAnk API for all market data (WebSocket cache disabled)")
-
-	// Create TraderManager and BacktestManager
+	// Initialize trader manager
+	logger.Info("🤖 Initializing trader manager...")
 	traderManager := manager.NewTraderManager()
-	mcpClient := newSharedMCPClient()
-	backtestManager := backtest.NewManager(mcpClient)
-	if err := backtestManager.RestoreRuns(); err != nil {
-		logger.Warnf("⚠️ Failed to restore backtest history: %v", err)
-	}
 
 	// Load all traders from database to memory (may auto-start traders with IsRunning=true)
 	if err := traderManager.LoadTradersFromStore(st); err != nil {
@@ -257,9 +376,12 @@ func main() {
 			userStoreAdapter := &userStoreAdapterImpl{store: st.User()}
 			// 创建交易员管理器适配器（在 main.go 中创建以避免循环导入）
 			traderManagerAdapter := &traderManagerAdapterImpl{traderManager: traderManager}
+			// 创建存储适配器
+			storeAdapter := &storeAdapterImpl{store: st}
 			commandCtx := &notification.CommandContext{
 				TraderManager: traderManagerAdapter,
 				UserStore:     userStoreAdapter,
+				Store:         storeAdapter,
 			}
 			handlers := notification.CreateCommandHandlers(commandCtx)
 
@@ -306,9 +428,12 @@ func main() {
 					// 注册指令处理器
 					userStoreAdapter := &userStoreAdapterImpl{store: st.User()}
 					traderManagerAdapter := &traderManagerAdapterImpl{traderManager: traderManager}
+					// 创建存储适配器
+					storeAdapter := &storeAdapterImpl{store: st}
 					commandCtx := &notification.CommandContext{
 						TraderManager: traderManagerAdapter,
 						UserStore:     userStoreAdapter,
+						Store:         storeAdapter,
 					}
 					handlers := notification.CreateCommandHandlers(commandCtx)
 					for cmd, handler := range handlers {

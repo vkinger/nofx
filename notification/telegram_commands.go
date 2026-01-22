@@ -27,24 +27,57 @@ type UserStoreInterface interface {
 // TraderInterface 交易员接口（避免循环导入）
 type TraderInterface interface {
 	GetName() string
+	GetID() string
 	GetAccountInfo() (map[string]interface{}, error)
 	GetPositions() ([]map[string]interface{}, error)
+	GetStatus() map[string]interface{}
 	ExecuteDecision(*kernel.Decision) error
 	GetTrader() interface {
 		SetStopLoss(symbol string, positionSide string, quantity, stopPrice float64) error
 		SetTakeProfit(symbol string, positionSide string, quantity, takeProfitPrice float64) error
 	}
+	GetStore() interface {
+		Position() PositionStoreInterface
+	}
+	Run() error
+	Stop()
+}
+
+// PositionStoreInterface 持仓存储接口（避免循环导入）
+type PositionStoreInterface interface {
+	GetRecentTrades(traderID string, limit int) ([]map[string]interface{}, error)
 }
 
 // TraderManagerInterface 交易员管理器接口（避免循环导入）
 type TraderManagerInterface interface {
 	GetAllTraders() map[string]TraderInterface
+	GetTrader(traderID string) (TraderInterface, error)
+	LoadUserTradersFromStore(store interface{}, userID string) error
+}
+
+// StoreInterface 存储接口（避免循环导入）
+type StoreInterface interface {
+	Trader() TraderStoreInterface
+}
+
+// TraderStoreInterface 交易员存储接口（避免循环导入）
+type TraderStoreInterface interface {
+	List(userID string) ([]TraderInfo, error)
+	UpdateStatus(userID, traderID string, isRunning bool) error
+}
+
+// TraderInfo 交易员信息（避免循环导入）
+type TraderInfo interface {
+	GetID() string
+	GetName() string
+	IsRunning() bool
 }
 
 // CommandContext 指令处理上下文
 type CommandContext struct {
 	TraderManager TraderManagerInterface
 	UserStore     UserStoreInterface
+	Store         StoreInterface
 }
 
 // CreateCommandHandlers 创建指令处理器
@@ -80,6 +113,26 @@ func CreateCommandHandlers(ctx *CommandContext) map[string]CommandHandler {
 		return handleCommandWithUserIDAndOTP(ctx, update, handleCloseCommandWithOTP)
 	}
 
+	// /trades - 查看最近交易（需要邮箱和OTP）
+	handlers["/trades"] = func(update *tgbotapi.Update) string {
+		return handleCommandWithUserIDAndOTP(ctx, update, handleTradesCommandWithOTP)
+	}
+
+	// /trader - 查看交易员状态（需要邮箱和OTP）
+	handlers["/trader"] = func(update *tgbotapi.Update) string {
+		return handleCommandWithUserIDAndOTP(ctx, update, handleTraderStatusCommandWithOTP)
+	}
+
+	// /start-trader - 启用交易员（需要邮箱和OTP）
+	handlers["/start-trader"] = func(update *tgbotapi.Update) string {
+		return handleCommandWithUserIDAndOTP(ctx, update, handleStartTraderCommandWithOTP)
+	}
+
+	// /stop-trader - 停用交易员（需要邮箱和OTP）
+	handlers["/stop-trader"] = func(update *tgbotapi.Update) string {
+		return handleCommandWithUserIDAndOTP(ctx, update, handleStopTraderCommandWithOTP)
+	}
+
 	// /help - 帮助
 	handlers["/help"] = func(update *tgbotapi.Update) string {
 		return `📋 <b>可用指令：</b>
@@ -90,6 +143,22 @@ func CreateCommandHandlers(ctx *CommandContext) map[string]CommandHandler {
 <b>需要邮箱和 2FA 验证码的操作：</b>
 /account [邮箱] [OTP码] - 查看账户及持仓信息
   示例: /account user@example.com 123456
+
+/trades [邮箱] [OTP码] [币种] [数量] - 查看最近交易记录
+  示例: /trades user@example.com 123456
+  示例: /trades user@example.com 123456 BTCUSDT 10
+  （币种和数量可选，默认显示最近10条）
+
+/trader [邮箱] [OTP码] [交易员ID] - 查看交易员状态
+  示例: /trader user@example.com 123456
+  示例: /trader user@example.com 123456 trader_id_123
+  （交易员ID可选，不提供时显示所有交易员）
+
+/start-trader [邮箱] [交易员ID] [OTP码] - 启用交易员
+  示例: /start-trader user@example.com trader_id_123 123456
+
+/stop-trader [邮箱] [交易员ID] [OTP码] - 停用交易员
+  示例: /stop-trader user@example.com trader_id_123 123456
 
 /sl [邮箱] [币种] [止损价] [OTP码] - 设置止损
   示例: /sl user@example.com BTCUSDT 42000 123456
@@ -424,4 +493,361 @@ func handleCloseCommand(ctx *CommandContext, symbol string, side string) string 
 	}
 
 	return fmt.Sprintf("✅ 已平仓 %s %s", symbol, side)
+}
+
+// handleTradesCommandWithOTP 处理最近交易查询指令（带用户 OTP 验证）
+func handleTradesCommandWithOTP(ctx *CommandContext, update *tgbotapi.Update, user UserInterface) string {
+	args := strings.Fields(update.Message.Text)
+	
+	// 解析参数：symbol limit（可选）
+	symbol := ""
+	limit := 10
+	
+	if len(args) > 0 {
+		// 第一个参数可能是币种或数量
+		if limitVal, err := strconv.Atoi(args[0]); err == nil {
+			limit = limitVal
+		} else {
+			symbol = market.Normalize(args[0])
+		}
+	}
+	if len(args) > 1 {
+		// 如果有第二个参数，且第一个是币种，则第二个是数量
+		if symbol != "" {
+			if limitVal, err := strconv.Atoi(args[1]); err == nil {
+				limit = limitVal
+			}
+		}
+	}
+	
+	// 限制数量范围
+	if limit < 1 {
+		limit = 1
+	}
+	if limit > 50 {
+		limit = 50
+	}
+	
+	return handleTradesCommand(ctx, symbol, limit)
+}
+
+// handleTradesCommand 处理最近交易查询指令（内部函数）
+func handleTradesCommand(ctx *CommandContext, symbol string, limit int) string {
+	firstTrader, err := getFirstTrader(ctx)
+	if err != nil {
+		return fmt.Sprintf("❌ %s", err.Error())
+	}
+	
+	// 获取存储接口
+	store := firstTrader.GetStore()
+	if store == nil {
+		return "❌ 无法访问交易记录存储"
+	}
+	
+	// 获取最近交易
+	positionStore := store.Position()
+	if positionStore == nil {
+		return "❌ 无法访问交易记录存储"
+	}
+	
+	trades, err := positionStore.GetRecentTrades(firstTrader.GetID(), limit)
+	if err != nil {
+		return fmt.Sprintf("❌ 获取交易记录失败: %v", err)
+	}
+	
+	if len(trades) == 0 {
+		msg := fmt.Sprintf("📊 <b>%s 最近交易记录</b>\n\n", firstTrader.GetName())
+		msg += "暂无交易记录"
+		return msg
+	}
+	
+	// 过滤币种（如果指定）
+	if symbol != "" {
+		symbol = market.Normalize(symbol)
+		var filteredTrades []map[string]interface{}
+		for _, trade := range trades {
+			if tradeSymbol, ok := trade["symbol"].(string); ok && tradeSymbol == symbol {
+				filteredTrades = append(filteredTrades, trade)
+			}
+		}
+		trades = filteredTrades
+		if len(trades) == 0 {
+			return fmt.Sprintf("❌ 未找到 %s 的交易记录", symbol)
+		}
+	}
+	
+	// 格式化消息
+	msg := fmt.Sprintf("📊 <b>%s 最近交易记录</b>\n\n", firstTrader.GetName())
+	if symbol != "" {
+		msg += fmt.Sprintf("币种: <b>%s</b>\n", symbol)
+	}
+	msg += fmt.Sprintf("显示数量: %d\n\n", len(trades))
+	
+	for i, trade := range trades {
+		symbolStr, _ := trade["symbol"].(string)
+		sideStr, _ := trade["side"].(string)
+		entryPrice, _ := trade["entry_price"].(float64)
+		exitPrice, _ := trade["exit_price"].(float64)
+		realizedPnL, _ := trade["realized_pnl"].(float64)
+		pnlPct, _ := trade["pnl_pct"].(float64)
+		holdDuration, _ := trade["hold_duration"].(string)
+		
+		sideEmoji := "📈"
+		if sideStr == "short" {
+			sideEmoji = "📉"
+		}
+		
+		pnlEmoji := "🟢"
+		if realizedPnL < 0 {
+			pnlEmoji = "🔴"
+		}
+		
+		msg += fmt.Sprintf("%d. %s <b>%s</b> %s\n", i+1, sideEmoji, symbolStr, sideStr)
+		msg += fmt.Sprintf("   开仓: $%s\n", market.FormatPriceWithDynamicPrecision(entryPrice))
+		msg += fmt.Sprintf("   平仓: $%s\n", market.FormatPriceWithDynamicPrecision(exitPrice))
+		msg += fmt.Sprintf("   盈亏: %s $%.2f (%.2f%%)\n", pnlEmoji, realizedPnL, pnlPct)
+		if holdDuration != "" {
+			msg += fmt.Sprintf("   持仓时长: %s\n", holdDuration)
+		}
+		msg += "\n"
+	}
+	
+	return msg
+}
+
+// handleTraderStatusCommandWithOTP 处理交易员状态查询指令（带用户 OTP 验证）
+func handleTraderStatusCommandWithOTP(ctx *CommandContext, update *tgbotapi.Update, user UserInterface) string {
+	args := strings.Fields(update.Message.Text)
+	
+	// 解析参数：traderID（可选）
+	traderID := ""
+	if len(args) > 0 {
+		traderID = args[0]
+	}
+	
+	return handleTraderStatusCommand(ctx, user.GetID(), traderID)
+}
+
+// handleTraderStatusCommand 处理交易员状态查询指令（内部函数）
+func handleTraderStatusCommand(ctx *CommandContext, userID, traderID string) string {
+	if ctx.Store == nil {
+		return "❌ 无法访问交易员存储"
+	}
+	
+	// 获取用户的所有交易员
+	traders, err := ctx.Store.Trader().List(userID)
+	if err != nil {
+		return fmt.Sprintf("❌ 获取交易员列表失败: %v", err)
+	}
+	
+	if len(traders) == 0 {
+		return "❌ 未找到任何交易员"
+	}
+	
+	// 如果指定了交易员ID，只显示该交易员
+	if traderID != "" {
+		for _, t := range traders {
+			id := t.GetID()
+			name := t.GetName()
+			isRunning := t.IsRunning()
+			
+			if id == traderID || strings.HasPrefix(id, traderID) {
+				// 获取实时状态
+				if at, err := ctx.TraderManager.GetTrader(id); err == nil {
+					status := at.GetStatus()
+					if running, ok := status["is_running"].(bool); ok {
+						isRunning = running
+					}
+				}
+				
+				statusEmoji := "🟢"
+				statusText := "运行中"
+				if !isRunning {
+					statusEmoji = "🔴"
+					statusText = "已停止"
+				}
+				
+				msg := fmt.Sprintf("🤖 <b>交易员状态</b>\n\n")
+				msg += fmt.Sprintf("名称: <b>%s</b>\n", name)
+				msg += fmt.Sprintf("ID: <code>%s</code>\n", id)
+				msg += fmt.Sprintf("状态: %s <b>%s</b>\n", statusEmoji, statusText)
+				
+				return msg
+			}
+		}
+		return fmt.Sprintf("❌ 未找到交易员: %s", traderID)
+	}
+	
+	// 显示所有交易员
+	msg := fmt.Sprintf("🤖 <b>交易员列表</b>\n\n")
+	msg += fmt.Sprintf("共 %d 个交易员:\n\n", len(traders))
+	
+	for i, t := range traders {
+		id := t.GetID()
+		name := t.GetName()
+		isRunning := t.IsRunning()
+		
+		// 获取实时状态
+		if at, err := ctx.TraderManager.GetTrader(id); err == nil {
+			status := at.GetStatus()
+			if running, ok := status["is_running"].(bool); ok {
+				isRunning = running
+			}
+		}
+		
+		statusEmoji := "🟢"
+		statusText := "运行中"
+		if !isRunning {
+			statusEmoji = "🔴"
+			statusText = "已停止"
+		}
+		
+		msg += fmt.Sprintf("%d. <b>%s</b> %s\n", i+1, name, statusEmoji)
+		msg += fmt.Sprintf("   ID: <code>%s</code>\n", id)
+		msg += fmt.Sprintf("   状态: %s\n\n", statusText)
+	}
+	
+	return msg
+}
+
+// handleStartTraderCommandWithOTP 处理启用交易员指令（带用户 OTP 验证）
+func handleStartTraderCommandWithOTP(ctx *CommandContext, update *tgbotapi.Update, user UserInterface) string {
+	args := strings.Fields(update.Message.Text)
+	
+	if len(args) < 1 {
+		return "❌ 请指定交易员ID\n示例: /start-trader user@example.com trader_id_123 123456"
+	}
+	
+	traderID := args[0]
+	return handleStartTraderCommand(ctx, user.GetID(), traderID)
+}
+
+// handleStartTraderCommand 处理启用交易员指令（内部函数）
+func handleStartTraderCommand(ctx *CommandContext, userID, traderID string) string {
+	if ctx.Store == nil {
+		return "❌ 无法访问交易员存储"
+	}
+	
+	// 验证交易员属于该用户
+	traders, err := ctx.Store.Trader().List(userID)
+	if err != nil {
+		return fmt.Sprintf("❌ 获取交易员列表失败: %v", err)
+	}
+	
+	var found bool
+	var traderName string
+	for _, t := range traders {
+		id := t.GetID()
+		name := t.GetName()
+		
+		if id == traderID || strings.HasPrefix(id, traderID) {
+			found = true
+			traderName = name
+			traderID = id // 使用完整ID
+			break
+		}
+	}
+	
+	if !found {
+		return fmt.Sprintf("❌ 未找到交易员: %s\n\n请确认交易员ID是否正确，或使用 /trader 查看所有交易员", traderID)
+	}
+	
+	// 检查交易员是否已在运行
+	if at, err := ctx.TraderManager.GetTrader(traderID); err == nil {
+		status := at.GetStatus()
+		if running, ok := status["is_running"].(bool); ok && running {
+			return fmt.Sprintf("✅ 交易员 <b>%s</b> 已在运行中", traderName)
+		}
+	}
+	
+	// 加载用户交易员（确保最新配置）
+	if err := ctx.TraderManager.LoadUserTradersFromStore(ctx.Store, userID); err != nil {
+		return fmt.Sprintf("❌ 加载交易员配置失败: %v", err)
+	}
+	
+	// 获取交易员并启动
+	trader, err := ctx.TraderManager.GetTrader(traderID)
+	if err != nil {
+		return fmt.Sprintf("❌ 获取交易员失败: %v\n\n请检查交易员的AI模型、交易所和策略配置", err)
+	}
+	
+	// 启动交易员
+	go func() {
+		if err := trader.Run(); err != nil {
+			// 使用 fmt 打印错误，因为 logger 可能不可用
+			fmt.Printf("❌ Trader %s runtime error: %v\n", trader.GetName(), err)
+		}
+	}()
+	
+	// 更新数据库状态
+	if err := ctx.Store.Trader().UpdateStatus(userID, traderID, true); err != nil {
+		fmt.Printf("⚠️ Failed to update trader status: %v\n", err)
+	}
+	
+	return fmt.Sprintf("✅ 交易员 <b>%s</b> 已启动", traderName)
+}
+
+// handleStopTraderCommandWithOTP 处理停用交易员指令（带用户 OTP 验证）
+func handleStopTraderCommandWithOTP(ctx *CommandContext, update *tgbotapi.Update, user UserInterface) string {
+	args := strings.Fields(update.Message.Text)
+	
+	if len(args) < 1 {
+		return "❌ 请指定交易员ID\n示例: /stop-trader user@example.com trader_id_123 123456"
+	}
+	
+	traderID := args[0]
+	return handleStopTraderCommand(ctx, user.GetID(), traderID)
+}
+
+// handleStopTraderCommand 处理停用交易员指令（内部函数）
+func handleStopTraderCommand(ctx *CommandContext, userID, traderID string) string {
+	if ctx.Store == nil {
+		return "❌ 无法访问交易员存储"
+	}
+	
+	// 验证交易员属于该用户
+	traders, err := ctx.Store.Trader().List(userID)
+	if err != nil {
+		return fmt.Sprintf("❌ 获取交易员列表失败: %v", err)
+	}
+	
+	var found bool
+	var traderName string
+	for _, t := range traders {
+		id := t.GetID()
+		name := t.GetName()
+		
+		if id == traderID || strings.HasPrefix(id, traderID) {
+			found = true
+			traderName = name
+			traderID = id // 使用完整ID
+			break
+		}
+	}
+	
+	if !found {
+		return fmt.Sprintf("❌ 未找到交易员: %s\n\n请确认交易员ID是否正确，或使用 /trader 查看所有交易员", traderID)
+	}
+	
+	// 获取交易员
+	trader, err := ctx.TraderManager.GetTrader(traderID)
+	if err != nil {
+		return fmt.Sprintf("❌ 交易员未在运行中: %s", traderID)
+	}
+	
+	// 检查是否已停止
+	status := trader.GetStatus()
+	if running, ok := status["is_running"].(bool); ok && !running {
+		return fmt.Sprintf("✅ 交易员 <b>%s</b> 已停止", traderName)
+	}
+	
+	// 停止交易员
+	trader.Stop()
+	
+	// 更新数据库状态
+	if err := ctx.Store.Trader().UpdateStatus(userID, traderID, false); err != nil {
+		fmt.Printf("⚠️ Failed to update trader status: %v\n", err)
+	}
+	
+	return fmt.Sprintf("✅ 交易员 <b>%s</b> 已停止", traderName)
 }
