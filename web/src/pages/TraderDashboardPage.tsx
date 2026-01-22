@@ -629,6 +629,7 @@ export function TraderDashboardPage({
                                     selectedTrader.exchange_id,
                                     exchanges
                                 )}
+                                positions={positions}
                             />
                         </div>
 

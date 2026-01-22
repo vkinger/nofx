@@ -7,11 +7,14 @@ import { t } from '../i18n/translations'
 import { BarChart3, CandlestickChart, ChevronDown, Search } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
+import { Position } from '../types'
+
 interface ChartTabsProps {
   traderId: string
   selectedSymbol?: string // 从外部选择的币种
   updateKey?: number // 强制更新的 key
   exchangeId?: string // 交易所ID
+  positions?: Position[] // 持仓数据，用于显示止盈止损价格线
 }
 
 type ChartTab = 'equity' | 'kline'
@@ -52,7 +55,7 @@ function getMarketTypeFromExchange(exchangeId: string | undefined): MarketType {
   return 'crypto'
 }
 
-export function ChartTabs({ traderId, selectedSymbol, updateKey, exchangeId }: ChartTabsProps) {
+export function ChartTabs({ traderId, selectedSymbol, updateKey, exchangeId, positions }: ChartTabsProps) {
   const { language } = useLanguage()
   const { theme } = useTheme()
   const isDark = theme === 'dark'
@@ -477,6 +480,7 @@ export function ChartTabs({ traderId, selectedSymbol, updateKey, exchangeId }: C
                 // Dynamic auto-sizing via ResizeObserver
                 exchange={currentExchange}
                 onSymbolChange={setChartSymbol}
+                positions={positions}
               />
             </motion.div>
           )}

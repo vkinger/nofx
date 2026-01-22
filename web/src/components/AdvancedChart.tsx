@@ -45,6 +45,8 @@ interface OpenOrder {
   status: string
 }
 
+import { Position } from '../types'
+
 interface AdvancedChartProps {
   symbol: string
   interval?: string
@@ -52,6 +54,7 @@ interface AdvancedChartProps {
   height?: number
   exchange?: string // 交易所类型：binance, bybit, okx, bitget, hyperliquid, aster, lighter
   onSymbolChange?: (symbol: string) => void // 币种切换回调
+  positions?: Position[] // 持仓数据，用于显示止盈止损价格线
 }
 
 // 指标配置
@@ -134,6 +137,7 @@ export function AdvancedChart({
   height = 550,
   exchange = 'binance', // 默认使用 binance
   onSymbolChange: _onSymbolChange, // Available for future use
+  positions, // 持仓数据
 }: AdvancedChartProps) {
   void _onSymbolChange // Prevent unused warning
   const { language } = useLanguage()
@@ -382,6 +386,7 @@ export function AdvancedChart({
         return []
       }
 
+      // 后端直接返回 OpenOrder[] 数组，httpClient 会包装为 {success: true, data: OpenOrder[]}
       return result.data as OpenOrder[]
     } catch (err) {
       console.error('[AdvancedChart] Error fetching open orders:', err)
@@ -817,6 +822,7 @@ export function AdvancedChart({
   }, [symbol, interval, traderID, exchange])
 
   // 单独刷新挂单价格线 (60秒刷新一次，避免频繁调用交易所API)
+  // 同时从持仓数据中获取止盈止损价格
   useEffect(() => {
     if (!traderID || !candlestickSeriesRef.current) return
 
@@ -833,6 +839,45 @@ export function AdvancedChart({
         })
         priceLinesRef.current = []
 
+        // 1. 从持仓数据中获取当前币种的止盈止损价格
+        if (positions && positions.length > 0) {
+          const currentPosition = positions.find(p => p.symbol === symbol)
+          if (currentPosition) {
+            // 添加止损价格线（持仓）
+            if (currentPosition.stop_loss && currentPosition.stop_loss > 0) {
+              const formattedPrice = formatPriceWithDynamicPrecision(currentPosition.stop_loss)
+              const stopLossLine = candlestickSeriesRef.current?.createPriceLine({
+                price: currentPosition.stop_loss,
+                color: '#F6465D', // 红色 - 止损
+                lineWidth: 3, // 持仓线更粗，便于区分
+                lineStyle: 0, // 实线 - 持仓使用实线
+                axisLabelVisible: true,
+                title: `SL ${formattedPrice} [持仓]`, // 使用中文标签，更清晰
+              })
+              if (stopLossLine) {
+                priceLinesRef.current.push(stopLossLine)
+              }
+            }
+
+            // 添加止盈价格线（持仓）
+            if (currentPosition.take_profit && currentPosition.take_profit > 0) {
+              const formattedPrice = formatPriceWithDynamicPrecision(currentPosition.take_profit)
+              const takeProfitLine = candlestickSeriesRef.current?.createPriceLine({
+                price: currentPosition.take_profit,
+                color: '#0ECB81', // 绿色 - 止盈
+                lineWidth: 3, // 持仓线更粗，便于区分
+                lineStyle: 0, // 实线 - 持仓使用实线
+                axisLabelVisible: true,
+                title: `TP ${formattedPrice} [持仓]`, // 使用中文标签，更清晰
+              })
+              if (takeProfitLine) {
+                priceLinesRef.current.push(takeProfitLine)
+              }
+            }
+          }
+        }
+
+        // 2. 从交易所挂单API获取止盈止损订单
         const openOrders = await fetchOpenOrders(traderID, symbol)
         console.log('[AdvancedChart] Open orders for price lines:', openOrders)
 
@@ -856,23 +901,23 @@ export function AdvancedChart({
             let title = ''
 
             if (isStopLoss) {
-              lineColor = '#F6465D' // 红色 - 止损
-              title = `SL ${formattedPrice} (${order.quantity})`
+              lineColor = '#FF6B6B' // 稍浅的红色 - 挂单止损（与持仓区分）
+              title = `SL ${formattedPrice} [挂单 ${order.quantity}]` // 使用中文标签，更清晰
             } else if (isTakeProfit) {
-              lineColor = '#0ECB81' // 绿色 - 止盈
-              title = `TP ${formattedPrice} (${order.quantity})`
+              lineColor = '#51CF66' // 稍浅的绿色 - 挂单止盈（与持仓区分）
+              title = `TP ${formattedPrice} [挂单 ${order.quantity}]` // 使用中文标签，更清晰
             } else if (isLimit) {
               lineColor = '#F0B90B' // 黄色 - 限价单
-              title = `Limit ${order.side} ${formattedPrice} (${order.quantity})`
+              title = `Limit ${order.side} ${formattedPrice} [挂单 ${order.quantity}]`
             } else {
-              title = `${order.type} ${formattedPrice} (${order.quantity})`
+              title = `${order.type} ${formattedPrice} [挂单 ${order.quantity}]`
             }
 
             const priceLine = candlestickSeriesRef.current?.createPriceLine({
               price: linePrice,
               color: lineColor,
-              lineWidth: 1,
-              lineStyle: lineStyle,
+              lineWidth: 1, // 挂单线较细
+              lineStyle: 2, // 虚线 - 挂单使用虚线
               axisLabelVisible: true,
               title: title,
             })
@@ -898,7 +943,7 @@ export function AdvancedChart({
       clearTimeout(initialTimeout)
       clearInterval(openOrdersInterval)
     }
-  }, [symbol, traderID])
+  }, [symbol, traderID, positions])
 
   // 单独处理订单标记的显示/隐藏，避免重新加载数据
   useEffect(() => {
