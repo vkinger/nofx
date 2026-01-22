@@ -33,6 +33,7 @@ config.json
 configbak.json
 
 # 数据目录（数据库、日志等）
+data/
 *.db
 
 # 决策日志
