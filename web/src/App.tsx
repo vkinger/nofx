@@ -19,6 +19,7 @@ import { LoginRequiredOverlay } from './components/LoginRequiredOverlay'
 import HeaderBar from './components/HeaderBar'
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { ThemeProvider } from './contexts/ThemeContext'
 import { ConfirmDialogProvider } from './components/ConfirmDialog'
 import { t } from './i18n/translations'
 import { useSystemConfig } from './hooks/useSystemConfig'
@@ -434,7 +435,7 @@ function App() {
   return (
     <div
       className="min-h-screen"
-      style={{ background: '#0B0E11', color: '#EAECEF' }}
+      style={{ background: 'var(--background)', color: 'var(--foreground)' }}
     >
       <HeaderBar
         isLoggedIn={!!user}
@@ -643,12 +644,14 @@ function App() {
 // Wrap App with providers
 export default function AppWithProviders() {
   return (
-    <LanguageProvider>
-      <AuthProvider>
-        <ConfirmDialogProvider>
-          <App />
-        </ConfirmDialogProvider>
-      </AuthProvider>
-    </LanguageProvider>
+    <ThemeProvider>
+      <LanguageProvider>
+        <AuthProvider>
+          <ConfirmDialogProvider>
+            <App />
+          </ConfirmDialogProvider>
+        </AuthProvider>
+      </LanguageProvider>
+    </ThemeProvider>
   )
 }

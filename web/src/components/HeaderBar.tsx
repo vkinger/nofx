@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Menu, X, ChevronDown } from 'lucide-react'
+import { Menu, X, ChevronDown, Sun, Moon, Palette, Sparkles } from 'lucide-react'
 import { t, type Language } from '../i18n/translations'
 import { useSystemConfig } from '../hooks/useSystemConfig'
 import { OFFICIAL_LINKS } from '../constants/branding'
+import { useTheme } from '../contexts/ThemeContext'
 
 type Page =
   | 'competition'
@@ -49,8 +50,11 @@ export default function HeaderBar({
   const [userDropdownOpen, setUserDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const userDropdownRef = useRef<HTMLDivElement>(null)
+  const themeDropdownRef = useRef<HTMLDivElement>(null)
   const { config: systemConfig } = useSystemConfig()
   const registrationEnabled = systemConfig?.registration_enabled !== false
+  const { theme, setTheme } = useTheme()
+  const [themeDropdownOpen, setThemeDropdownOpen] = useState(false)
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -66,6 +70,12 @@ export default function HeaderBar({
         !userDropdownRef.current.contains(event.target as Node)
       ) {
         setUserDropdownOpen(false)
+      }
+      if (
+        themeDropdownRef.current &&
+        !themeDropdownRef.current.contains(event.target as Node)
+      ) {
+        setThemeDropdownOpen(false)
       }
     }
 
@@ -251,6 +261,74 @@ export default function HeaderBar({
                 </div>
               )
             )}
+
+            {/* Theme Selector */}
+            <div className="relative" ref={themeDropdownRef}>
+              <button
+                onClick={() => setThemeDropdownOpen(!themeDropdownOpen)}
+                className="flex items-center justify-center w-9 h-9 rounded transition-colors text-nofx-text-muted hover:bg-white/5 hover:text-nofx-gold"
+                title={t('selectTheme', language)}
+              >
+                {theme === 'dark' ? (
+                  <Moon className="w-5 h-5" />
+                ) : theme === 'light' ? (
+                  <Sun className="w-5 h-5" />
+                ) : theme === 'fresh' ? (
+                  <Palette className="w-5 h-5" />
+                ) : (
+                  <Sparkles className="w-5 h-5" />
+                )}
+              </button>
+
+              {themeDropdownOpen && (
+                <div className="absolute right-0 top-full mt-2 w-40 rounded-lg shadow-lg overflow-hidden z-50 bg-nofx-bg-lighter border border-nofx-gold/20">
+                  <button
+                    onClick={() => {
+                      setTheme('dark')
+                      setThemeDropdownOpen(false)
+                    }}
+                    className={`w-full flex items-center gap-2 px-3 py-2 transition-colors text-nofx-text-muted hover:text-white
+                      ${theme === 'dark' ? 'bg-nofx-gold/10' : 'hover:bg-white/5'}`}
+                  >
+                    <Moon className="w-4 h-4" />
+                    <span className="text-sm">{t('themeDark', language)}</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setTheme('light')
+                      setThemeDropdownOpen(false)
+                    }}
+                    className={`w-full flex items-center gap-2 px-3 py-2 transition-colors text-nofx-text-muted hover:text-white
+                      ${theme === 'light' ? 'bg-nofx-gold/10' : 'hover:bg-white/5'}`}
+                  >
+                    <Sun className="w-4 h-4" />
+                    <span className="text-sm">{t('themeLight', language)}</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setTheme('fresh')
+                      setThemeDropdownOpen(false)
+                    }}
+                    className={`w-full flex items-center gap-2 px-3 py-2 transition-colors text-nofx-text-muted hover:text-white
+                      ${theme === 'fresh' ? 'bg-nofx-gold/10' : 'hover:bg-white/5'}`}
+                  >
+                    <Palette className="w-4 h-4" />
+                    <span className="text-sm">{t('themeFresh', language)}</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setTheme('cartoon')
+                      setThemeDropdownOpen(false)
+                    }}
+                    className={`w-full flex items-center gap-2 px-3 py-2 transition-colors text-nofx-text-muted hover:text-white
+                      ${theme === 'cartoon' ? 'bg-nofx-gold/10' : 'hover:bg-white/5'}`}
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <span className="text-sm">{t('themeCartoon', language)}</span>
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Language Toggle - Always at the rightmost */}
             <div className="relative" ref={dropdownRef}>

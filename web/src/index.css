@@ -68,6 +68,147 @@ html {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Light Theme Variables */
+:root.light-theme {
+  --nofx-bg: #FFFFFF;
+  --nofx-glass: rgba(255, 255, 255, 0.9);
+  --nofx-border: rgba(240, 185, 11, 0.3);
+
+  --glow-primary: 0 0 20px rgba(240, 185, 11, 0.2);
+  --glow-accent: 0 0 20px rgba(0, 240, 255, 0.2);
+  --glow-text: 0 0 10px rgba(240, 185, 11, 0.3);
+
+  --background: #F8F9FA;
+  --header-bg: rgba(255, 255, 255, 0.95);
+
+  --glass-bg: rgba(255, 255, 255, 0.6);
+  --glass-border: rgba(0, 0, 0, 0.1);
+
+  --panel-bg: rgba(255, 255, 255, 0.8);
+  --panel-bg-hover: rgba(248, 249, 250, 0.95);
+  --panel-border: rgba(0, 0, 0, 0.1);
+  --panel-border-hover: rgba(240, 185, 11, 0.4);
+
+  --foreground: #1A1A1A;
+  --text-primary: #1A1A1A;
+  --text-secondary: #6B7280;
+  --text-tertiary: #9CA3AF;
+  --text-disabled: #D1D5DB;
+
+  --binance-green-bg: rgba(14, 203, 129, 0.15);
+  --binance-green-border: rgba(14, 203, 129, 0.4);
+  --binance-red-bg: rgba(246, 70, 93, 0.15);
+  --binance-red-border: rgba(246, 70, 93, 0.4);
+
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.2);
+  --shadow-glow: 0 0 30px rgba(240, 185, 11, 0.1);
+
+  color-scheme: light;
+}
+
+/* Dark Theme (default) */
+:root.dark-theme {
+  /* Keep all dark theme variables as default */
+}
+
+/* Fresh Theme - 清新主题 (Light green/blue tones) */
+:root.fresh-theme {
+  --nofx-bg: #F0F9FF;
+  --nofx-glass: rgba(240, 249, 255, 0.9);
+  --nofx-border: rgba(14, 165, 233, 0.3);
+  --nofx-accent: #06B6D4;
+
+  --glow-primary: 0 0 20px rgba(14, 165, 233, 0.2);
+  --glow-accent: 0 0 20px rgba(6, 182, 212, 0.2);
+  --glow-text: 0 0 10px rgba(14, 165, 233, 0.3);
+
+  --background: #F0F9FF;
+  --header-bg: rgba(255, 255, 255, 0.95);
+
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(14, 165, 233, 0.15);
+
+  --panel-bg: rgba(255, 255, 255, 0.85);
+  --panel-bg-hover: rgba(240, 249, 255, 0.95);
+  --panel-border: rgba(14, 165, 233, 0.2);
+  --panel-border-hover: rgba(14, 165, 233, 0.4);
+
+  --foreground: #0C4A6E;
+  --text-primary: #0C4A6E;
+  --text-secondary: #075985;
+  --text-tertiary: #0284C7;
+  --text-disabled: #7DD3FC;
+
+  --binance-green-bg: rgba(16, 185, 129, 0.15);
+  --binance-green-border: rgba(16, 185, 129, 0.4);
+  --binance-red-bg: rgba(239, 68, 68, 0.15);
+  --binance-red-border: rgba(239, 68, 68, 0.4);
+
+  --shadow-sm: 0 2px 4px rgba(14, 165, 233, 0.1);
+  --shadow-md: 0 4px 12px rgba(14, 165, 233, 0.15);
+  --shadow-lg: 0 8px 32px rgba(14, 165, 233, 0.2);
+  --shadow-glow: 0 0 30px rgba(14, 165, 233, 0.1);
+
+  color-scheme: light;
+}
+
+/* Cartoon Theme - 个性卡通主题 (Vibrant, playful colors) */
+:root.cartoon-theme {
+  --nofx-bg: #FFF5E6;
+  --nofx-glass: rgba(255, 245, 230, 0.9);
+  --nofx-border: rgba(255, 107, 107, 0.3);
+  --nofx-accent: #FF6B9D;
+
+  --glow-primary: 0 0 20px rgba(255, 107, 107, 0.3);
+  --glow-accent: 0 0 20px rgba(255, 107, 157, 0.3);
+  --glow-text: 0 0 10px rgba(255, 107, 107, 0.4);
+
+  --background: #FFF5E6;
+  --header-bg: rgba(255, 255, 255, 0.95);
+
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(255, 107, 107, 0.2);
+
+  --panel-bg: rgba(255, 255, 255, 0.85);
+  --panel-bg-hover: rgba(255, 245, 230, 0.95);
+  --panel-border: rgba(255, 107, 107, 0.25);
+  --panel-border-hover: rgba(255, 107, 107, 0.5);
+
+  --foreground: #8B4513;
+  --text-primary: #8B4513;
+  --text-secondary: #CD853F;
+  --text-tertiary: #D2691E;
+  --text-disabled: #DEB887;
+
+  --binance-green: #4ECDC4;
+  --binance-green-bg: rgba(78, 205, 196, 0.2);
+  --binance-green-border: rgba(78, 205, 196, 0.5);
+  --binance-red: #FF6B6B;
+  --binance-red-bg: rgba(255, 107, 107, 0.2);
+  --binance-red-border: rgba(255, 107, 107, 0.5);
+  --binance-yellow: #FFD93D;
+
+  --shadow-sm: 0 2px 4px rgba(255, 107, 107, 0.15);
+  --shadow-md: 0 4px 12px rgba(255, 107, 107, 0.2);
+  --shadow-lg: 0 8px 32px rgba(255, 107, 107, 0.25);
+  --shadow-glow: 0 0 30px rgba(255, 107, 107, 0.2);
+
+  color-scheme: light;
+}
+
+/* Ensure initial theme class is applied */
+html {
+  color-scheme: dark;
+}
+
+html.light-theme,
+html.fresh-theme,
+html.cartoon-theme {
+  color-scheme: light;
+}
+
 /* CRT & Tech Effects */
 .crt-overlay {
   background:
@@ -136,8 +277,28 @@ body {
   min-width: 320px;
   min-height: 100vh;
   background-color: var(--background);
-  background-image: radial-gradient(circle at 50% 0%, #151921 0%, #05070a 60%);
   background-attachment: fixed;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Dark theme background */
+.dark-theme body {
+  background-image: radial-gradient(circle at 50% 0%, #151921 0%, #05070a 60%);
+}
+
+/* Light theme background */
+.light-theme body {
+  background-image: radial-gradient(circle at 50% 0%, #E5E7EB 0%, #F8F9FA 60%);
+}
+
+/* Fresh theme background */
+.fresh-theme body {
+  background-image: radial-gradient(circle at 50% 0%, #E0F2FE 0%, #F0F9FF 60%);
+}
+
+/* Cartoon theme background */
+.cartoon-theme body {
+  background-image: radial-gradient(circle at 50% 0%, #FFE5CC 0%, #FFF5E6 60%);
 }
 
 /* Premium Selection Styles */
