@@ -858,19 +858,52 @@ func getFundingRate(symbol string) (float64, error) {
 	return rate, nil
 }
 
+// ExchangeCredentials holds API credentials for fetching trading fees from exchange
+type ExchangeCredentials struct {
+	ExchangeType string // "binance", "bybit", "okx", etc.
+	APIKey       string
+	SecretKey    string
+}
+
+// getTradingFeeRates is the internal function that uses default credentials (env vars)
 func getTradingFeeRates(symbol string) (float64, float64, string) {
-	if cached, ok := tradingFeeMap.Load(symbol); ok {
+	return getTradingFeeRatesWithCredentials(symbol, nil)
+}
+
+// getTradingFeeRatesWithCredentials fetches trading fee rates with optional exchange credentials
+// If credentials is nil or empty, falls back to environment variables or default values
+func getTradingFeeRatesWithCredentials(symbol string, credentials *ExchangeCredentials) (float64, float64, string) {
+	// Generate cache key based on symbol and exchange type
+	cacheKey := symbol
+	if credentials != nil && credentials.ExchangeType != "" {
+		cacheKey = fmt.Sprintf("%s:%s", credentials.ExchangeType, symbol)
+	}
+
+	// Check cache
+	if cached, ok := tradingFeeMap.Load(cacheKey); ok {
 		cache := cached.(*TradingFeeRateCache)
 		if time.Since(cache.UpdatedAt) < feeCacheTTL {
 			return cache.MakerRate, cache.TakerRate, cache.Source
 		}
 	}
 
-	apiKey := strings.TrimSpace(os.Getenv("BINANCE_API_KEY"))
-	apiSecret := strings.TrimSpace(os.Getenv("BINANCE_API_SECRET"))
+	// Determine API credentials to use
+	var apiKey, apiSecret, exchangeType string
+	if credentials != nil && credentials.APIKey != "" && credentials.SecretKey != "" {
+		apiKey = credentials.APIKey
+		apiSecret = credentials.SecretKey
+		exchangeType = credentials.ExchangeType
+	} else {
+		// Fallback to environment variables
+		apiKey = strings.TrimSpace(os.Getenv("BINANCE_API_KEY"))
+		apiSecret = strings.TrimSpace(os.Getenv("BINANCE_API_SECRET"))
+		exchangeType = "binance"
+	}
+
+	// If no credentials available, use defaults
 	if apiKey == "" || apiSecret == "" {
 		makerRate, takerRate, source := defaultFeeRates(symbol)
-		tradingFeeMap.Store(symbol, &TradingFeeRateCache{
+		tradingFeeMap.Store(cacheKey, &TradingFeeRateCache{
 			MakerRate: makerRate,
 			TakerRate: takerRate,
 			Source:    source,
@@ -879,11 +912,22 @@ func getTradingFeeRates(symbol string) (float64, float64, string) {
 		return makerRate, takerRate, source
 	}
 
-	makerRate, takerRate, err := fetchBinanceCommissionRate(symbol, apiKey, apiSecret)
-	if err != nil {
-		logger.Warnf("Failed to fetch commission rate for %s, using defaults: %v", symbol, err)
+	// Fetch from exchange based on type
+	var makerRate, takerRate float64
+	var err error
+
+	switch exchangeType {
+	case "binance":
+		makerRate, takerRate, err = fetchBinanceCommissionRate(symbol, apiKey, apiSecret)
+	// TODO: Add support for other exchanges
+	// case "bybit":
+	//     makerRate, takerRate, err = fetchBybitCommissionRate(symbol, apiKey, apiSecret)
+	// case "okx":
+	//     makerRate, takerRate, err = fetchOKXCommissionRate(symbol, apiKey, apiSecret)
+	default:
+		// For unsupported exchanges, use defaults
 		makerRate, takerRate, source := defaultFeeRates(symbol)
-		tradingFeeMap.Store(symbol, &TradingFeeRateCache{
+		tradingFeeMap.Store(cacheKey, &TradingFeeRateCache{
 			MakerRate: makerRate,
 			TakerRate: takerRate,
 			Source:    source,
@@ -892,14 +936,32 @@ func getTradingFeeRates(symbol string) (float64, float64, string) {
 		return makerRate, takerRate, source
 	}
 
-	tradingFeeMap.Store(symbol, &TradingFeeRateCache{
+	if err != nil {
+		logger.Warnf("Failed to fetch commission rate for %s from %s, using defaults: %v", symbol, exchangeType, err)
+		makerRate, takerRate, source := defaultFeeRates(symbol)
+		tradingFeeMap.Store(cacheKey, &TradingFeeRateCache{
+			MakerRate: makerRate,
+			TakerRate: takerRate,
+			Source:    source,
+			UpdatedAt: time.Now(),
+		})
+		return makerRate, takerRate, source
+	}
+
+	tradingFeeMap.Store(cacheKey, &TradingFeeRateCache{
 		MakerRate: makerRate,
 		TakerRate: takerRate,
-		Source:    "exchange",
+		Source:    exchangeType,
 		UpdatedAt: time.Now(),
 	})
 
-	return makerRate, takerRate, "exchange"
+	return makerRate, takerRate, exchangeType
+}
+
+// FetchTradingFeeRates is the public function to fetch trading fees with exchange credentials
+// This allows external packages (like AutoTrader) to pass exchange credentials from database
+func FetchTradingFeeRates(symbol string, credentials *ExchangeCredentials) (makerRate, takerRate float64, source string) {
+	return getTradingFeeRatesWithCredentials(Normalize(symbol), credentials)
 }
 
 func defaultFeeRates(symbol string) (float64, float64, string) {

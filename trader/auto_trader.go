@@ -1021,7 +1021,52 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 		}
 	}
 
+	// 12. Set exchange credentials for accurate trading fee fetching
+	ctx.ExchangeCredentials = at.getExchangeCredentials()
+
 	return ctx, nil
+}
+
+// getExchangeCredentials returns the exchange credentials based on current exchange type
+func (at *AutoTrader) getExchangeCredentials() *market.ExchangeCredentials {
+	switch at.exchange {
+	case "binance":
+		if at.config.BinanceAPIKey != "" && at.config.BinanceSecretKey != "" {
+			return &market.ExchangeCredentials{
+				ExchangeType: "binance",
+				APIKey:       at.config.BinanceAPIKey,
+				SecretKey:    at.config.BinanceSecretKey,
+			}
+		}
+	case "bybit":
+		if at.config.BybitAPIKey != "" && at.config.BybitSecretKey != "" {
+			return &market.ExchangeCredentials{
+				ExchangeType: "bybit",
+				APIKey:       at.config.BybitAPIKey,
+				SecretKey:    at.config.BybitSecretKey,
+			}
+		}
+	case "okx":
+		if at.config.OKXAPIKey != "" && at.config.OKXSecretKey != "" {
+			return &market.ExchangeCredentials{
+				ExchangeType: "okx",
+				APIKey:       at.config.OKXAPIKey,
+				SecretKey:    at.config.OKXSecretKey,
+			}
+		}
+	case "bitget":
+		if at.config.BitgetAPIKey != "" && at.config.BitgetSecretKey != "" {
+			return &market.ExchangeCredentials{
+				ExchangeType: "bitget",
+				APIKey:       at.config.BitgetAPIKey,
+				SecretKey:    at.config.BitgetSecretKey,
+			}
+		}
+	// DEX exchanges don't have traditional API key/secret for fee queries
+	// case "hyperliquid", "aster", "lighter":
+	//     These use wallet-based auth, trading fees are typically fixed/known
+	}
+	return nil
 }
 
 // executeDecisionWithRecord executes AI decision and records detailed information

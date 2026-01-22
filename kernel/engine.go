@@ -146,25 +146,26 @@ type RecentOrder struct {
 
 // Context trading context (complete information passed to AI)
 type Context struct {
-	CurrentTime        string                             `json:"current_time"`
-	RuntimeMinutes     int                                `json:"runtime_minutes"`
-	CallCount          int                                `json:"call_count"`
-	Account            AccountInfo                        `json:"account"`
-	Positions          []PositionInfo                     `json:"positions"`
-	CandidateCoins     []CandidateCoin                    `json:"candidate_coins"`
-	PromptVariant      string                             `json:"prompt_variant,omitempty"`
-	TradingStats       *TradingStats                      `json:"trading_stats,omitempty"`
-	RecentOrders       []RecentOrder                      `json:"recent_orders,omitempty"`
-	MarketDataMap      map[string]*market.Data            `json:"-"`
-	MultiTFMarket      map[string]map[string]*market.Data `json:"-"`
-	OITopDataMap       map[string]*OITopData              `json:"-"`
-	QuantDataMap       map[string]*QuantData              `json:"-"`
-	OIRankingData      *nofxos.OIRankingData              `json:"-"` // Market-wide OI ranking data
-	NetFlowRankingData *nofxos.NetFlowRankingData         `json:"-"` // Market-wide fund flow ranking data
-	PriceRankingData   *nofxos.PriceRankingData           `json:"-"` // Market-wide price gainers/losers
-	BTCETHLeverage     int                                `json:"-"`
-	AltcoinLeverage    int                                `json:"-"`
-	Timeframes         []string                           `json:"-"`
+	CurrentTime         string                             `json:"current_time"`
+	RuntimeMinutes      int                                `json:"runtime_minutes"`
+	CallCount           int                                `json:"call_count"`
+	Account             AccountInfo                        `json:"account"`
+	Positions           []PositionInfo                     `json:"positions"`
+	CandidateCoins      []CandidateCoin                    `json:"candidate_coins"`
+	PromptVariant       string                             `json:"prompt_variant,omitempty"`
+	TradingStats        *TradingStats                      `json:"trading_stats,omitempty"`
+	RecentOrders        []RecentOrder                      `json:"recent_orders,omitempty"`
+	MarketDataMap       map[string]*market.Data            `json:"-"`
+	MultiTFMarket       map[string]map[string]*market.Data `json:"-"`
+	OITopDataMap        map[string]*OITopData              `json:"-"`
+	QuantDataMap        map[string]*QuantData              `json:"-"`
+	OIRankingData       *nofxos.OIRankingData              `json:"-"` // Market-wide OI ranking data
+	NetFlowRankingData  *nofxos.NetFlowRankingData         `json:"-"` // Market-wide fund flow ranking data
+	PriceRankingData    *nofxos.PriceRankingData           `json:"-"` // Market-wide price gainers/losers
+	BTCETHLeverage      int                                `json:"-"`
+	AltcoinLeverage     int                                `json:"-"`
+	Timeframes          []string                           `json:"-"`
+	ExchangeCredentials *market.ExchangeCredentials        `json:"-"` // Optional exchange credentials for fetching accurate trading fees
 }
 
 // Decision AI trading decision
@@ -454,6 +455,17 @@ func fetchMarketDataWithStrategy(ctx *Context, engine *StrategyEngine) error {
 		}
 
 		ctx.MarketDataMap[coin.Symbol] = data
+	}
+
+	// 3. If exchange credentials are provided, update trading fees with accurate data from exchange
+	if ctx.ExchangeCredentials != nil && ctx.ExchangeCredentials.APIKey != "" {
+		logger.Infof("🔐 Using exchange credentials (%s) to fetch accurate trading fees", ctx.ExchangeCredentials.ExchangeType)
+		for symbol, data := range ctx.MarketDataMap {
+			makerRate, takerRate, source := market.FetchTradingFeeRates(symbol, ctx.ExchangeCredentials)
+			data.MakerFeeRate = makerRate
+			data.TakerFeeRate = takerRate
+			data.FeeSource = source
+		}
 	}
 
 	logger.Infof("📊 Successfully fetched multi-timeframe market data for %d coins", len(ctx.MarketDataMap))
@@ -1091,11 +1103,14 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString("  - **Dynamic fee rates are provided in the user prompt per coin** (交易手续费会在用户提示词中按币种动态提供)\n")
 	sb.WriteString("  - **Funding rate is also provided per coin in the user prompt** (资金费率也会在用户提示词中按币种提供)\n")
 	sb.WriteString("  - If fee data is not available, use defaults: maker ~0.02-0.04%, taker ~0.04-0.05% (若无法获取则使用默认值)\n")
-	sb.WriteString("  - **IMPORTANT**: When setting stop_loss and take_profit prices, you MUST account for trading fees:\n")
-	sb.WriteString("    - For stop_loss: Add ~0.1-0.15% buffer depending on fee level (止损价格需增加约0.1-0.15%缓冲)\n")
-	sb.WriteString("    - For take_profit: Subtract ~0.1-0.15% buffer depending on fee level (止盈价格需减少约0.1-0.15%缓冲)\n")
-	sb.WriteString("    - Example: If target stop_loss is -5%, set stop_loss price at ~-5.1% (low fee) or ~-5.15% (high fee)\n")
-	sb.WriteString("    - Example: If target take_profit is +8%, set take_profit price at ~+7.9% (low fee) or ~+7.85% (high fee)\n\n")
+	sb.WriteString("  - **IMPORTANT**: Fee buffer for stop_loss/take_profit differs by position direction:\n")
+	sb.WriteString("    - **For LONG positions** (止损在下方，止盈在上方):\n")
+	sb.WriteString("      - stop_loss: Set HIGHER (closer to entry) by ~0.1% (e.g., target -5% → set at -4.9%)\n")
+	sb.WriteString("      - take_profit: Set LOWER (closer to entry) by ~0.1% (e.g., target +8% → set at +7.9%)\n")
+	sb.WriteString("    - **For SHORT positions** (止损在上方，止盈在下方):\n")
+	sb.WriteString("      - stop_loss: Set LOWER (closer to entry) by ~0.1% (e.g., target +5% → set at +4.9%)\n")
+	sb.WriteString("      - take_profit: Set HIGHER (closer to entry) by ~0.1% (e.g., target -8% → set at -7.9%)\n")
+	sb.WriteString("    - **Principle**: Always make SL/TP trigger slightly EARLIER to ensure actual PnL meets target after fees\n\n")
 
 	sb.WriteString("- **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas/expressions (e.g., use `27.76` not `3000 * 0.01`)\n\n")
 
@@ -1508,22 +1523,53 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 
 	sb.WriteString("\n\n")
 
-	if indicators.EnableOI || indicators.EnableFundingRate || data.MakerFeeRate > 0 || data.TakerFeeRate > 0 {
-		sb.WriteString(fmt.Sprintf("Additional data for %s:\n\n", data.Symbol))
+	// Format contract info (funding rate + trading fees) in a unified section
+	hasFundingRate := indicators.EnableFundingRate
+	hasTradingFee := data.MakerFeeRate > 0 || data.TakerFeeRate > 0
+	hasOI := indicators.EnableOI && data.OpenInterest != nil
 
-		if indicators.EnableOI && data.OpenInterest != nil {
-			sb.WriteString(fmt.Sprintf("Open Interest: Latest: %.2f Average: %.2f\n\n",
+	if hasOI || hasFundingRate || hasTradingFee {
+		sb.WriteString(fmt.Sprintf("--- %s Contract Info ---\n", data.Symbol))
+
+		if hasOI {
+			sb.WriteString(fmt.Sprintf("Open Interest: %.2f (avg: %.2f)\n",
 				data.OpenInterest.Latest, data.OpenInterest.Average))
 		}
 
-		if indicators.EnableFundingRate {
-			sb.WriteString(fmt.Sprintf("Funding Rate: %.2e\n\n", data.FundingRate))
+		// Unified funding rate and trading fee display
+		if hasFundingRate || hasTradingFee {
+			sb.WriteString("Cost Structure: ")
+
+			var costParts []string
+
+			if hasFundingRate {
+				// Format funding rate with direction indicator
+				fundingDir := "→"
+				if data.FundingRate > 0 {
+					fundingDir = "Long→Short" // Longs pay shorts
+				} else if data.FundingRate < 0 {
+					fundingDir = "Short→Long" // Shorts pay longs
+				}
+				costParts = append(costParts, fmt.Sprintf("Funding=%.4f%% (%s)",
+					data.FundingRate*100, fundingDir))
+			}
+
+			if hasTradingFee {
+				// Calculate total round-trip cost (open + close)
+				roundTripFee := (data.MakerFeeRate + data.TakerFeeRate) * 100
+				costParts = append(costParts, fmt.Sprintf("Fee(maker/taker)=%.4f%%/%.4f%% [round-trip≈%.3f%%]",
+					data.MakerFeeRate*100, data.TakerFeeRate*100, roundTripFee))
+				if data.FeeSource != "" && data.FeeSource != "default" {
+					sb.WriteString(fmt.Sprintf("%s (source: %s)\n", strings.Join(costParts, ", "), data.FeeSource))
+				} else {
+					sb.WriteString(fmt.Sprintf("%s\n", strings.Join(costParts, ", ")))
+				}
+			} else {
+				sb.WriteString(fmt.Sprintf("%s\n", strings.Join(costParts, ", ")))
+			}
 		}
 
-		if data.MakerFeeRate > 0 || data.TakerFeeRate > 0 {
-			sb.WriteString(fmt.Sprintf("Trading Fee (maker/taker): %.4f%% / %.4f%% (source: %s)\n\n",
-				data.MakerFeeRate*100, data.TakerFeeRate*100, data.FeeSource))
-		}
+		sb.WriteString("\n")
 	}
 
 	if len(data.TimeframeData) > 0 {

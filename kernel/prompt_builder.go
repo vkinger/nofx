@@ -118,12 +118,14 @@ func (pb *PromptBuilder) buildSystemPromptZH() string {
 - **默认参考费率**（可能因币种而异）:
   - **主流币种**（BTC/ETH/BNB）: Maker ~0.02%，Taker ~0.04%
   - **山寨币/低流动性币种**: Maker ~0.04%，Taker ~0.05%
-- **设置止盈止损时的注意事项**:
-  - 设置止损价格时，需额外增加约0.1-0.15%的缓冲（根据实际费率调整），确保考虑手续费后实际亏损不超过目标
-  - 设置止盈价格时，需减少约0.1-0.15%的缓冲（根据实际费率调整），确保考虑手续费后实际盈利达到目标
-  - 示例（低费率）: 目标止损-5% → 设置约-5.1%
-  - 示例（高费率）: 目标止损-5% → 设置约-5.15%
-  - 示例（止盈）: 目标+8% → 设置约+7.85%~7.9%
+- **设置止盈止损时的注意事项**（根据方向不同，缓冲方向也不同）:
+  - **做多(Long)**：止损在下方，止盈在上方
+    - 止损价格**调高**（更接近入场价），让止损更早触发（例：目标-5% → 设置-4.9%）
+    - 止盈价格**调低**（更接近入场价），让止盈更早触发（例：目标+8% → 设置+7.9%）
+  - **做空(Short)**：止损在上方，止盈在下方
+    - 止损价格**调低**（更接近入场价），让止损更早触发（例：目标+5% → 设置+4.9%）
+    - 止盈价格**调高**（更接近入场价），让止盈更早触发（例：目标-8% → 设置-7.9%）
+  - **核心原则**：让止盈止损更早触发，确保扣除手续费后实际盈亏达到预期目标
 
 ## 重要提醒
 
@@ -267,12 +269,14 @@ func (pb *PromptBuilder) buildSystemPromptEN() string {
 - **Default reference rates** (may vary by coin type):
   - **Major coins** (BTC/ETH/BNB): Maker ~0.02%, Taker ~0.04%
   - **Alt/low-liquidity coins**: Maker ~0.04%, Taker ~0.05%
-- **Important considerations when setting stop_loss and take_profit**:
-  - When setting stop_loss price, add ~0.1-0.15% buffer (adjust by actual fee) to ensure loss doesn't exceed target after fees
-  - When setting take_profit price, subtract ~0.1-0.15% buffer (adjust by actual fee) to ensure profit meets target after fees
-  - Example (low fee): target stop_loss -5% → set ~-5.1%
-  - Example (high fee): target stop_loss -5% → set ~-5.15%
-  - Example (take-profit): target +8% → set ~+7.85%~7.9%
+- **Important: Fee buffer direction differs by position type**:
+  - **For LONG positions** (stop_loss below entry, take_profit above):
+    - Set stop_loss HIGHER (closer to entry) by ~0.1% (e.g., target -5% → set at -4.9%)
+    - Set take_profit LOWER (closer to entry) by ~0.1% (e.g., target +8% → set at +7.9%)
+  - **For SHORT positions** (stop_loss above entry, take_profit below):
+    - Set stop_loss LOWER (closer to entry) by ~0.1% (e.g., target +5% → set at +4.9%)
+    - Set take_profit HIGHER (closer to entry) by ~0.1% (e.g., target -8% → set at -7.9%)
+  - **Principle**: Make SL/TP trigger slightly EARLIER to ensure actual PnL meets target after fees
 
 ## Critical Reminders
 
