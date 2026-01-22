@@ -144,69 +144,161 @@ func FormatOIRankingForAI(data *OIRankingData, lang Language) string {
 func formatOIRankingZH(data *OIRankingData) string {
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("## 持仓量变化排行 (%s)\n\n", data.Duration))
+	sb.WriteString(fmt.Sprintf("## OI排行 (%s)\n", data.Duration))
 
+	// OI增加榜 - 紧凑格式
 	if len(data.TopPositions) > 0 {
-		sb.WriteString("### 持仓增加榜\n")
-		sb.WriteString("资金流入，趋势延续或新仓建立信号:\n\n")
-		sb.WriteString("| 排名 | 币种 | 持仓变化(USDT) | OI变化% | 价格变化% |\n")
-		sb.WriteString("|------|------|----------------|---------|----------|\n")
-		for _, pos := range data.TopPositions {
-			sb.WriteString(fmt.Sprintf("| %d | %s | %s | %+.2f%% | %+.2f%% |\n",
-				pos.Rank, pos.Symbol, formatValue(pos.OIDeltaValue),
-				pos.OIDeltaPercent, pos.PriceDeltaPercent))
+		sb.WriteString("▲ ")
+		for i, pos := range data.TopPositions {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			signal := getOISignal(pos.OIDeltaPercent, pos.PriceDeltaPercent)
+			sb.WriteString(fmt.Sprintf("%s(%s,%+.1f%%,P%+.1f%%)[%s]",
+				strings.TrimSuffix(pos.Symbol, "USDT"),
+				formatValue(pos.OIDeltaValue),
+				pos.OIDeltaPercent,
+				pos.PriceDeltaPercent,
+				signal))
 		}
 		sb.WriteString("\n")
 	}
 
+	// OI减少榜 - 紧凑格式
 	if len(data.LowPositions) > 0 {
-		sb.WriteString("### 持仓减少榜\n")
-		sb.WriteString("资金流出，趋势反转或仓位平仓信号:\n\n")
-		sb.WriteString("| 排名 | 币种 | 持仓变化(USDT) | OI变化% | 价格变化% |\n")
-		sb.WriteString("|------|------|----------------|---------|----------|\n")
-		for _, pos := range data.LowPositions {
-			sb.WriteString(fmt.Sprintf("| %d | %s | %s | %+.2f%% | %+.2f%% |\n",
-				pos.Rank, pos.Symbol, formatValue(pos.OIDeltaValue),
-				pos.OIDeltaPercent, pos.PriceDeltaPercent))
+		sb.WriteString("▼ ")
+		for i, pos := range data.LowPositions {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			signal := getOISignal(pos.OIDeltaPercent, pos.PriceDeltaPercent)
+			sb.WriteString(fmt.Sprintf("%s(%s,%+.1f%%,P%+.1f%%)[%s]",
+				strings.TrimSuffix(pos.Symbol, "USDT"),
+				formatValue(pos.OIDeltaValue),
+				pos.OIDeltaPercent,
+				pos.PriceDeltaPercent,
+				signal))
 		}
 		sb.WriteString("\n")
 	}
 
-	sb.WriteString("**解读**: OI增+价涨=多头主导 | OI增+价跌=空头主导 | OI减+价涨=空头平仓 | OI减+价跌=多头平仓\n\n")
+	// 市场综合判断
+	marketSignal := getMarketOISignal(data.TopPositions, data.LowPositions)
+	sb.WriteString(fmt.Sprintf("信号: %s\n\n", marketSignal))
+
 	return sb.String()
+}
+
+// getOISignal 根据OI变化和价格变化判断信号
+func getOISignal(oiDelta, priceDelta float64) string {
+	if oiDelta > 0 && priceDelta > 0 {
+		return "多头建仓"
+	} else if oiDelta > 0 && priceDelta < 0 {
+		return "空头建仓"
+	} else if oiDelta < 0 && priceDelta > 0 {
+		return "空头回补"
+	} else if oiDelta < 0 && priceDelta < 0 {
+		return "多头平仓"
+	}
+	return "观望"
+}
+
+// getMarketOISignal 综合判断市场OI信号
+func getMarketOISignal(topPositions, lowPositions []OIPosition) string {
+	longBuild, shortBuild := 0, 0
+	for _, pos := range topPositions {
+		if pos.PriceDeltaPercent > 0 {
+			longBuild++
+		} else {
+			shortBuild++
+		}
+	}
+
+	if longBuild > shortBuild && longBuild >= 3 {
+		return "多头主导 (多数OI↑伴随价格↑)"
+	} else if shortBuild > longBuild && shortBuild >= 3 {
+		return "空头主导 (多数OI↑伴随价格↓)"
+	}
+	return "多空均衡"
 }
 
 func formatOIRankingEN(data *OIRankingData) string {
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("## Open Interest Changes (%s)\n\n", data.Duration))
+	sb.WriteString(fmt.Sprintf("## OI Ranking (%s)\n", data.Duration))
 
+	// OI Increase - compact format
 	if len(data.TopPositions) > 0 {
-		sb.WriteString("### OI Increase Ranking\n")
-		sb.WriteString("Capital inflow signals - trend continuation or new positions:\n\n")
-		sb.WriteString("| Rank | Symbol | OI Change (USDT) | OI Change % | Price Change % |\n")
-		sb.WriteString("|------|--------|------------------|-------------|----------------|\n")
-		for _, pos := range data.TopPositions {
-			sb.WriteString(fmt.Sprintf("| %d | %s | %s | %+.2f%% | %+.2f%% |\n",
-				pos.Rank, pos.Symbol, formatValue(pos.OIDeltaValue),
-				pos.OIDeltaPercent, pos.PriceDeltaPercent))
+		sb.WriteString("▲ ")
+		for i, pos := range data.TopPositions {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			signal := getOISignalEN(pos.OIDeltaPercent, pos.PriceDeltaPercent)
+			sb.WriteString(fmt.Sprintf("%s(%s,%+.1f%%,P%+.1f%%)[%s]",
+				strings.TrimSuffix(pos.Symbol, "USDT"),
+				formatValue(pos.OIDeltaValue),
+				pos.OIDeltaPercent,
+				pos.PriceDeltaPercent,
+				signal))
 		}
 		sb.WriteString("\n")
 	}
 
+	// OI Decrease - compact format
 	if len(data.LowPositions) > 0 {
-		sb.WriteString("### OI Decrease Ranking\n")
-		sb.WriteString("Capital outflow signals - trend reversal or position closing:\n\n")
-		sb.WriteString("| Rank | Symbol | OI Change (USDT) | OI Change % | Price Change % |\n")
-		sb.WriteString("|------|--------|------------------|-------------|----------------|\n")
-		for _, pos := range data.LowPositions {
-			sb.WriteString(fmt.Sprintf("| %d | %s | %s | %+.2f%% | %+.2f%% |\n",
-				pos.Rank, pos.Symbol, formatValue(pos.OIDeltaValue),
-				pos.OIDeltaPercent, pos.PriceDeltaPercent))
+		sb.WriteString("▼ ")
+		for i, pos := range data.LowPositions {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			signal := getOISignalEN(pos.OIDeltaPercent, pos.PriceDeltaPercent)
+			sb.WriteString(fmt.Sprintf("%s(%s,%+.1f%%,P%+.1f%%)[%s]",
+				strings.TrimSuffix(pos.Symbol, "USDT"),
+				formatValue(pos.OIDeltaValue),
+				pos.OIDeltaPercent,
+				pos.PriceDeltaPercent,
+				signal))
 		}
 		sb.WriteString("\n")
 	}
 
-	sb.WriteString("**Key**: OI up + Price up = Bulls dominant | OI up + Price down = Bears dominant | OI down + Price up = Short covering | OI down + Price down = Long liquidation\n\n")
+	// Market signal summary
+	marketSignal := getMarketOISignalEN(data.TopPositions, data.LowPositions)
+	sb.WriteString(fmt.Sprintf("Signal: %s\n\n", marketSignal))
+
 	return sb.String()
+}
+
+// getOISignalEN returns OI signal in English
+func getOISignalEN(oiDelta, priceDelta float64) string {
+	if oiDelta > 0 && priceDelta > 0 {
+		return "LONG_BUILD"
+	} else if oiDelta > 0 && priceDelta < 0 {
+		return "SHORT_BUILD"
+	} else if oiDelta < 0 && priceDelta > 0 {
+		return "SHORT_COV"
+	} else if oiDelta < 0 && priceDelta < 0 {
+		return "LONG_LIQ"
+	}
+	return "NEUTRAL"
+}
+
+// getMarketOISignalEN returns market OI signal summary in English
+func getMarketOISignalEN(topPositions, lowPositions []OIPosition) string {
+	longBuild, shortBuild := 0, 0
+	for _, pos := range topPositions {
+		if pos.PriceDeltaPercent > 0 {
+			longBuild++
+		} else {
+			shortBuild++
+		}
+	}
+
+	if longBuild > shortBuild && longBuild >= 3 {
+		return "LONG_DOMINANT (most OI↑ with price↑)"
+	} else if shortBuild > longBuild && shortBuild >= 3 {
+		return "SHORT_DOMINANT (most OI↑ with price↓)"
+	}
+	return "BALANCED"
 }

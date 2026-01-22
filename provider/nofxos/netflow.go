@@ -131,133 +131,240 @@ func FormatNetFlowRankingForAI(data *NetFlowRankingData, lang Language) string {
 func formatNetFlowRankingZH(data *NetFlowRankingData) string {
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("## 资金流向排行 (%s)\n\n", data.Duration))
+	sb.WriteString(fmt.Sprintf("## 资金流排行 (%s)\n", data.Duration))
 
-	// Institution inflow
+	// 机构流入 - 紧凑格式
 	if len(data.InstitutionFutureTop) > 0 {
-		sb.WriteString("### 机构资金流入榜\n")
-		sb.WriteString("Smart Money买入信号:\n\n")
-		sb.WriteString("| 排名 | 币种 | 流入金额(USDT) | 价格 |\n")
-		sb.WriteString("|------|------|----------------|------|\n")
-		for _, pos := range data.InstitutionFutureTop {
-			sb.WriteString(fmt.Sprintf("| %d | %s | %s | $%.4f |\n",
-				pos.Rank, pos.Symbol, formatValue(pos.Amount), pos.Price))
+		sb.WriteString("机构▲: ")
+		for i, pos := range data.InstitutionFutureTop {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteString(fmt.Sprintf("%s(%s)",
+				strings.TrimSuffix(pos.Symbol, "USDT"),
+				formatValue(pos.Amount)))
 		}
 		sb.WriteString("\n")
 	}
 
-	// Institution outflow
+	// 机构流出 - 紧凑格式
 	if len(data.InstitutionFutureLow) > 0 {
-		sb.WriteString("### 机构资金流出榜\n")
-		sb.WriteString("Smart Money卖出信号:\n\n")
-		sb.WriteString("| 排名 | 币种 | 流出金额(USDT) | 价格 |\n")
-		sb.WriteString("|------|------|----------------|------|\n")
-		for _, pos := range data.InstitutionFutureLow {
-			sb.WriteString(fmt.Sprintf("| %d | %s | %s | $%.4f |\n",
-				pos.Rank, pos.Symbol, formatValue(pos.Amount), pos.Price))
+		sb.WriteString("机构▼: ")
+		for i, pos := range data.InstitutionFutureLow {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteString(fmt.Sprintf("%s(%s)",
+				strings.TrimSuffix(pos.Symbol, "USDT"),
+				formatValue(pos.Amount)))
 		}
 		sb.WriteString("\n")
 	}
 
-	// Retail flow summary
-	if len(data.PersonalFutureTop) > 0 || len(data.PersonalFutureLow) > 0 {
-		sb.WriteString("### 散户资金动向\n")
-		if len(data.PersonalFutureTop) > 0 {
-			sb.WriteString("散户买入: ")
-			for i, pos := range data.PersonalFutureTop {
-				if i >= 3 {
-					break
-				}
-				if i > 0 {
-					sb.WriteString(", ")
-				}
-				sb.WriteString(fmt.Sprintf("%s(%s)", pos.Symbol, formatValue(pos.Amount)))
+	// 散户流入 - 紧凑格式
+	if len(data.PersonalFutureTop) > 0 {
+		sb.WriteString("散户▲: ")
+		for i, pos := range data.PersonalFutureTop {
+			if i > 0 {
+				sb.WriteString(", ")
 			}
-			sb.WriteString("\n")
-		}
-		if len(data.PersonalFutureLow) > 0 {
-			sb.WriteString("散户卖出: ")
-			for i, pos := range data.PersonalFutureLow {
-				if i >= 3 {
-					break
-				}
-				if i > 0 {
-					sb.WriteString(", ")
-				}
-				sb.WriteString(fmt.Sprintf("%s(%s)", pos.Symbol, formatValue(pos.Amount)))
-			}
-			sb.WriteString("\n")
+			sb.WriteString(fmt.Sprintf("%s(%s)",
+				strings.TrimSuffix(pos.Symbol, "USDT"),
+				formatValue(pos.Amount)))
 		}
 		sb.WriteString("\n")
 	}
 
-	sb.WriteString("**解读**: 机构买入+散户卖出=强烈看多 | 机构卖出+散户买入=强烈看空\n\n")
+	// 散户流出 - 紧凑格式
+	if len(data.PersonalFutureLow) > 0 {
+		sb.WriteString("散户▼: ")
+		for i, pos := range data.PersonalFutureLow {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteString(fmt.Sprintf("%s(%s)",
+				strings.TrimSuffix(pos.Symbol, "USDT"),
+				formatValue(pos.Amount)))
+		}
+		sb.WriteString("\n")
+	}
+
+	// 综合信号判断
+	signal := getFlowSignalZH(data)
+	sb.WriteString(fmt.Sprintf("信号: %s\n\n", signal))
+
 	return sb.String()
+}
+
+// getFlowSignalZH 综合判断资金流信号（中文）
+func getFlowSignalZH(data *NetFlowRankingData) string {
+	var signals []string
+
+	// 检查机构和散户对同一币种的相反操作
+	instInSymbols := make(map[string]bool)
+	for _, pos := range data.InstitutionFutureTop {
+		instInSymbols[pos.Symbol] = true
+	}
+
+	retailOutSymbols := make(map[string]bool)
+	for _, pos := range data.PersonalFutureLow {
+		retailOutSymbols[pos.Symbol] = true
+	}
+
+	// 机构买+散户卖 = 强看多
+	var smartMoneyBuy []string
+	for symbol := range instInSymbols {
+		if retailOutSymbols[symbol] {
+			smartMoneyBuy = append(smartMoneyBuy, strings.TrimSuffix(symbol, "USDT"))
+		}
+	}
+	if len(smartMoneyBuy) > 0 {
+		signals = append(signals, fmt.Sprintf("%s [机构买+散户卖=强看多]", strings.Join(smartMoneyBuy, "/")))
+	}
+
+	// 机构卖+散户买 = 强看空
+	instOutSymbols := make(map[string]bool)
+	for _, pos := range data.InstitutionFutureLow {
+		instOutSymbols[pos.Symbol] = true
+	}
+
+	retailInSymbols := make(map[string]bool)
+	for _, pos := range data.PersonalFutureTop {
+		retailInSymbols[pos.Symbol] = true
+	}
+
+	var distributionWarning []string
+	for symbol := range instOutSymbols {
+		if retailInSymbols[symbol] {
+			distributionWarning = append(distributionWarning, strings.TrimSuffix(symbol, "USDT"))
+		}
+	}
+	if len(distributionWarning) > 0 {
+		signals = append(signals, fmt.Sprintf("%s [机构卖+散户买=派发警告]", strings.Join(distributionWarning, "/")))
+	}
+
+	if len(signals) == 0 {
+		return "无明显异常信号"
+	}
+	return strings.Join(signals, " | ")
 }
 
 func formatNetFlowRankingEN(data *NetFlowRankingData) string {
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("## Fund Flow Ranking (%s)\n\n", data.Duration))
+	sb.WriteString(fmt.Sprintf("## Flow Ranking (%s)\n", data.Duration))
 
-	// Institution inflow
+	// Institution inflow - compact format
 	if len(data.InstitutionFutureTop) > 0 {
-		sb.WriteString("### Institution Inflow\n")
-		sb.WriteString("Smart Money buying signals:\n\n")
-		sb.WriteString("| Rank | Symbol | Inflow (USDT) | Price |\n")
-		sb.WriteString("|------|--------|---------------|-------|\n")
-		for _, pos := range data.InstitutionFutureTop {
-			sb.WriteString(fmt.Sprintf("| %d | %s | %s | $%.4f |\n",
-				pos.Rank, pos.Symbol, formatValue(pos.Amount), pos.Price))
+		sb.WriteString("Inst▲: ")
+		for i, pos := range data.InstitutionFutureTop {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteString(fmt.Sprintf("%s(%s)",
+				strings.TrimSuffix(pos.Symbol, "USDT"),
+				formatValue(pos.Amount)))
 		}
 		sb.WriteString("\n")
 	}
 
-	// Institution outflow
+	// Institution outflow - compact format
 	if len(data.InstitutionFutureLow) > 0 {
-		sb.WriteString("### Institution Outflow\n")
-		sb.WriteString("Smart Money selling signals:\n\n")
-		sb.WriteString("| Rank | Symbol | Outflow (USDT) | Price |\n")
-		sb.WriteString("|------|--------|----------------|-------|\n")
-		for _, pos := range data.InstitutionFutureLow {
-			sb.WriteString(fmt.Sprintf("| %d | %s | %s | $%.4f |\n",
-				pos.Rank, pos.Symbol, formatValue(pos.Amount), pos.Price))
+		sb.WriteString("Inst▼: ")
+		for i, pos := range data.InstitutionFutureLow {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteString(fmt.Sprintf("%s(%s)",
+				strings.TrimSuffix(pos.Symbol, "USDT"),
+				formatValue(pos.Amount)))
 		}
 		sb.WriteString("\n")
 	}
 
-	// Retail flow summary
-	if len(data.PersonalFutureTop) > 0 || len(data.PersonalFutureLow) > 0 {
-		sb.WriteString("### Retail Flow\n")
-		if len(data.PersonalFutureTop) > 0 {
-			sb.WriteString("Retail buying: ")
-			for i, pos := range data.PersonalFutureTop {
-				if i >= 3 {
-					break
-				}
-				if i > 0 {
-					sb.WriteString(", ")
-				}
-				sb.WriteString(fmt.Sprintf("%s(%s)", pos.Symbol, formatValue(pos.Amount)))
+	// Retail inflow - compact format
+	if len(data.PersonalFutureTop) > 0 {
+		sb.WriteString("Retail▲: ")
+		for i, pos := range data.PersonalFutureTop {
+			if i > 0 {
+				sb.WriteString(", ")
 			}
-			sb.WriteString("\n")
-		}
-		if len(data.PersonalFutureLow) > 0 {
-			sb.WriteString("Retail selling: ")
-			for i, pos := range data.PersonalFutureLow {
-				if i >= 3 {
-					break
-				}
-				if i > 0 {
-					sb.WriteString(", ")
-				}
-				sb.WriteString(fmt.Sprintf("%s(%s)", pos.Symbol, formatValue(pos.Amount)))
-			}
-			sb.WriteString("\n")
+			sb.WriteString(fmt.Sprintf("%s(%s)",
+				strings.TrimSuffix(pos.Symbol, "USDT"),
+				formatValue(pos.Amount)))
 		}
 		sb.WriteString("\n")
 	}
 
-	sb.WriteString("**Key**: Institution buy + Retail sell = Strong bullish | Institution sell + Retail buy = Strong bearish\n\n")
+	// Retail outflow - compact format
+	if len(data.PersonalFutureLow) > 0 {
+		sb.WriteString("Retail▼: ")
+		for i, pos := range data.PersonalFutureLow {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteString(fmt.Sprintf("%s(%s)",
+				strings.TrimSuffix(pos.Symbol, "USDT"),
+				formatValue(pos.Amount)))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Signal summary
+	signal := getFlowSignalEN(data)
+	sb.WriteString(fmt.Sprintf("Signal: %s\n\n", signal))
+
 	return sb.String()
+}
+
+// getFlowSignalEN returns flow signal summary in English
+func getFlowSignalEN(data *NetFlowRankingData) string {
+	var signals []string
+
+	// Check for smart money accumulation (inst buy + retail sell)
+	instInSymbols := make(map[string]bool)
+	for _, pos := range data.InstitutionFutureTop {
+		instInSymbols[pos.Symbol] = true
+	}
+
+	retailOutSymbols := make(map[string]bool)
+	for _, pos := range data.PersonalFutureLow {
+		retailOutSymbols[pos.Symbol] = true
+	}
+
+	var smartMoneyBuy []string
+	for symbol := range instInSymbols {
+		if retailOutSymbols[symbol] {
+			smartMoneyBuy = append(smartMoneyBuy, strings.TrimSuffix(symbol, "USDT"))
+		}
+	}
+	if len(smartMoneyBuy) > 0 {
+		signals = append(signals, fmt.Sprintf("%s [SMART_MONEY_ACCUMULATION]", strings.Join(smartMoneyBuy, "/")))
+	}
+
+	// Check for distribution (inst sell + retail buy)
+	instOutSymbols := make(map[string]bool)
+	for _, pos := range data.InstitutionFutureLow {
+		instOutSymbols[pos.Symbol] = true
+	}
+
+	retailInSymbols := make(map[string]bool)
+	for _, pos := range data.PersonalFutureTop {
+		retailInSymbols[pos.Symbol] = true
+	}
+
+	var distributionWarning []string
+	for symbol := range instOutSymbols {
+		if retailInSymbols[symbol] {
+			distributionWarning = append(distributionWarning, strings.TrimSuffix(symbol, "USDT"))
+		}
+	}
+	if len(distributionWarning) > 0 {
+		signals = append(signals, fmt.Sprintf("%s [DISTRIBUTION_WARNING]", strings.Join(distributionWarning, "/")))
+	}
+
+	if len(signals) == 0 {
+		return "NO_SIGNIFICANT_DIVERGENCE"
+	}
+	return strings.Join(signals, " | ")
 }
