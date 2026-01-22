@@ -897,7 +897,6 @@ export function AdvancedChart({
 
             // 设置价格线样式
             let lineColor = '#F0B90B' // 默认黄色
-            const lineStyle = 2 // 虚线
             let title = ''
 
             if (isStopLoss) {
