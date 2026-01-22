@@ -981,7 +981,7 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString(fmt.Sprintf("- Example: With equity %.0f and BTC/ETH ratio %.1fx, max is %.0f USDT\n",
 		accountEquity, btcEthPosValueRatio, accountEquity*btcEthPosValueRatio))
 	sb.WriteString("- **DO NOT** just use available_balance as position_size_usd. Use the Position Value Limits!\n\n")
-	
+
 	// Dynamic position size validation rule
 	sb.WriteString("### ⚠️ Dynamic Position Size Validation (CRITICAL - 关键验证):\n")
 	sb.WriteString("**Before outputting `position_size_usd`, you MUST validate and adjust if necessary:**\n\n")
@@ -1086,7 +1086,17 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString("  - For `open_short`: `take_profit` MUST be LOWER than `stop_loss` (止盈必须低于止损)\n")
 	sb.WriteString("  - Example for long: Entry 100, stop_loss 95, take_profit 110 ✓ (stop_loss < take_profit)\n")
 	sb.WriteString("  - Example for short: Entry 100, stop_loss 110, take_profit 95 ✓ (take_profit < stop_loss)\n\n")
-	
+
+	sb.WriteString("- **Trading Fees (交易手续费)** (CRITICAL - 关键信息):\n")
+	sb.WriteString("  - Opening fee: ~0.04% (开仓手续费约0.04%)\n")
+	sb.WriteString("  - Closing fee: ~0.04% (平仓手续费约0.04%)\n")
+	sb.WriteString("  - Total round-trip fee: ~0.08% (完整交易循环总手续费约0.08%)\n")
+	sb.WriteString("  - **IMPORTANT**: When setting stop_loss and take_profit prices, you MUST account for trading fees:\n")
+	sb.WriteString("    - For stop_loss: Add ~0.1% buffer to ensure actual loss doesn't exceed your target (止损价格需额外增加约0.1%缓冲，确保实际亏损不超过目标)\n")
+	sb.WriteString("    - For take_profit: Subtract ~0.1% buffer to ensure actual profit meets your target (止盈价格需减少约0.1%缓冲，确保实际盈利达到目标)\n")
+	sb.WriteString("    - Example: If target stop_loss is -5%, set stop_loss price at ~-5.1% to account for fees\n")
+	sb.WriteString("    - Example: If target take_profit is +8%, set take_profit price at ~+7.9% to account for fees\n\n")
+
 	sb.WriteString("- **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas/expressions (e.g., use `27.76` not `3000 * 0.01`)\n\n")
 
 	sb.WriteString("## Validation Rules (Backend will reject invalid formats)\n\n")

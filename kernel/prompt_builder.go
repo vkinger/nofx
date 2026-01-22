@@ -59,7 +59,7 @@ func (pb *PromptBuilder) buildSystemPromptZH() string {
 ### 风险优先
 - 保证金使用率不得超过30%
 - 单个持仓亏损达到-5%必须止损
-- 优先保护资本，再考虑盈利
+- 优先保护资本，再考虑盈利a s d
 
 ### 跟踪止盈
 - 当持仓盈亏从峰值回撤30%时，考虑部分或全部止盈
@@ -112,13 +112,25 @@ func (pb *PromptBuilder) buildSystemPromptZH() string {
 - **confidence**: 信心度（0-100）
 - **reasoning**: 推理过程（必需，必须详细说明决策依据）
 
+## 交易手续费说明（重要）
+
+- **开仓手续费**: 约0.04%（每笔开仓交易）
+- **平仓手续费**: 约0.04%（每笔平仓交易）
+- **完整交易循环总手续费**: 约0.08%（开仓+平仓）
+- **设置止盈止损时的注意事项**:
+  - 设置止损价格时，需额外增加约0.1%的缓冲，确保考虑手续费后实际亏损不超过目标
+  - 设置止盈价格时，需减少约0.1%的缓冲，确保考虑手续费后实际盈利达到目标
+  - 示例：如果目标止损是-5%，应设置止损价格在约-5.1%的位置
+  - 示例：如果目标止盈是+8%，应设置止盈价格在约+7.9%的位置
+
 ## 重要提醒
 
 1. **永远不要**混淆已实现盈亏和未实现盈亏
 2. **永远记得**考虑杠杆对盈亏的放大作用
-3. **永远关注**Peak PnL，这是判断止盈的关键指标
-4. **永远结合**持仓量(OI)变化来判断趋势真实性
-5. **永远遵守**风险管理规则，保护资本是第一位的
+3. **永远记得**在设置止盈止损时考虑交易手续费
+4. **永远关注**Peak PnL，这是判断止盈的关键指标
+5. **永远结合**持仓量(OI)变化来判断趋势真实性
+6. **永远遵守**风险管理规则，保护资本是第一位的
 
 现在，请仔细分析接下来提供的交易数据，并做出专业的决策。`
 }
@@ -247,13 +259,25 @@ func (pb *PromptBuilder) buildSystemPromptEN() string {
 - **confidence**: Confidence level (0-100)
 - **reasoning**: Detailed reasoning (required, must explain decision basis)
 
+## Trading Fees Information (Important)
+
+- **Opening fee**: ~0.04% (per opening trade)
+- **Closing fee**: ~0.04% (per closing trade)
+- **Total round-trip fee**: ~0.08% (opening + closing)
+- **Important considerations when setting stop_loss and take_profit**:
+  - When setting stop_loss price, add ~0.1% buffer to ensure actual loss doesn't exceed your target after fees
+  - When setting take_profit price, subtract ~0.1% buffer to ensure actual profit meets your target after fees
+  - Example: If target stop_loss is -5%, set stop_loss price at ~-5.1% to account for fees
+  - Example: If target take_profit is +8%, set take_profit price at ~+7.9% to account for fees
+
 ## Critical Reminders
 
 1. **Never** confuse realized and unrealized P&L
 2. **Always remember** leverage amplifies both gains and losses
-3. **Always watch** Peak PnL - it's key for take-profit decisions
-4. **Always combine** OI changes to validate trend authenticity
-5. **Always follow** risk management rules - capital protection is priority #1
+3. **Always remember** to account for trading fees when setting stop-loss and take-profit prices
+4. **Always watch** Peak PnL - it's key for take-profit decisions
+5. **Always combine** OI changes to validate trend authenticity
+6. **Always follow** risk management rules - capital protection is priority #1
 
 Now, please carefully analyze the trading data provided next and make professional decisions.`
 }
