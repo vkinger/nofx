@@ -194,7 +194,7 @@ function MessageCard({ msg }: { msg: DebateMessage }) {
                 {msg.decision.symbol && (
                   <div className="flex justify-between">
                     <span className="text-gray-500">币种</span>
-                    <span className="text-white font-medium">{msg.decision.symbol}</span>
+                    <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{msg.decision.symbol}</span>
                   </div>
                 )}
                 <div className="flex justify-between">
@@ -208,13 +208,13 @@ function MessageCard({ msg }: { msg: DebateMessage }) {
                 {(msg.decision.leverage ?? 0) > 0 && (
                   <div className="flex justify-between">
                     <span className="text-gray-500">杠杆</span>
-                    <span className="text-white">{msg.decision.leverage}x</span>
+                    <span style={{ color: 'var(--text-primary)' }}>{msg.decision.leverage}x</span>
                   </div>
                 )}
                 {(msg.decision.position_pct ?? 0) > 0 && (
                   <div className="flex justify-between">
                     <span className="text-gray-500">仓位</span>
-                    <span className="text-white">{((msg.decision.position_pct ?? 0) * 100).toFixed(0)}%</span>
+                    <span style={{ color: 'var(--text-primary)' }}>{((msg.decision.position_pct ?? 0) * 100).toFixed(0)}%</span>
                   </div>
                 )}
                 {(msg.decision.stop_loss ?? 0) > 0 && (
@@ -257,7 +257,7 @@ function MessageCard({ msg }: { msg: DebateMessage }) {
                   const da = ACT[d.action] || ACT.wait
                   return (
                     <div key={i} className="flex items-center justify-between text-xs p-2 bg-white/5 rounded">
-                      <span className="text-white font-medium">{d.symbol}</span>
+                      <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{d.symbol}</span>
                       <span className={da.color}>{da.icon} {da.label}</span>
                       <span className="text-yellow-400">{d.confidence}%</span>
                       <span className="text-gray-400">{d.leverage || 0}x / {((d.position_pct || 0) * 100).toFixed(0)}%</span>
@@ -294,7 +294,7 @@ function VoteCard({ vote }: { vote: { ai_model_name: string; action: string; sym
       <div className="mb-3">
         <div className="flex justify-between text-sm mb-1">
           <span className="text-gray-400">Confidence</span>
-          <span className="text-white font-bold">{vote.confidence}%</span>
+          <span className="font-bold" style={{ color: 'var(--text-primary)' }}>{vote.confidence}%</span>
         </div>
         <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
           <div className={`h-full ${confColor} rounded-full transition-all`} style={{ width: `${vote.confidence}%` }} />

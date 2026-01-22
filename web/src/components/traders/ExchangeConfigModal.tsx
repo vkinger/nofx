@@ -3,6 +3,7 @@ import type { Exchange } from '../../types'
 import { t, type Language } from '../../i18n/translations'
 import { api } from '../../lib/api'
 import { getExchangeIcon } from '../ExchangeIcons'
+import { useTheme } from '../../contexts/ThemeContext'
 import {
   TwoStageKeyModal,
   type TwoStageKeyModalResult,
@@ -60,6 +61,8 @@ export function ExchangeConfigModal({
   onClose,
   language,
 }: ExchangeConfigModalProps) {
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
   // Selected exchange type for creating new accounts
   const [selectedExchangeType, setSelectedExchangeType] = useState('')
   const [apiKey, setApiKey] = useState('')
@@ -348,17 +351,24 @@ export function ExchangeConfigModal({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
       <div
-        className="bg-gray-800 rounded-lg w-full max-w-lg relative my-8"
+        className="rounded-lg w-full max-w-lg relative my-8"
         style={{
-          background: '#1E2329',
+          background: isDark 
+            ? 'linear-gradient(135deg, rgba(30, 36, 42, 0.95) 0%, rgba(24, 28, 33, 0.95) 100%)'
+            : 'var(--panel-bg)',
+          border: '1px solid var(--panel-border)',
           maxHeight: 'calc(100vh - 4rem)',
         }}
       >
         <div
           className="flex items-center justify-between p-6 pb-4 sticky top-0 z-10"
-          style={{ background: '#1E2329' }}
+          style={{ 
+            background: isDark 
+              ? 'linear-gradient(135deg, rgba(30, 36, 42, 0.95) 0%, rgba(37, 43, 53, 0.95) 100%)'
+              : 'var(--panel-bg)',
+          }}
         >
-          <h3 className="text-xl font-bold" style={{ color: '#EAECEF' }}>
+          <h3 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
             {editingExchangeId
               ? t('editExchange', language)
               : t('addExchange', language)}
@@ -425,11 +435,17 @@ export function ExchangeConfigModal({
                   <select
                     value={selectedExchangeType}
                     onChange={(e) => setSelectedExchangeType(e.target.value)}
-                    className="w-full px-3 py-2 rounded"
+                    className="w-full px-3 py-2 rounded transition-colors focus:outline-none"
                     style={{
-                      background: '#0B0E11',
-                      border: '1px solid #2B3139',
-                      color: '#EAECEF',
+                      background: 'var(--panel-bg)',
+                      border: '1px solid var(--panel-border)',
+                      color: 'var(--text-primary)',
+                    }}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--panel-border)'
                     }}
                     aria-label={t('selectExchange', language)}
                     disabled={
@@ -453,38 +469,41 @@ export function ExchangeConfigModal({
             )}
 
             {selectedTemplate && (
-              <div
-                className="p-4 rounded"
-                style={{ background: '#0B0E11', border: '1px solid #2B3139' }}
-              >
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-8 h-8 flex items-center justify-center">
-                    {getExchangeIcon(selectedTemplate.exchange_type, {
-                      width: 32,
-                      height: 32,
-                    })}
-                  </div>
-                  <div>
-                    <div className="font-semibold" style={{ color: '#EAECEF' }}>
-                      {getShortName(selectedTemplate.name)}
-                      {editingExchangeId && selectedExchange?.account_name && (
-                        <span className="text-sm font-normal ml-2" style={{ color: '#848E9C' }}>
-                          - {selectedExchange.account_name}
-                        </span>
-                      )}
+                <div
+                  className="p-4 rounded"
+                  style={{ 
+                    background: isDark ? 'rgba(11, 14, 17, 0.6)' : 'var(--panel-bg)',
+                    border: '1px solid var(--panel-border)',
+                  }}
+                >
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-8 h-8 flex items-center justify-center">
+                      {getExchangeIcon(selectedTemplate.exchange_type, {
+                        width: 32,
+                        height: 32,
+                      })}
                     </div>
-                    <div className="text-xs" style={{ color: '#848E9C' }}>
-                      {selectedTemplate.type.toUpperCase()} •{' '}
-                      {selectedTemplate.exchange_type}
+                    <div>
+                      <div className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+                        {getShortName(selectedTemplate.name)}
+                        {editingExchangeId && selectedExchange?.account_name && (
+                          <span className="text-sm font-normal ml-2" style={{ color: 'var(--text-secondary)' }}>
+                            - {selectedExchange.account_name}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                        {selectedTemplate.type.toUpperCase()} •{' '}
+                        {selectedTemplate.exchange_type}
+                      </div>
                     </div>
                   </div>
-                </div>
 
                 {/* 账户名称输入 */}
                 <div className="mt-3">
                   <label
                     className="block text-sm font-semibold mb-2"
-                    style={{ color: '#EAECEF' }}
+                    style={{ color: 'var(--text-primary)' }}
                   >
                     {language === 'zh' ? '账户名称' : 'Account Name'} *
                   </label>
@@ -493,15 +512,21 @@ export function ExchangeConfigModal({
                     value={accountName}
                     onChange={(e) => setAccountName(e.target.value)}
                     placeholder={language === 'zh' ? '例如：主账户、套利账户' : 'e.g., Main Account, Arbitrage Account'}
-                    className="w-full px-3 py-2 rounded"
+                    className="w-full px-3 py-2 rounded transition-colors focus:outline-none"
                     style={{
-                      background: '#1E2329',
-                      border: '1px solid #2B3139',
-                      color: '#EAECEF',
+                      background: 'var(--panel-bg)',
+                      border: '1px solid var(--panel-border)',
+                      color: 'var(--text-primary)',
+                    }}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--panel-border)'
                     }}
                     required
                   />
-                  <div className="text-xs mt-1" style={{ color: '#848E9C' }}>
+                  <div className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
                     {language === 'zh'
                       ? '为此账户设置一个易于识别的名称，以便区分同一交易所的多个账户'
                       : 'Set an easily recognizable name for this account to distinguish multiple accounts on the same exchange'}
@@ -521,7 +546,7 @@ export function ExchangeConfigModal({
                 >
                   <div className="flex items-center gap-2">
                     <UserPlus className="w-4 h-4" style={{ color: '#F0B90B' }} />
-                    <span className="text-sm" style={{ color: '#EAECEF' }}>
+                    <span className="text-sm" style={{ color: 'var(--text-primary)' }}>
                       {language === 'zh' ? '还没有交易所账号？点击注册' : "No exchange account? Register here"}
                     </span>
                     {exchangeRegistrationLinks[currentExchangeType || '']?.hasReferral && (
@@ -533,7 +558,7 @@ export function ExchangeConfigModal({
                       </span>
                     )}
                   </div>
-                  <ExternalLink className="w-4 h-4" style={{ color: '#848E9C' }} />
+                  <ExternalLink className="w-4 h-4" style={{ color: 'var(--text-secondary)' }} />
                 </a>
               </div>
             )}
@@ -648,7 +673,7 @@ export function ExchangeConfigModal({
                       <div>
                         <label
                           className="block text-sm font-semibold mb-2"
-                          style={{ color: '#EAECEF' }}
+                          style={{ color: 'var(--text-primary)' }}
                         >
                           {t('apiKey', language)}
                         </label>
@@ -657,11 +682,17 @@ export function ExchangeConfigModal({
                           value={apiKey}
                           onChange={(e) => setApiKey(e.target.value)}
                           placeholder={t('enterAPIKey', language)}
-                          className="w-full px-3 py-2 rounded"
+                          className="w-full px-3 py-2 rounded transition-colors focus:outline-none"
                           style={{
-                            background: '#0B0E11',
-                            border: '1px solid #2B3139',
-                            color: '#EAECEF',
+                            background: 'var(--panel-bg)',
+                            border: '1px solid var(--panel-border)',
+                            color: 'var(--text-primary)',
+                          }}
+                          onFocus={(e) => {
+                            e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                          }}
+                          onBlur={(e) => {
+                            e.currentTarget.style.borderColor = 'var(--panel-border)'
                           }}
                           required
                         />
@@ -670,7 +701,7 @@ export function ExchangeConfigModal({
                       <div>
                         <label
                           className="block text-sm font-semibold mb-2"
-                          style={{ color: '#EAECEF' }}
+                          style={{ color: 'var(--text-primary)' }}
                         >
                           {t('secretKey', language)}
                         </label>
@@ -679,11 +710,17 @@ export function ExchangeConfigModal({
                           value={secretKey}
                           onChange={(e) => setSecretKey(e.target.value)}
                           placeholder={t('enterSecretKey', language)}
-                          className="w-full px-3 py-2 rounded"
+                          className="w-full px-3 py-2 rounded transition-colors focus:outline-none"
                           style={{
-                            background: '#0B0E11',
-                            border: '1px solid #2B3139',
-                            color: '#EAECEF',
+                            background: 'var(--panel-bg)',
+                            border: '1px solid var(--panel-border)',
+                            color: 'var(--text-primary)',
+                          }}
+                          onFocus={(e) => {
+                            e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                          }}
+                          onBlur={(e) => {
+                            e.currentTarget.style.borderColor = 'var(--panel-border)'
                           }}
                           required
                         />
@@ -693,7 +730,7 @@ export function ExchangeConfigModal({
                         <div>
                           <label
                             className="block text-sm font-semibold mb-2"
-                            style={{ color: '#EAECEF' }}
+                            style={{ color: 'var(--text-primary)' }}
                           >
                             {t('passphrase', language)}
                           </label>
@@ -702,11 +739,17 @@ export function ExchangeConfigModal({
                             value={passphrase}
                             onChange={(e) => setPassphrase(e.target.value)}
                             placeholder={t('enterPassphrase', language)}
-                            className="w-full px-3 py-2 rounded"
+                            className="w-full px-3 py-2 rounded transition-colors focus:outline-none"
                             style={{
-                              background: '#0B0E11',
-                              border: '1px solid #2B3139',
-                              color: '#EAECEF',
+                              background: 'var(--panel-bg)',
+                              border: '1px solid var(--panel-border)',
+                              color: 'var(--text-primary)',
+                            }}
+                            onFocus={(e) => {
+                              e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                            }}
+                            onBlur={(e) => {
+                              e.currentTarget.style.borderColor = 'var(--panel-border)'
                             }}
                             required
                           />
@@ -730,7 +773,7 @@ export function ExchangeConfigModal({
                           </div>
                           <div
                             className="text-xs mb-3"
-                            style={{ color: '#848E9C' }}
+                            style={{ color: 'var(--text-secondary)' }}
                           >
                             {t('whitelistIPDesc', language)}
                           </div>
@@ -738,14 +781,14 @@ export function ExchangeConfigModal({
                           {loadingIP ? (
                             <div
                               className="text-xs"
-                              style={{ color: '#848E9C' }}
+                              style={{ color: 'var(--text-secondary)' }}
                             >
                               {t('loadingServerIP', language)}
                             </div>
                           ) : serverIP && serverIP.public_ip ? (
                             <div
                               className="flex items-center gap-2 p-2 rounded"
-                              style={{ background: '#0B0E11' }}
+                              style={{ background: isDark ? 'rgba(11, 14, 17, 0.6)' : 'var(--panel-bg)' }}
                             >
                               <code
                                 className="flex-1 text-sm font-mono"
@@ -809,13 +852,13 @@ export function ExchangeConfigModal({
                     <div>
                       <label
                         className="block text-sm font-semibold mb-2 flex items-center gap-2"
-                        style={{ color: '#EAECEF' }}
+                        style={{ color: 'var(--text-primary)' }}
                       >
                         {t('asterUserLabel', language)}
                         <Tooltip content={t('asterUserDesc', language)}>
                           <HelpCircle
                             className="w-4 h-4 cursor-help"
-                            style={{ color: '#F0B90B' }}
+                            style={{ color: 'var(--nofx-gold)' }}
                           />
                         </Tooltip>
                       </label>
@@ -824,17 +867,23 @@ export function ExchangeConfigModal({
                         value={asterUser}
                         onChange={(e) => setAsterUser(e.target.value)}
                         placeholder={t('enterAsterUser', language)}
-                        className="w-full px-3 py-2 rounded"
+                        className="w-full px-3 py-2 rounded transition-colors focus:outline-none"
                         style={{
-                          background: '#0B0E11',
-                          border: '1px solid #2B3139',
-                          color: '#EAECEF',
+                          background: 'var(--panel-bg)',
+                          border: '1px solid var(--panel-border)',
+                          color: 'var(--text-primary)',
+                        }}
+                        onFocus={(e) => {
+                          e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                        }}
+                        onBlur={(e) => {
+                          e.currentTarget.style.borderColor = 'var(--panel-border)'
                         }}
                         required
                       />
                       <div
                         className="text-xs mt-1"
-                        style={{ color: '#848E9C' }}
+                        style={{ color: 'var(--text-secondary)' }}
                       >
                         {t('asterUserDesc', language)}
                       </div>
@@ -844,13 +893,13 @@ export function ExchangeConfigModal({
                     <div>
                       <label
                         className="block text-sm font-semibold mb-2 flex items-center gap-2"
-                        style={{ color: '#EAECEF' }}
+                        style={{ color: 'var(--text-primary)' }}
                       >
                         {t('asterSignerLabel', language)}
                         <Tooltip content={t('asterSignerDesc', language)}>
                           <HelpCircle
                             className="w-4 h-4 cursor-help"
-                            style={{ color: '#F0B90B' }}
+                            style={{ color: 'var(--nofx-gold)' }}
                           />
                         </Tooltip>
                       </label>
@@ -859,17 +908,23 @@ export function ExchangeConfigModal({
                         value={asterSigner}
                         onChange={(e) => setAsterSigner(e.target.value)}
                         placeholder={t('enterAsterSigner', language)}
-                        className="w-full px-3 py-2 rounded"
+                        className="w-full px-3 py-2 rounded transition-colors focus:outline-none"
                         style={{
-                          background: '#0B0E11',
-                          border: '1px solid #2B3139',
-                          color: '#EAECEF',
+                          background: 'var(--panel-bg)',
+                          border: '1px solid var(--panel-border)',
+                          color: 'var(--text-primary)',
+                        }}
+                        onFocus={(e) => {
+                          e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                        }}
+                        onBlur={(e) => {
+                          e.currentTarget.style.borderColor = 'var(--panel-border)'
                         }}
                         required
                       />
                       <div
                         className="text-xs mt-1"
-                        style={{ color: '#848E9C' }}
+                        style={{ color: 'var(--text-secondary)' }}
                       >
                         {t('asterSignerDesc', language)}
                       </div>
@@ -879,13 +934,13 @@ export function ExchangeConfigModal({
                     <div>
                       <label
                         className="block text-sm font-semibold mb-2 flex items-center gap-2"
-                        style={{ color: '#EAECEF' }}
+                        style={{ color: 'var(--text-primary)' }}
                       >
                         {t('asterPrivateKeyLabel', language)}
                         <Tooltip content={t('asterPrivateKeyDesc', language)}>
                           <HelpCircle
                             className="w-4 h-4 cursor-help"
-                            style={{ color: '#F0B90B' }}
+                            style={{ color: 'var(--nofx-gold)' }}
                           />
                         </Tooltip>
                       </label>
@@ -894,17 +949,23 @@ export function ExchangeConfigModal({
                         value={asterPrivateKey}
                         onChange={(e) => setAsterPrivateKey(e.target.value)}
                         placeholder={t('enterAsterPrivateKey', language)}
-                        className="w-full px-3 py-2 rounded"
+                        className="w-full px-3 py-2 rounded transition-colors focus:outline-none"
                         style={{
-                          background: '#0B0E11',
-                          border: '1px solid #2B3139',
-                          color: '#EAECEF',
+                          background: 'var(--panel-bg)',
+                          border: '1px solid var(--panel-border)',
+                          color: 'var(--text-primary)',
+                        }}
+                        onFocus={(e) => {
+                          e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                        }}
+                        onBlur={(e) => {
+                          e.currentTarget.style.borderColor = 'var(--panel-border)'
                         }}
                         required
                       />
                       <div
                         className="text-xs mt-1"
-                        style={{ color: '#848E9C' }}
+                        style={{ color: 'var(--text-secondary)' }}
                       >
                         {t('asterPrivateKeyDesc', language)}
                       </div>
@@ -936,7 +997,7 @@ export function ExchangeConfigModal({
                           </div>
                           <div
                             className="text-xs"
-                            style={{ color: '#848E9C', lineHeight: '1.5' }}
+                            style={{ color: 'var(--text-secondary)', lineHeight: '1.5' }}
                           >
                             {t('hyperliquidAgentWalletDesc', language)}
                           </div>
@@ -948,7 +1009,7 @@ export function ExchangeConfigModal({
                     <div>
                       <label
                         className="block text-sm font-semibold mb-2"
-                        style={{ color: '#EAECEF' }}
+                        style={{ color: 'var(--text-primary)' }}
                       >
                         {t('hyperliquidAgentPrivateKey', language)}
                       </label>
@@ -962,11 +1023,11 @@ export function ExchangeConfigModal({
                               'enterHyperliquidAgentPrivateKey',
                               language
                             )}
-                            className="w-full px-3 py-2 rounded"
+                            className="w-full px-3 py-2 rounded transition-colors focus:outline-none"
                             style={{
-                              background: '#0B0E11',
-                              border: '1px solid #2B3139',
-                              color: '#EAECEF',
+                              background: 'var(--panel-bg)',
+                              border: '1px solid var(--panel-border)',
+                              color: 'var(--text-primary)',
                             }}
                           />
                           <button
@@ -974,9 +1035,15 @@ export function ExchangeConfigModal({
                             onClick={() => setSecureInputTarget('hyperliquid')}
                             className="px-3 py-2 rounded text-xs font-semibold transition-all hover:scale-105"
                             style={{
-                              background: '#F0B90B',
+                              background: 'var(--nofx-gold)',
                               color: '#000',
                               whiteSpace: 'nowrap',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = '#E1A706'
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = 'var(--nofx-gold)'
                             }}
                           >
                             {apiKey
@@ -989,9 +1056,17 @@ export function ExchangeConfigModal({
                               onClick={() => setApiKey('')}
                               className="px-3 py-2 rounded text-xs font-semibold transition-all hover:scale-105"
                               style={{
-                                background: '#1B1F2B',
-                                color: '#848E9C',
+                                background: isDark ? 'rgba(27, 31, 43, 0.6)' : 'var(--panel-bg-hover)',
+                                color: 'var(--text-secondary)',
                                 whiteSpace: 'nowrap',
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = 'var(--panel-bg)'
+                                e.currentTarget.style.color = 'var(--text-primary)'
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = isDark ? 'rgba(27, 31, 43, 0.6)' : 'var(--panel-bg-hover)'
+                                e.currentTarget.style.color = 'var(--text-secondary)'
                               }}
                             >
                               {t('secureInputClear', language)}
@@ -999,14 +1074,14 @@ export function ExchangeConfigModal({
                           )}
                         </div>
                         {apiKey && (
-                          <div className="text-xs" style={{ color: '#848E9C' }}>
+                          <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                             {t('secureInputHint', language)}
                           </div>
                         )}
                       </div>
                       <div
                         className="text-xs mt-1"
-                        style={{ color: '#848E9C' }}
+                        style={{ color: 'var(--text-secondary)' }}
                       >
                         {t('hyperliquidAgentPrivateKeyDesc', language)}
                       </div>
@@ -1016,7 +1091,7 @@ export function ExchangeConfigModal({
                     <div>
                       <label
                         className="block text-sm font-semibold mb-2"
-                        style={{ color: '#EAECEF' }}
+                        style={{ color: 'var(--text-primary)' }}
                       >
                         {t('hyperliquidMainWalletAddress', language)}
                       </label>
@@ -1030,17 +1105,23 @@ export function ExchangeConfigModal({
                           'enterHyperliquidMainWalletAddress',
                           language
                         )}
-                        className="w-full px-3 py-2 rounded"
+                        className="w-full px-3 py-2 rounded transition-colors focus:outline-none"
                         style={{
-                          background: '#0B0E11',
-                          border: '1px solid #2B3139',
-                          color: '#EAECEF',
+                          background: 'var(--panel-bg)',
+                          border: '1px solid var(--panel-border)',
+                          color: 'var(--text-primary)',
+                        }}
+                        onFocus={(e) => {
+                          e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                        }}
+                        onBlur={(e) => {
+                          e.currentTarget.style.borderColor = 'var(--panel-border)'
                         }}
                         required
                       />
                       <div
                         className="text-xs mt-1"
-                        style={{ color: '#848E9C' }}
+                        style={{ color: 'var(--text-secondary)' }}
                       >
                         {t('hyperliquidMainWalletAddressDesc', language)}
                       </div>
@@ -1065,7 +1146,7 @@ export function ExchangeConfigModal({
                           <div className="text-sm font-semibold mb-1" style={{ color: '#F0B90B' }}>
                             {language === 'zh' ? 'Lighter API Key 配置' : 'Lighter API Key Setup'}
                           </div>
-                          <div className="text-xs" style={{ color: '#848E9C', lineHeight: '1.5' }}>
+                          <div className="text-xs" style={{ color: 'var(--text-secondary)', lineHeight: '1.5' }}>
                             {language === 'zh'
                               ? '请在 Lighter 网站生成 API Key，然后填写钱包地址、API Key 私钥和索引。'
                               : 'Generate an API Key on the Lighter website, then enter your wallet address, API Key private key, and index.'}
@@ -1078,7 +1159,7 @@ export function ExchangeConfigModal({
                     <div className="mb-4">
                       <label
                         className="block text-sm font-semibold mb-2"
-                        style={{ color: '#EAECEF' }}
+                        style={{ color: 'var(--text-primary)' }}
                       >
                         {t('lighterWalletAddress', language)} *
                       </label>
@@ -1087,15 +1168,21 @@ export function ExchangeConfigModal({
                         value={lighterWalletAddr}
                         onChange={(e) => setLighterWalletAddr(e.target.value)}
                         placeholder={t('enterLighterWalletAddress', language)}
-                        className="w-full px-3 py-2 rounded"
+                        className="w-full px-3 py-2 rounded transition-colors focus:outline-none"
                         style={{
-                          background: '#0B0E11',
-                          border: '1px solid #2B3139',
-                          color: '#EAECEF',
+                          background: 'var(--panel-bg)',
+                          border: '1px solid var(--panel-border)',
+                          color: 'var(--text-primary)',
+                        }}
+                        onFocus={(e) => {
+                          e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                        }}
+                        onBlur={(e) => {
+                          e.currentTarget.style.borderColor = 'var(--panel-border)'
                         }}
                         required
                       />
-                      <div className="text-xs mt-1" style={{ color: '#848E9C' }}>
+                      <div className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
                         {t('lighterWalletAddressDesc', language)}
                       </div>
                     </div>
@@ -1104,14 +1191,14 @@ export function ExchangeConfigModal({
                     <div className="mb-4">
                       <label
                         className="block text-sm font-semibold mb-2"
-                        style={{ color: '#EAECEF' }}
+                        style={{ color: 'var(--text-primary)' }}
                       >
                         {t('lighterApiKeyPrivateKey', language)} *
                         <button
                           type="button"
                           onClick={() => setSecureInputTarget('lighter')}
                           className="ml-2 text-xs underline"
-                          style={{ color: '#F0B90B' }}
+                          style={{ color: 'var(--nofx-gold)' }}
                         >
                           {t('secureInputButton', language)}
                         </button>
@@ -1121,15 +1208,21 @@ export function ExchangeConfigModal({
                         value={lighterApiKeyPrivateKey}
                         onChange={(e) => setLighterApiKeyPrivateKey(e.target.value)}
                         placeholder={t('enterLighterApiKeyPrivateKey', language)}
-                        className="w-full px-3 py-2 rounded font-mono text-sm"
+                        className="w-full px-3 py-2 rounded font-mono text-sm transition-colors focus:outline-none"
                         style={{
-                          background: '#0B0E11',
-                          border: '1px solid #2B3139',
-                          color: '#EAECEF',
+                          background: 'var(--panel-bg)',
+                          border: '1px solid var(--panel-border)',
+                          color: 'var(--text-primary)',
+                        }}
+                        onFocus={(e) => {
+                          e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                        }}
+                        onBlur={(e) => {
+                          e.currentTarget.style.borderColor = 'var(--panel-border)'
                         }}
                         required
                       />
-                      <div className="text-xs mt-1" style={{ color: '#848E9C' }}>
+                      <div className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
                         {t('lighterApiKeyPrivateKeyDesc', language)}
                       </div>
                     </div>
@@ -1138,7 +1231,7 @@ export function ExchangeConfigModal({
                     <div className="mb-4">
                       <label
                         className="block text-sm font-semibold mb-2 flex items-center gap-2"
-                        style={{ color: '#EAECEF' }}
+                        style={{ color: 'var(--text-primary)' }}
                       >
                         {language === 'zh' ? 'API Key 索引' : 'API Key Index'}
                         <Tooltip content={
@@ -1148,7 +1241,7 @@ export function ExchangeConfigModal({
                         }>
                           <HelpCircle
                             className="w-4 h-4 cursor-help"
-                            style={{ color: '#F0B90B' }}
+                            style={{ color: 'var(--nofx-gold)' }}
                           />
                         </Tooltip>
                       </label>
@@ -1159,14 +1252,20 @@ export function ExchangeConfigModal({
                         value={lighterApiKeyIndex}
                         onChange={(e) => setLighterApiKeyIndex(parseInt(e.target.value) || 0)}
                         placeholder="0"
-                        className="w-full px-3 py-2 rounded"
+                        className="w-full px-3 py-2 rounded transition-colors focus:outline-none"
                         style={{
-                          background: '#0B0E11',
-                          border: '1px solid #2B3139',
-                          color: '#EAECEF',
+                          background: 'var(--panel-bg)',
+                          border: '1px solid var(--panel-border)',
+                          color: 'var(--text-primary)',
+                        }}
+                        onFocus={(e) => {
+                          e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                        }}
+                        onBlur={(e) => {
+                          e.currentTarget.style.borderColor = 'var(--panel-border)'
                         }}
                       />
-                      <div className="text-xs mt-1" style={{ color: '#848E9C' }}>
+                      <div className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
                         {language === 'zh'
                           ? '默认为 0。如果您在 Lighter 创建了多个 API Key，请填写对应的索引号（0-255）。'
                           : 'Default is 0. If you created multiple API Keys on Lighter, enter the corresponding index (0-255).'}
@@ -1180,13 +1279,27 @@ export function ExchangeConfigModal({
 
           <div
             className="flex gap-3 mt-6 pt-4 sticky bottom-0"
-            style={{ background: '#1E2329' }}
+            style={{ 
+              background: isDark 
+                ? 'linear-gradient(135deg, rgba(30, 36, 42, 0.95) 0%, rgba(37, 43, 53, 0.95) 100%)'
+                : 'var(--panel-bg)',
+            }}
           >
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2 rounded text-sm font-semibold"
-              style={{ background: '#2B3139', color: '#848E9C' }}
+              className="flex-1 px-4 py-2 rounded text-sm font-semibold transition-colors"
+              style={{ 
+                background: 'var(--panel-bg-hover)', 
+                color: 'var(--text-primary)',
+                border: '1px solid var(--panel-border)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--panel-bg)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'var(--panel-bg-hover)'
+              }}
             >
               {t('cancel', language)}
             </button>
@@ -1226,8 +1339,47 @@ export function ExchangeConfigModal({
                   currentExchangeType !== 'bitget' &&
                   (!apiKey.trim() || !secretKey.trim()))
               }
-              className="flex-1 px-4 py-2 rounded text-sm font-semibold disabled:opacity-50"
-              style={{ background: '#F0B90B', color: '#000' }}
+              className="flex-1 px-4 py-2 rounded text-sm font-semibold disabled:opacity-50 transition-colors"
+              style={{ 
+                background: (isSaving || !selectedTemplate || !accountName.trim() || 
+                  (currentExchangeType === 'binance' && (!apiKey.trim() || !secretKey.trim())) ||
+                  (currentExchangeType === 'okx' && (!apiKey.trim() || !secretKey.trim() || !passphrase.trim())) ||
+                  (currentExchangeType === 'bitget' && (!apiKey.trim() || !secretKey.trim() || !passphrase.trim())) ||
+                  (currentExchangeType === 'hyperliquid' && (!apiKey.trim() || !hyperliquidWalletAddr.trim())) ||
+                  (currentExchangeType === 'aster' && (!asterUser.trim() || !asterSigner.trim() || !asterPrivateKey.trim())) ||
+                  (currentExchangeType === 'lighter' && (!lighterWalletAddr.trim() || !lighterApiKeyPrivateKey.trim())) ||
+                  (currentExchangeType === 'bybit' && (!apiKey.trim() || !secretKey.trim())) ||
+                  (selectedTemplate?.type === 'cex' && currentExchangeType !== 'hyperliquid' && currentExchangeType !== 'aster' && currentExchangeType !== 'lighter' && currentExchangeType !== 'binance' && currentExchangeType !== 'bybit' && currentExchangeType !== 'okx' && currentExchangeType !== 'bitget' && (!apiKey.trim() || !secretKey.trim())))
+                  ? 'var(--text-disabled)'
+                  : 'var(--nofx-gold)', 
+                color: '#000',
+              }}
+              onMouseEnter={(e) => {
+                if (!isSaving && selectedTemplate && accountName.trim() && 
+                    !(currentExchangeType === 'binance' && (!apiKey.trim() || !secretKey.trim())) &&
+                    !(currentExchangeType === 'okx' && (!apiKey.trim() || !secretKey.trim() || !passphrase.trim())) &&
+                    !(currentExchangeType === 'bitget' && (!apiKey.trim() || !secretKey.trim() || !passphrase.trim())) &&
+                    !(currentExchangeType === 'hyperliquid' && (!apiKey.trim() || !hyperliquidWalletAddr.trim())) &&
+                    !(currentExchangeType === 'aster' && (!asterUser.trim() || !asterSigner.trim() || !asterPrivateKey.trim())) &&
+                    !(currentExchangeType === 'lighter' && (!lighterWalletAddr.trim() || !lighterApiKeyPrivateKey.trim())) &&
+                    !(currentExchangeType === 'bybit' && (!apiKey.trim() || !secretKey.trim())) &&
+                    !(selectedTemplate?.type === 'cex' && currentExchangeType !== 'hyperliquid' && currentExchangeType !== 'aster' && currentExchangeType !== 'lighter' && currentExchangeType !== 'binance' && currentExchangeType !== 'bybit' && currentExchangeType !== 'okx' && currentExchangeType !== 'bitget' && (!apiKey.trim() || !secretKey.trim()))) {
+                  e.currentTarget.style.background = '#E1A706'
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isSaving && selectedTemplate && accountName.trim() && 
+                    !(currentExchangeType === 'binance' && (!apiKey.trim() || !secretKey.trim())) &&
+                    !(currentExchangeType === 'okx' && (!apiKey.trim() || !secretKey.trim() || !passphrase.trim())) &&
+                    !(currentExchangeType === 'bitget' && (!apiKey.trim() || !secretKey.trim() || !passphrase.trim())) &&
+                    !(currentExchangeType === 'hyperliquid' && (!apiKey.trim() || !hyperliquidWalletAddr.trim())) &&
+                    !(currentExchangeType === 'aster' && (!asterUser.trim() || !asterSigner.trim() || !asterPrivateKey.trim())) &&
+                    !(currentExchangeType === 'lighter' && (!lighterWalletAddr.trim() || !lighterApiKeyPrivateKey.trim())) &&
+                    !(currentExchangeType === 'bybit' && (!apiKey.trim() || !secretKey.trim())) &&
+                    !(selectedTemplate?.type === 'cex' && currentExchangeType !== 'hyperliquid' && currentExchangeType !== 'aster' && currentExchangeType !== 'lighter' && currentExchangeType !== 'binance' && currentExchangeType !== 'bybit' && currentExchangeType !== 'okx' && currentExchangeType !== 'bitget' && (!apiKey.trim() || !secretKey.trim()))) {
+                  e.currentTarget.style.background = 'var(--nofx-gold)'
+                }
+              }}
             >
               {isSaving ? t('saving', language) || '保存中...' : t('saveConfig', language)}
             </button>
@@ -1249,9 +1401,9 @@ export function ExchangeConfigModal({
             <div className="flex items-center justify-between mb-4">
               <h3
                 className="text-xl font-bold flex items-center gap-2"
-                style={{ color: '#EAECEF' }}
+                style={{ color: 'var(--text-primary)' }}
               >
-                <BookOpen className="w-6 h-6" style={{ color: '#F0B90B' }} />
+                <BookOpen className="w-6 h-6" style={{ color: 'var(--nofx-gold)' }} />
                 {t('binanceSetupGuide', language)}
               </h3>
               <button

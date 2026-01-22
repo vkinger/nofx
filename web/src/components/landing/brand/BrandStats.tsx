@@ -36,7 +36,10 @@ export default function BrandStats() {
                             {/* Mobile Inner Glow */}
                             <div className="absolute inset-0 bg-nofx-gold/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none md:hidden"></div>
 
-                            <div className="text-3xl md:text-6xl font-black text-white tracking-tighter mb-2 group-hover:scale-110 transition-transform duration-300 origin-left relative z-10">
+                            <div 
+                                className="text-3xl md:text-6xl font-black tracking-tighter mb-2 group-hover:scale-110 transition-transform duration-300 origin-left relative z-10"
+                                style={{ color: 'var(--text-primary)' }}
+                            >
                                 {stat.value}
                             </div>
                             <div className="text-[10px] md:text-base font-bold text-zinc-400 md:text-black/60 uppercase tracking-widest bg-white/5 md:bg-white/20 inline-block px-2 py-1 rounded relative z-10">

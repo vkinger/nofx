@@ -13,6 +13,7 @@ import useSWR from 'swr'
 import { api } from '../lib/api'
 import { useLanguage } from '../contexts/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
+import { useTheme } from '../contexts/ThemeContext'
 import { t } from '../i18n/translations'
 import {
   AlertTriangle,
@@ -39,7 +40,28 @@ interface EquityChartProps {
 export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
   const { language } = useLanguage()
   const { user, token } = useAuth()
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
   const [displayMode, setDisplayMode] = useState<'dollar' | 'percent'>('dollar')
+  
+  // 根据主题获取图表颜色
+  const getChartColors = () => {
+    const isDark = theme === 'dark'
+    return {
+      gridColor: isDark ? '#2B3139' : 'rgba(0, 0, 0, 0.1)',
+      axisColor: isDark ? '#5E6673' : 'rgba(0, 0, 0, 0.3)',
+      tickColor: isDark ? '#848E9C' : 'rgba(0, 0, 0, 0.5)',
+      tickLineColor: isDark ? '#2B3139' : 'rgba(0, 0, 0, 0.15)',
+      referenceLineColor: isDark ? '#474D57' : 'rgba(0, 0, 0, 0.2)',
+      textColor: isDark ? '#848E9C' : 'rgba(0, 0, 0, 0.6)',
+      tooltipBg: isDark ? '#1E2329' : 'rgba(255, 255, 255, 0.98)',
+      tooltipBorder: isDark ? '#2B3139' : 'rgba(0, 0, 0, 0.1)',
+      tooltipText: isDark ? '#EAECEF' : '#111827',
+      tooltipLabel: isDark ? '#848E9C' : 'rgba(0, 0, 0, 0.6)',
+    }
+  }
+  
+  const chartColors = getChartColors()
 
   const { data: history, error, isLoading } = useSWR<EquityPoint[]>(
     user && token && traderId ? `equity-history-${traderId}` : null,
@@ -182,19 +204,22 @@ export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
     }
   }
 
-  // 自定义Tooltip - Binance Style
+  // 自定义Tooltip - 根据主题调整
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload
       return (
         <div
           className="rounded p-3 shadow-xl"
-          style={{ background: '#1E2329', border: '1px solid #2B3139' }}
+          style={{ 
+            background: chartColors.tooltipBg, 
+            border: `1px solid ${chartColors.tooltipBorder}` 
+          }}
         >
-          <div className="text-xs mb-1" style={{ color: '#848E9C' }}>
+          <div className="text-xs mb-1" style={{ color: chartColors.tooltipLabel }}>
             Cycle #{data.cycle}
           </div>
-          <div className="font-bold mono" style={{ color: '#EAECEF' }}>
+          <div className="font-bold mono" style={{ color: chartColors.tooltipText }}>
             {data.raw_equity.toFixed(2)} USDT
           </div>
           <div
@@ -219,7 +244,7 @@ export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
           {!embedded && (
             <h3
               className="text-base sm:text-lg font-bold mb-2"
-              style={{ color: '#EAECEF' }}
+              style={{ color: 'var(--text-primary)' }}
             >
               {t('accountEquityCurve', language)}
             </h3>
@@ -227,12 +252,12 @@ export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
           <div className="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4">
             <span
               className="text-2xl sm:text-3xl font-bold mono"
-              style={{ color: '#EAECEF' }}
+              style={{ color: 'var(--text-primary)' }}
             >
               {account?.total_equity.toFixed(2) || '0.00'}
               <span
                 className="text-base sm:text-lg ml-1"
-                style={{ color: '#848E9C' }}
+                style={{ color: 'var(--text-secondary)' }}
               >
                 USDT
               </span>
@@ -262,7 +287,7 @@ export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
               </span>
               <span
                 className="text-xs sm:text-sm mono"
-                style={{ color: '#848E9C' }}
+                style={{ color: 'var(--text-secondary)' }}
               >
                 ({isProfit ? '+' : ''}
                 {currentValue.raw_pnl.toFixed(2)} USDT)
@@ -273,12 +298,15 @@ export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
 
         {/* Display Mode Toggle */}
         <div
-          className="flex gap-0.5 sm:gap-1 rounded p-0.5 sm:p-1 self-start sm:self-auto"
-          style={{ background: '#0B0E11', border: '1px solid #2B3139' }}
+          className="flex gap-1.5 sm:gap-2 rounded p-1 sm:p-1.5 self-start sm:self-auto"
+          style={{ 
+            background: isDark ? '#0B0E11' : 'var(--panel-bg-hover)', 
+            border: `1px solid var(--panel-border)` 
+          }}
         >
           <button
             onClick={() => setDisplayMode('dollar')}
-            className="px-3 sm:px-4 py-1.5 sm:py-2 rounded text-xs sm:text-sm font-bold transition-all flex items-center gap-1"
+            className="px-4 sm:px-5 py-2 sm:py-2.5 rounded text-sm sm:text-base font-bold transition-all flex items-center gap-2"
             style={
               displayMode === 'dollar'
                 ? {
@@ -286,14 +314,29 @@ export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
                     color: '#000',
                     boxShadow: '0 2px 8px rgba(240, 185, 11, 0.4)',
                   }
-                : { background: 'transparent', color: '#848E9C' }
+                : { 
+                    background: 'transparent', 
+                    color: 'var(--text-secondary)' 
+                  }
             }
+            onMouseEnter={(e) => {
+              if (displayMode !== 'dollar') {
+                e.currentTarget.style.color = 'var(--text-primary)'
+                e.currentTarget.style.background = isDark ? 'rgba(255, 255, 255, 0.05)' : 'var(--panel-bg)'
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (displayMode !== 'dollar') {
+                e.currentTarget.style.color = 'var(--text-secondary)'
+                e.currentTarget.style.background = 'transparent'
+              }
+            }}
           >
-            <DollarSign className="w-4 h-4" /> USDT
+            <DollarSign className="w-4 h-4 sm:w-5 sm:h-5" /> USDT
           </button>
           <button
             onClick={() => setDisplayMode('percent')}
-            className="px-3 sm:px-4 py-1.5 sm:py-2 rounded text-xs sm:text-sm font-bold transition-all flex items-center gap-1"
+            className="px-4 sm:px-5 py-2 sm:py-2.5 rounded text-sm sm:text-base font-bold transition-all flex items-center gap-2"
             style={
               displayMode === 'percent'
                 ? {
@@ -301,10 +344,25 @@ export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
                     color: '#000',
                     boxShadow: '0 2px 8px rgba(240, 185, 11, 0.4)',
                   }
-                : { background: 'transparent', color: '#848E9C' }
+                : { 
+                    background: 'transparent', 
+                    color: 'var(--text-secondary)' 
+                  }
             }
+            onMouseEnter={(e) => {
+              if (displayMode !== 'percent') {
+                e.currentTarget.style.color = 'var(--text-primary)'
+                e.currentTarget.style.background = isDark ? 'rgba(255, 255, 255, 0.05)' : 'var(--panel-bg)'
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (displayMode !== 'percent') {
+                e.currentTarget.style.color = 'var(--text-secondary)'
+                e.currentTarget.style.background = 'transparent'
+              }
+            }}
           >
-            <Percent className="w-4 h-4" />
+            <Percent className="w-4 h-4 sm:w-5 sm:h-5" /> %
           </button>
         </div>
       </div>
@@ -400,72 +458,84 @@ export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
       {/* Footer Stats */}
       <div
         className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 pt-3"
-        style={{ borderTop: '1px solid #2B3139' }}
+        style={{ borderTop: `1px solid var(--panel-border)` }}
       >
         <div
-          className="p-2 rounded transition-all hover:bg-opacity-50"
-          style={{ background: 'rgba(240, 185, 11, 0.05)' }}
+          className="p-3 rounded transition-all"
+          style={{ 
+            background: isDark ? 'rgba(240, 185, 11, 0.05)' : 'var(--panel-bg-hover)',
+            border: `1px solid var(--panel-border)`,
+          }}
         >
           <div
-            className="text-xs mb-1 uppercase tracking-wider"
-            style={{ color: '#848E9C' }}
+            className="text-xs sm:text-sm mb-1.5 uppercase tracking-wider font-medium"
+            style={{ color: 'var(--text-secondary)' }}
           >
             {t('initialBalance', language)}
           </div>
           <div
-            className="text-xs sm:text-sm font-bold mono"
-            style={{ color: '#EAECEF' }}
+            className="text-sm sm:text-base font-bold mono"
+            style={{ color: 'var(--text-primary)' }}
           >
             {initialBalance.toFixed(2)} USDT
           </div>
         </div>
         <div
-          className="p-2 rounded transition-all hover:bg-opacity-50"
-          style={{ background: 'rgba(240, 185, 11, 0.05)' }}
+          className="p-3 rounded transition-all"
+          style={{ 
+            background: isDark ? 'rgba(240, 185, 11, 0.05)' : 'var(--panel-bg-hover)',
+            border: `1px solid var(--panel-border)`,
+          }}
         >
           <div
-            className="text-xs mb-1 uppercase tracking-wider"
-            style={{ color: '#848E9C' }}
+            className="text-xs sm:text-sm mb-1.5 uppercase tracking-wider font-medium"
+            style={{ color: 'var(--text-secondary)' }}
           >
             {t('currentEquity', language)}
           </div>
           <div
-            className="text-xs sm:text-sm font-bold mono"
-            style={{ color: '#EAECEF' }}
+            className="text-sm sm:text-base font-bold mono"
+            style={{ color: 'var(--text-primary)' }}
           >
             {currentValue.raw_equity.toFixed(2)} USDT
           </div>
         </div>
         <div
-          className="p-2 rounded transition-all hover:bg-opacity-50"
-          style={{ background: 'rgba(240, 185, 11, 0.05)' }}
+          className="p-3 rounded transition-all"
+          style={{ 
+            background: isDark ? 'rgba(240, 185, 11, 0.05)' : 'var(--panel-bg-hover)',
+            border: `1px solid var(--panel-border)`,
+          }}
         >
           <div
-            className="text-xs mb-1 uppercase tracking-wider"
-            style={{ color: '#848E9C' }}
+            className="text-xs sm:text-sm mb-1.5 uppercase tracking-wider font-medium"
+            style={{ color: 'var(--text-secondary)' }}
           >
             {t('historicalCycles', language)}
           </div>
           <div
-            className="text-xs sm:text-sm font-bold mono"
-            style={{ color: '#EAECEF' }}
+            className="text-sm sm:text-base font-bold mono"
+            style={{ color: 'var(--text-primary)' }}
           >
             {validHistory.length} {t('cycles', language)}
           </div>
         </div>
         <div
-          className="p-2 rounded transition-all hover:bg-opacity-50"
-          style={{ background: 'rgba(240, 185, 11, 0.05)' }}
+          className="p-3 rounded transition-all"
+          style={{ 
+            background: isDark ? 'rgba(240, 185, 11, 0.05)' : 'var(--panel-bg-hover)',
+            border: `1px solid var(--panel-border)`,
+          }}
         >
           <div
-            className="text-xs mb-1 uppercase tracking-wider"
-            style={{ color: '#848E9C' }}
+            className="text-xs sm:text-sm mb-1.5 uppercase tracking-wider font-medium"
+            style={{ color: 'var(--text-secondary)' }}
           >
             {t('displayRange', language)}
           </div>
           <div
-            className="text-xs sm:text-sm font-bold mono"
-            style={{ color: '#EAECEF' }}
+            className="text-sm sm:text-base font-bold mono"
+            style={{ color: 'var(--text-primary)' }}
           >
             {validHistory.length > MAX_DISPLAY_POINTS
               ? `${t('recent', language)} ${MAX_DISPLAY_POINTS}`

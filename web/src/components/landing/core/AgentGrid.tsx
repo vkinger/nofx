@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 import { TrendingUp, Layers, Zap, Hexagon, Crosshair } from 'lucide-react'
 import { useAuth } from '../../../contexts/AuthContext'
+import { useTheme } from '../../../contexts/ThemeContext'
 
 const agents = [
     {
@@ -45,6 +46,8 @@ const agents = [
 
 export default function AgentGrid() {
     const { user } = useAuth()
+    const { theme } = useTheme()
+    const isDark = theme === 'dark'
 
     const handleInitialize = () => {
         if (user) {
@@ -69,8 +72,11 @@ export default function AgentGrid() {
                         <div className="flex items-center gap-2 text-nofx-gold font-mono text-xs mb-2 tracking-widest uppercase">
                             <Crosshair className="w-4 h-4" /> MARKET SELECT
                         </div>
-                        <h2 className="text-4xl md:text-5xl font-black text-white uppercase tracking-tighter">
-                            STRATEGY <span className="text-transparent bg-clip-text bg-gradient-to-r from-nofx-gold to-white">UNITS</span>
+                        <h2 
+                            className="text-4xl md:text-5xl font-black uppercase tracking-tighter"
+                            style={{ color: 'var(--text-primary)' }}
+                        >
+                            STRATEGY <span className="text-transparent bg-clip-text bg-gradient-to-r from-nofx-gold to-current">UNITS</span>
                         </h2>
                     </div>
                     <div className="font-mono text-right text-xs text-zinc-500 max-w-xs">
@@ -107,7 +113,18 @@ export default function AgentGrid() {
                                     </div>
 
                                     {/* Name & Desc */}
-                                    <h3 className="text-3xl font-bold text-white mb-2 tracking-tight group-hover:text-nofx-accent transition-colors">{agent.name}</h3>
+                                    <h3 
+                                        className="text-3xl font-bold mb-2 tracking-tight transition-colors"
+                                        style={{ color: 'var(--text-primary)' }}
+                                        onMouseEnter={(e) => {
+                                            e.currentTarget.style.color = 'var(--nofx-accent)'
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.currentTarget.style.color = 'var(--text-primary)'
+                                        }}
+                                    >
+                                        {agent.name}
+                                    </h3>
                                     <p className="text-zinc-500 text-sm mb-8 leading-relaxed h-10">{agent.desc}</p>
 
                                     {/* Stats Grid */}
@@ -118,7 +135,7 @@ export default function AgentGrid() {
                                         </div>
                                         <div className="bg-black/60 p-3 text-center group-hover:bg-zinc-900/60 transition-colors">
                                             <div className="text-[10px] text-zinc-500 uppercase font-mono mb-1">Win %</div>
-                                            <div className="text-white font-bold">{agent.winRate}</div>
+                                            <div className="font-bold" style={{ color: 'var(--text-primary)' }}>{agent.winRate}</div>
                                         </div>
                                         <div className="bg-black/60 p-3 text-center group-hover:bg-zinc-900/60 transition-colors">
                                             <div className="text-[10px] text-zinc-500 uppercase font-mono mb-1">Risk</div>
@@ -129,7 +146,21 @@ export default function AgentGrid() {
                                     {/* Action Btn */}
                                     <button
                                         onClick={handleInitialize}
-                                        className={`w-full py-4 text-xs font-bold font-mono uppercase tracking-[0.2em] border border-zinc-700 hover:border-${agent.color === 'text-nofx-gold' ? 'nofx-gold' : 'white'} hover:bg-white/5 transition-all flex items-center justify-center gap-2 group-hover:text-white cursor-pointer`}
+                                        className="w-full py-4 text-xs font-bold font-mono uppercase tracking-[0.2em] border transition-all flex items-center justify-center gap-2 cursor-pointer"
+                                        style={{
+                                            borderColor: 'var(--panel-border)',
+                                            color: 'var(--text-primary)',
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            e.currentTarget.style.borderColor = agent.color === 'text-nofx-gold' ? 'var(--nofx-gold)' : 'var(--text-primary)'
+                                            e.currentTarget.style.backgroundColor = isDark ? 'rgba(255, 255, 255, 0.05)' : 'var(--panel-bg-hover)'
+                                            e.currentTarget.style.color = 'var(--text-primary)'
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.currentTarget.style.borderColor = 'var(--panel-border)'
+                                            e.currentTarget.style.backgroundColor = 'transparent'
+                                            e.currentTarget.style.color = 'var(--text-primary)'
+                                        }}
                                     >
                                         <span className={agent.color}>[</span> INITIALIZE <span className={agent.color}>]</span>
                                     </button>

@@ -9,6 +9,7 @@ import type {
   Exchange,
 } from '../types'
 import { useLanguage } from '../contexts/LanguageContext'
+import { useTheme } from '../contexts/ThemeContext'
 import { t, type Language } from '../i18n/translations'
 import { useAuth } from '../contexts/AuthContext'
 import { getExchangeIcon } from './ExchangeIcons'
@@ -142,6 +143,8 @@ function truncateAddress(address: string, startLen = 6, endLen = 4): string {
 
 export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
   const { language } = useLanguage()
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
   const { user, token } = useAuth()
   const navigate = useNavigate()
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -815,13 +818,13 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
               </div>
             </div>
             <div>
-              <h1 className="text-2xl md:text-3xl font-bold font-mono tracking-tight text-white flex items-center gap-3 uppercase">
+              <h1 className="text-2xl md:text-3xl font-bold font-mono tracking-tight flex items-center gap-3 uppercase" style={{ color: 'var(--text-primary)' }}>
                 {t('aiTraders', language)}
                 <span className="text-xs font-mono font-normal px-2 py-0.5 rounded bg-nofx-gold/10 text-nofx-gold border border-nofx-gold/20 tracking-wider">
                   {traders?.length || 0} ACTIVE_NODES
                 </span>
               </h1>
-              <p className="text-xs font-mono text-zinc-500 uppercase tracking-widest mt-1 ml-1 flex items-center gap-2">
+              <p className="text-xs font-mono uppercase tracking-widest mt-1 ml-1 flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
                 <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
                 SYSTEM_READY
               </p>
@@ -831,7 +834,20 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
           <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0 hide-scrollbar">
             <button
               onClick={handleAddModel}
-              className="px-4 py-2 rounded text-xs font-mono uppercase tracking-wider transition-all border border-zinc-700 bg-black/20 text-zinc-400 hover:text-white hover:border-zinc-500 whitespace-nowrap backdrop-blur-sm"
+              className="px-4 py-2 rounded text-xs font-mono uppercase tracking-wider transition-all border whitespace-nowrap backdrop-blur-sm"
+              style={{
+                borderColor: 'var(--panel-border)',
+                background: isDark ? 'rgba(0, 0, 0, 0.2)' : 'var(--panel-bg)',
+                color: 'var(--text-secondary)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = 'var(--text-primary)'
+                e.currentTarget.style.borderColor = 'var(--panel-border-hover)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'var(--text-secondary)'
+                e.currentTarget.style.borderColor = 'var(--panel-border)'
+              }}
             >
               <div className="flex items-center gap-2">
                 <Plus className="w-3 h-3" />
@@ -841,7 +857,20 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
 
             <button
               onClick={handleAddExchange}
-              className="px-4 py-2 rounded text-xs font-mono uppercase tracking-wider transition-all border border-zinc-700 bg-black/20 text-zinc-400 hover:text-white hover:border-zinc-500 whitespace-nowrap backdrop-blur-sm"
+              className="px-4 py-2 rounded text-xs font-mono uppercase tracking-wider transition-all border whitespace-nowrap backdrop-blur-sm"
+              style={{
+                borderColor: 'var(--panel-border)',
+                background: isDark ? 'rgba(0, 0, 0, 0.2)' : 'var(--panel-bg)',
+                color: 'var(--text-secondary)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = 'var(--text-primary)'
+                e.currentTarget.style.borderColor = 'var(--panel-border-hover)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'var(--text-secondary)'
+                e.currentTarget.style.borderColor = 'var(--panel-border)'
+              }}
             >
               <div className="flex items-center gap-2">
                 <Plus className="w-3 h-3" />
@@ -867,9 +896,15 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* AI Models Card */}
           <div className="nofx-glass rounded-lg border border-white/5 overflow-hidden">
-            <div className="px-4 py-3 border-b border-white/5 bg-black/20 flex items-center gap-2 backdrop-blur-sm">
+            <div 
+              className="px-4 py-3 border-b flex items-center gap-2 backdrop-blur-sm"
+              style={{
+                borderColor: 'var(--panel-border)',
+                background: isDark ? 'rgba(0, 0, 0, 0.2)' : 'var(--panel-bg-hover)',
+              }}
+            >
               <Brain className="w-4 h-4 text-nofx-gold" />
-              <h3 className="text-sm font-mono tracking-widest text-zinc-300 uppercase">
+              <h3 className="text-sm font-mono tracking-widest uppercase" style={{ color: 'var(--text-primary)' }}>
                 {t('aiModels', language)}
               </h3>
             </div>
@@ -878,28 +913,62 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
               {configuredModels.map((model) => {
                 const inUse = isModelInUse(model.id)
                 const usageInfo = getModelUsageInfo(model.id)
+                const isSelected = editingModel === model.id
                 return (
                   <div
                     key={model.id}
-                    className={`group relative flex items-center justify-between p-3 rounded-md transition-all border border-transparent ${inUse ? 'opacity-80' : 'hover:bg-white/5 hover:border-white/10 cursor-pointer'
-                      } bg-black/20`}
+                    className={`group relative flex items-center justify-between p-3 rounded-md transition-all border ${inUse ? 'opacity-80' : 'cursor-pointer'} ${isSelected ? 'ring-2 ring-orange-500/60' : ''}`}
+                    style={{
+                      background: isSelected 
+                        ? (isDark ? 'rgba(249, 115, 22, 0.15)' : 'rgba(249, 115, 22, 0.1)')
+                        : (isDark ? 'rgba(0, 0, 0, 0.2)' : 'var(--panel-bg)'),
+                      borderColor: isSelected ? '#f97316' : (inUse ? 'var(--panel-border)' : 'var(--panel-border)'),
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!inUse && !isSelected) {
+                        e.currentTarget.style.background = 'var(--panel-bg-hover)'
+                        e.currentTarget.style.borderColor = 'var(--panel-border-hover)'
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isSelected) {
+                        e.currentTarget.style.background = isDark ? 'rgba(0, 0, 0, 0.2)' : 'var(--panel-bg)'
+                        e.currentTarget.style.borderColor = 'var(--panel-border)'
+                      }
+                    }}
                     onClick={() => handleModelClick(model.id)}
                   >
+                    {isSelected && (
+                      <span
+                        className="absolute top-1 right-1 w-2 h-2 rounded-full animate-pulse"
+                        style={{
+                          background: '#f97316',
+                          boxShadow: '0 0 6px rgba(249, 115, 22, 0.8)',
+                        }}
+                        title={language === 'zh' ? '编辑中' : 'Editing'}
+                      />
+                    )}
                     <div className="flex items-center gap-4">
                       <div className="relative">
                         <div className="absolute inset-0 bg-indigo-500/20 rounded-full blur-sm group-hover:bg-indigo-500/30 transition-all"></div>
-                        <div className="w-10 h-10 rounded-full flex items-center justify-center bg-black border border-white/10 relative z-10">
+                        <div 
+                          className="w-10 h-10 rounded-full flex items-center justify-center relative z-10"
+                          style={{
+                            background: isDark ? 'rgba(0, 0, 0, 0.4)' : 'var(--panel-bg-hover)',
+                            border: '1px solid var(--panel-border)',
+                          }}
+                        >
                           {getModelIcon(model.provider || model.id, { width: 20, height: 20 }) || (
-                            <span className="text-xs font-bold text-indigo-400">{getShortName(model.name)[0]}</span>
+                            <span className="text-xs font-bold" style={{ color: '#818cf8' }}>{getShortName(model.name)[0]}</span>
                           )}
                         </div>
                       </div>
 
                       <div className="min-w-0">
-                        <div className="font-mono text-sm text-zinc-200 group-hover:text-nofx-gold transition-colors">
+                        <div className="font-mono text-sm transition-colors" style={{ color: 'var(--text-primary)' }} onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--nofx-gold)' }} onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-primary)' }}>
                           {getShortName(model.name)}
                         </div>
-                        <div className="text-[10px] text-zinc-500 font-mono flex items-center gap-2">
+                        <div className="text-[10px] font-mono flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
                           {model.customModelName || AI_PROVIDER_CONFIG[model.provider]?.defaultModel || ''}
                         </div>
                       </div>
@@ -914,7 +983,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                           {usageInfo.runningCount}/{usageInfo.totalCount} ACTIVE
                         </span>
                       ) : (
-                        <span className="text-[10px] font-mono text-zinc-600 uppercase tracking-wider">
+                        <span className="text-[10px] font-mono uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
                           {language === 'zh' ? '就绪' : 'STANDBY'}
                         </span>
                       )}
@@ -924,9 +993,15 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
               })}
 
               {configuredModels.length === 0 && (
-                <div className="text-center py-10 border border-dashed border-zinc-800 rounded-lg bg-black/20">
-                  <Brain className="w-8 h-8 mx-auto mb-3 text-zinc-700" />
-                  <div className="text-xs font-mono text-zinc-500 uppercase tracking-widest">{t('noModelsConfigured', language)}</div>
+                <div 
+                  className="text-center py-10 border border-dashed rounded-lg"
+                  style={{
+                    borderColor: 'var(--panel-border)',
+                    background: isDark ? 'rgba(0, 0, 0, 0.2)' : 'var(--panel-bg)',
+                  }}
+                >
+                  <Brain className="w-8 h-8 mx-auto mb-3" style={{ color: 'var(--text-secondary)' }} />
+                  <div className="text-xs font-mono uppercase tracking-widest" style={{ color: 'var(--text-secondary)' }}>{t('noModelsConfigured', language)}</div>
                 </div>
               )}
             </div>
@@ -934,9 +1009,15 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
 
           {/* Exchanges Card */}
           <div className="nofx-glass rounded-lg border border-white/5 overflow-hidden">
-            <div className="px-4 py-3 border-b border-white/5 bg-black/20 flex items-center gap-2 backdrop-blur-sm">
+            <div 
+              className="px-4 py-3 border-b flex items-center gap-2 backdrop-blur-sm"
+              style={{
+                borderColor: 'var(--panel-border)',
+                background: isDark ? 'rgba(0, 0, 0, 0.2)' : 'var(--panel-bg-hover)',
+              }}
+            >
               <Landmark className="w-4 h-4 text-nofx-gold" />
-              <h3 className="text-sm font-mono tracking-widest text-zinc-300 uppercase">
+              <h3 className="text-sm font-mono tracking-widest uppercase" style={{ color: 'var(--text-primary)' }}>
                 {t('exchanges', language)}
               </h3>
             </div>
@@ -948,26 +1029,51 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                 return (
                   <div
                     key={exchange.id}
-                    className={`group relative flex items-center justify-between p-3 rounded-md transition-all border border-transparent ${inUse ? 'opacity-80' : 'hover:bg-white/5 hover:border-white/10 cursor-pointer'
-                      } bg-black/20`}
+                    className={`group relative flex items-center justify-between p-3 rounded-md transition-all border ${inUse ? 'opacity-80' : 'cursor-pointer'}`}
+                    style={{
+                      background: isDark ? 'rgba(0, 0, 0, 0.2)' : 'var(--panel-bg)',
+                      borderColor: 'var(--panel-border)',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!inUse) {
+                        e.currentTarget.style.background = 'var(--panel-bg-hover)'
+                        e.currentTarget.style.borderColor = 'var(--panel-border-hover)'
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = isDark ? 'rgba(0, 0, 0, 0.2)' : 'var(--panel-bg)'
+                      e.currentTarget.style.borderColor = 'var(--panel-border)'
+                    }}
                     onClick={() => handleExchangeClick(exchange.id)}
                   >
                     <div className="flex items-center gap-4 min-w-0">
                       <div className="relative">
                         <div className="absolute inset-0 bg-yellow-500/20 rounded-full blur-sm group-hover:bg-yellow-500/30 transition-all"></div>
-                        <div className="w-10 h-10 rounded-full flex items-center justify-center bg-black border border-white/10 relative z-10">
+                        <div 
+                          className="w-10 h-10 rounded-full flex items-center justify-center relative z-10"
+                          style={{
+                            background: isDark ? 'rgba(0, 0, 0, 0.4)' : 'var(--panel-bg-hover)',
+                            border: '1px solid var(--panel-border)',
+                          }}
+                        >
                           {getExchangeIcon(exchange.exchange_type || exchange.id, { width: 20, height: 20 })}
                         </div>
                       </div>
 
                       <div className="min-w-0">
-                        <div className="font-mono text-sm text-zinc-200 group-hover:text-nofx-gold transition-colors truncate">
+                        <div className="font-mono text-sm transition-colors truncate" style={{ color: 'var(--text-primary)' }} onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--nofx-gold)' }} onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-primary)' }}>
                           {exchange.exchange_type?.toUpperCase() || getShortName(exchange.name)}
-                          <span className="text-[10px] text-zinc-500 ml-2 border border-zinc-800 px-1 rounded">
-                            {exchange.account_name || 'DEFAULT'}
+                          <span 
+                            className="text-[10px] ml-2 border px-1 rounded"
+                            style={{
+                              color: 'var(--text-secondary)',
+                              borderColor: 'var(--panel-border)',
+                            }}
+                          >
+                            {exchange.account_name || (language === 'zh' ? '主账户' : 'DEFAULT')}
                           </span>
                         </div>
-                        <div className="text-[10px] text-zinc-500 font-mono flex items-center gap-2">
+                        <div className="text-[10px] font-mono flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
                           {exchange.type?.toUpperCase() || 'CEX'}
                         </div>
                       </div>
@@ -983,18 +1089,29 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
 
                         return (
                           <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                            <span className="text-[10px] font-mono text-zinc-400 bg-black/40 px-1.5 py-0.5 rounded border border-zinc-800">
+                            <span 
+                              className="text-[10px] font-mono px-1.5 py-0.5 rounded border"
+                              style={{
+                                color: 'var(--text-secondary)',
+                                background: isDark ? 'rgba(0, 0, 0, 0.4)' : 'var(--panel-bg-hover)',
+                                borderColor: 'var(--panel-border)',
+                              }}
+                            >
                               {isVisible ? walletAddr : truncateAddress(walletAddr)}
                             </span>
                             <button
                               onClick={(e) => { e.stopPropagation(); toggleExchangeAddressVisibility(exchange.id) }}
-                              className="text-zinc-600 hover:text-zinc-300"
+                              style={{ color: 'var(--text-secondary)' }}
+                              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-primary)' }}
+                              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-secondary)' }}
                             >
                               {isVisible ? <EyeOff size={10} /> : <Eye size={10} />}
                             </button>
                             <button
                               onClick={(e) => { e.stopPropagation(); handleCopyAddress(`exchange-${exchange.id}`, walletAddr) }}
-                              className="text-zinc-600 hover:text-nofx-gold"
+                              style={{ color: 'var(--text-secondary)' }}
+                              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--nofx-gold)' }}
+                              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-secondary)' }}
                             >
                               {isCopied ? <Check size={10} className="text-green-500" /> : <Copy size={10} />}
                             </button>
@@ -1019,9 +1136,15 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                 )
               })}
               {configuredExchanges.length === 0 && (
-                <div className="text-center py-10 border border-dashed border-zinc-800 rounded-lg bg-black/20">
-                  <Landmark className="w-8 h-8 mx-auto mb-3 text-zinc-700" />
-                  <div className="text-xs font-mono text-zinc-500 uppercase tracking-widest">{t('noExchangesConfigured', language)}</div>
+                <div 
+                  className="text-center py-10 border border-dashed rounded-lg"
+                  style={{
+                    borderColor: 'var(--panel-border)',
+                    background: isDark ? 'rgba(0, 0, 0, 0.2)' : 'var(--panel-bg)',
+                  }}
+                >
+                  <Landmark className="w-8 h-8 mx-auto mb-3" style={{ color: 'var(--text-secondary)' }} />
+                  <div className="text-xs font-mono uppercase tracking-widest" style={{ color: 'var(--text-secondary)' }}>{t('noExchangesConfigured', language)}</div>
                 </div>
               )}
             </div>
@@ -1033,7 +1156,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
           <div className="flex items-center justify-between mb-4 md:mb-5">
             <h2
               className="text-lg md:text-xl font-bold flex items-center gap-2"
-              style={{ color: '#EAECEF' }}
+              style={{ color: 'var(--text-primary)' }}
             >
               <Users
                 className="w-5 h-5 md:w-6 md:h-6"
@@ -1073,7 +1196,20 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                 <div
                   key={trader.trader_id}
                   className="flex flex-col md:flex-row md:items-center justify-between p-3 md:p-4 rounded transition-all hover:translate-y-[-1px] gap-3 md:gap-4"
-                  style={{ background: '#0B0E11', border: '1px solid #2B3139' }}
+                  style={{ 
+                    background: isDark 
+                      ? 'linear-gradient(135deg, rgba(30, 36, 42, 0.95) 0%, rgba(24, 28, 33, 0.95) 100%)'
+                      : 'var(--panel-bg)', 
+                    border: '1px solid var(--panel-border)' 
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'var(--panel-bg-hover)'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = isDark 
+                      ? 'linear-gradient(135deg, rgba(30, 36, 42, 0.95) 0%, rgba(24, 28, 33, 0.95) 100%)'
+                      : 'var(--panel-bg)'
+                  }}
                 >
                   <div className="flex items-center gap-3 md:gap-4">
                     <div className="flex-shrink-0">
@@ -1091,7 +1227,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                     <div className="min-w-0">
                       <div
                         className="font-bold text-base md:text-lg truncate"
-                        style={{ color: '#EAECEF' }}
+                        style={{ color: 'var(--text-primary)' }}
                       >
                         {trader.trader_name}
                       </div>
@@ -1224,7 +1360,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                           background: trader.is_running
                             ? 'rgba(132, 142, 156, 0.1)'
                             : 'rgba(255, 193, 7, 0.1)',
-                          color: trader.is_running ? '#848E9C' : '#FFC107',
+                          color: trader.is_running ? 'var(--text-disabled)' : '#FFC107',
                         }}
                       >
                         <Pencil className="w-3 h-3 md:w-4 md:h-4" />
@@ -1267,7 +1403,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                             }
                             : {
                               background: 'rgba(132, 142, 156, 0.1)',
-                              color: '#848E9C',
+                              color: 'var(--text-secondary)',
                             }
                         }
                         title={trader.show_in_competition !== false ? '在竞技场显示' : '在竞技场隐藏'}
@@ -1441,20 +1577,30 @@ function ModelConfigModal({
   // 可选择的模型列表（所有支持的模型）
   const availableModels = allModels || []
 
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
+  
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
       <div
-        className="bg-gray-800 rounded-lg w-full max-w-lg relative my-8"
+        className="rounded-lg w-full max-w-lg relative my-8"
         style={{
-          background: '#1E2329',
+          background: isDark 
+            ? 'linear-gradient(135deg, rgba(30, 36, 42, 0.95) 0%, rgba(24, 28, 33, 0.95) 100%)'
+            : 'var(--panel-bg)',
+          border: '1px solid var(--panel-border)',
           maxHeight: 'calc(100vh - 4rem)',
         }}
       >
         <div
           className="flex items-center justify-between p-6 pb-4 sticky top-0 z-10"
-          style={{ background: '#1E2329' }}
+          style={{ 
+            background: isDark 
+              ? 'linear-gradient(135deg, rgba(30, 36, 42, 0.95) 0%, rgba(37, 43, 53, 0.95) 100%)'
+              : 'var(--panel-bg)',
+          }}
         >
-          <h3 className="text-xl font-bold" style={{ color: '#EAECEF' }}>
+          <h3 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
             {editingModelId
               ? t('editAIModel', language)
               : t('addAIModel', language)}
@@ -1481,18 +1627,24 @@ function ModelConfigModal({
               <div>
                 <label
                   className="block text-sm font-semibold mb-2"
-                  style={{ color: '#EAECEF' }}
+                  style={{ color: 'var(--text-primary)' }}
                 >
                   {t('selectModel', language)}
                 </label>
                 <select
                   value={selectedModelId}
                   onChange={(e) => setSelectedModelId(e.target.value)}
-                  className="w-full px-3 py-2 rounded"
+                  className="w-full px-3 py-2 rounded transition-colors focus:outline-none"
                   style={{
-                    background: '#0B0E11',
-                    border: '1px solid #2B3139',
-                    color: '#EAECEF',
+                    background: 'var(--panel-bg)',
+                    border: '1px solid var(--panel-border)',
+                    color: 'var(--text-primary)',
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--panel-border)'
                   }}
                   required
                 >
@@ -1509,7 +1661,10 @@ function ModelConfigModal({
             {selectedModel && (
               <div
                 className="p-4 rounded"
-                style={{ background: '#0B0E11', border: '1px solid #2B3139' }}
+                style={{ 
+                  background: isDark ? 'rgba(11, 14, 17, 0.6)' : 'var(--panel-bg)',
+                  border: '1px solid var(--panel-border)',
+                }}
               >
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-8 h-8 flex items-center justify-center">
@@ -1532,10 +1687,10 @@ function ModelConfigModal({
                       )}
                   </div>
                   <div className="flex-1">
-                    <div className="font-semibold" style={{ color: '#EAECEF' }}>
+                    <div className="font-semibold" style={{ color: 'var(--text-primary)' }}>
                       {getShortName(selectedModel.name)}
                     </div>
-                    <div className="text-xs" style={{ color: '#848E9C' }}>
+                    <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                       {selectedModel.provider} • {selectedModel.id}
                     </div>
                   </div>
@@ -1571,7 +1726,7 @@ function ModelConfigModal({
                 <div>
                   <label
                     className="block text-sm font-semibold mb-2"
-                    style={{ color: '#EAECEF' }}
+                    style={{ color: 'var(--text-primary)' }}
                   >
                     API Key
                   </label>
@@ -1580,11 +1735,17 @@ function ModelConfigModal({
                     value={apiKey}
                     onChange={(e) => setApiKey(e.target.value)}
                     placeholder={t('enterAPIKey', language)}
-                    className="w-full px-3 py-2 rounded"
+                    className="w-full px-3 py-2 rounded transition-colors focus:outline-none"
                     style={{
-                      background: '#0B0E11',
-                      border: '1px solid #2B3139',
-                      color: '#EAECEF',
+                      background: 'var(--panel-bg)',
+                      border: '1px solid var(--panel-border)',
+                      color: 'var(--text-primary)',
+                    }}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--panel-border)'
                     }}
                     required
                   />
@@ -1593,7 +1754,7 @@ function ModelConfigModal({
                 <div>
                   <label
                     className="block text-sm font-semibold mb-2"
-                    style={{ color: '#EAECEF' }}
+                    style={{ color: 'var(--text-primary)' }}
                   >
                     {t('customBaseURL', language)}
                   </label>
@@ -1602,14 +1763,20 @@ function ModelConfigModal({
                     value={baseUrl}
                     onChange={(e) => setBaseUrl(e.target.value)}
                     placeholder={t('customBaseURLPlaceholder', language)}
-                    className="w-full px-3 py-2 rounded"
+                    className="w-full px-3 py-2 rounded transition-colors focus:outline-none"
                     style={{
-                      background: '#0B0E11',
-                      border: '1px solid #2B3139',
-                      color: '#EAECEF',
+                      background: 'var(--panel-bg)',
+                      border: '1px solid var(--panel-border)',
+                      color: 'var(--text-primary)',
+                    }}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--panel-border)'
                     }}
                   />
-                  <div className="text-xs mt-1" style={{ color: '#848E9C' }}>
+                  <div className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
                     {t('leaveBlankForDefault', language)}
                   </div>
                 </div>
@@ -1617,7 +1784,7 @@ function ModelConfigModal({
                 <div>
                   <label
                     className="block text-sm font-semibold mb-2"
-                    style={{ color: '#EAECEF' }}
+                    style={{ color: 'var(--text-primary)' }}
                   >
                     {t('customModelName', language)}
                   </label>
@@ -1626,14 +1793,20 @@ function ModelConfigModal({
                     value={modelName}
                     onChange={(e) => setModelName(e.target.value)}
                     placeholder={t('customModelNamePlaceholder', language)}
-                    className="w-full px-3 py-2 rounded"
+                    className="w-full px-3 py-2 rounded transition-colors focus:outline-none"
                     style={{
-                      background: '#0B0E11',
-                      border: '1px solid #2B3139',
-                      color: '#EAECEF',
+                      background: 'var(--panel-bg)',
+                      border: '1px solid var(--panel-border)',
+                      color: 'var(--text-primary)',
+                    }}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--panel-border)'
                     }}
                   />
-                  <div className="text-xs mt-1" style={{ color: '#848E9C' }}>
+                  <div className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
                     {t('leaveBlankForDefaultModel', language)}
                   </div>
                 </div>
@@ -1653,7 +1826,7 @@ function ModelConfigModal({
                   </div>
                   <div
                     className="text-xs space-y-1"
-                    style={{ color: '#848E9C' }}
+                    style={{ color: 'var(--text-secondary)' }}
                   >
                     <div>{t('modelConfigInfo1', language)}</div>
                     <div>{t('modelConfigInfo2', language)}</div>
@@ -1666,21 +1839,48 @@ function ModelConfigModal({
 
           <div
             className="flex gap-3 mt-6 pt-4 sticky bottom-0"
-            style={{ background: '#1E2329' }}
+            style={{ 
+              background: isDark 
+                ? 'linear-gradient(135deg, rgba(30, 36, 42, 0.95) 0%, rgba(37, 43, 53, 0.95) 100%)'
+                : 'var(--panel-bg)',
+            }}
           >
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2 rounded text-sm font-semibold"
-              style={{ background: '#2B3139', color: '#848E9C' }}
+              className="flex-1 px-4 py-2 rounded text-sm font-semibold transition-colors"
+              style={{ 
+                background: 'var(--panel-bg-hover)', 
+                color: 'var(--text-primary)',
+                border: '1px solid var(--panel-border)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--panel-bg)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'var(--panel-bg-hover)'
+              }}
             >
               {t('cancel', language)}
             </button>
             <button
               type="submit"
               disabled={!selectedModel || !apiKey.trim()}
-              className="flex-1 px-4 py-2 rounded text-sm font-semibold disabled:opacity-50"
-              style={{ background: '#F0B90B', color: '#000' }}
+              className="flex-1 px-4 py-2 rounded text-sm font-semibold disabled:opacity-50 transition-colors"
+              style={{ 
+                background: (!selectedModel || !apiKey.trim()) ? 'var(--text-disabled)' : 'var(--nofx-gold)', 
+                color: '#000',
+              }}
+              onMouseEnter={(e) => {
+                if (selectedModel && apiKey.trim()) {
+                  e.currentTarget.style.background = '#E1A706'
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (selectedModel && apiKey.trim()) {
+                  e.currentTarget.style.background = 'var(--nofx-gold)'
+                }
+              }}
             >
               {t('saveConfig', language)}
             </button>

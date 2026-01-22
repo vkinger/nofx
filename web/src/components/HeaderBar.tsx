@@ -133,21 +133,40 @@ export default function HeaderBar({
                 navigate(tab.path)
               }
 
-              return navTabs.map((tab) => (
-                <button
-                  key={tab.page}
-                  onClick={() => handleNavClick(tab)}
-                  className={`text-sm font-bold transition-all duration-300 relative focus:outline-2 focus:outline-yellow-500 px-3 py-2 rounded-lg
-                    ${currentPage === tab.page ? 'text-nofx-gold' : 'text-nofx-text-muted hover:text-nofx-gold'}`}
-                >
-                  {currentPage === tab.page && (
-                    <span
-                      className="absolute inset-0 rounded-lg bg-nofx-gold/15 -z-10"
-                    />
-                  )}
-                  {tab.label}
-                </button>
-              ))
+              return navTabs.map((tab) => {
+                const isActive = currentPage === tab.page
+                return (
+                  <button
+                    key={tab.page}
+                    onClick={() => handleNavClick(tab)}
+                    className={`text-sm font-bold transition-all duration-300 relative focus:outline-2 focus:outline-yellow-500 px-3 py-2 rounded-lg
+                      ${isActive ? 'text-nofx-gold' : 'text-nofx-text-muted hover:text-nofx-gold'}`}
+                    style={{
+                      position: 'relative',
+                    }}
+                  >
+                    {isActive && (
+                      <>
+                        <span
+                          className="absolute inset-0 rounded-lg -z-10"
+                          style={{
+                            background: 'rgba(240, 185, 11, 0.15)',
+                            boxShadow: '0 0 10px rgba(240, 185, 11, 0.2)',
+                          }}
+                        />
+                        <span
+                          className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-1/2 h-0.5 rounded-full"
+                          style={{
+                            background: 'var(--nofx-gold)',
+                            boxShadow: '0 0 8px rgba(240, 185, 11, 0.6)',
+                          }}
+                        />
+                      </>
+                    )}
+                    {tab.label}
+                  </button>
+                )
+              })
             })()}
           </div>
 
@@ -281,50 +300,108 @@ export default function HeaderBar({
               </button>
 
               {themeDropdownOpen && (
-                <div className="absolute right-0 top-full mt-2 w-40 rounded-lg shadow-lg overflow-hidden z-50 bg-nofx-bg-lighter border border-nofx-gold/20">
+                <div 
+                  className="absolute right-0 top-full mt-2 w-44 rounded-lg shadow-lg overflow-hidden z-50 border"
+                  style={{
+                    background: 'var(--panel-bg)',
+                    borderColor: 'var(--panel-border)',
+                  }}
+                >
                   <button
                     onClick={() => {
                       setTheme('dark')
                       setThemeDropdownOpen(false)
                     }}
-                    className={`w-full flex items-center gap-2 px-3 py-2 transition-colors text-nofx-text-muted hover:text-white
-                      ${theme === 'dark' ? 'bg-nofx-gold/10' : 'hover:bg-white/5'}`}
+                    className="w-full flex items-center gap-2 px-4 py-2.5 transition-colors"
+                    style={{
+                      background: theme === 'dark' ? 'rgba(240, 185, 11, 0.15)' : 'transparent',
+                      color: theme === 'dark' ? 'var(--nofx-gold)' : 'var(--text-primary)',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (theme !== 'dark') {
+                        e.currentTarget.style.background = 'var(--panel-bg-hover)'
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (theme !== 'dark') {
+                        e.currentTarget.style.background = 'transparent'
+                      }
+                    }}
                   >
                     <Moon className="w-4 h-4" />
-                    <span className="text-sm">{t('themeDark', language)}</span>
+                    <span className="text-sm font-medium">{t('themeDark', language)}</span>
                   </button>
                   <button
                     onClick={() => {
                       setTheme('light')
                       setThemeDropdownOpen(false)
                     }}
-                    className={`w-full flex items-center gap-2 px-3 py-2 transition-colors text-nofx-text-muted hover:text-white
-                      ${theme === 'light' ? 'bg-nofx-gold/10' : 'hover:bg-white/5'}`}
+                    className="w-full flex items-center gap-2 px-4 py-2.5 transition-colors"
+                    style={{
+                      background: theme === 'light' ? 'rgba(240, 185, 11, 0.15)' : 'transparent',
+                      color: theme === 'light' ? 'var(--nofx-gold)' : 'var(--text-primary)',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (theme !== 'light') {
+                        e.currentTarget.style.background = 'var(--panel-bg-hover)'
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (theme !== 'light') {
+                        e.currentTarget.style.background = 'transparent'
+                      }
+                    }}
                   >
                     <Sun className="w-4 h-4" />
-                    <span className="text-sm">{t('themeLight', language)}</span>
+                    <span className="text-sm font-medium">{t('themeLight', language)}</span>
                   </button>
                   <button
                     onClick={() => {
                       setTheme('fresh')
                       setThemeDropdownOpen(false)
                     }}
-                    className={`w-full flex items-center gap-2 px-3 py-2 transition-colors text-nofx-text-muted hover:text-white
-                      ${theme === 'fresh' ? 'bg-nofx-gold/10' : 'hover:bg-white/5'}`}
+                    className="w-full flex items-center gap-2 px-4 py-2.5 transition-colors"
+                    style={{
+                      background: theme === 'fresh' ? 'rgba(240, 185, 11, 0.15)' : 'transparent',
+                      color: theme === 'fresh' ? 'var(--nofx-gold)' : 'var(--text-primary)',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (theme !== 'fresh') {
+                        e.currentTarget.style.background = 'var(--panel-bg-hover)'
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (theme !== 'fresh') {
+                        e.currentTarget.style.background = 'transparent'
+                      }
+                    }}
                   >
                     <Palette className="w-4 h-4" />
-                    <span className="text-sm">{t('themeFresh', language)}</span>
+                    <span className="text-sm font-medium">{t('themeFresh', language)}</span>
                   </button>
                   <button
                     onClick={() => {
                       setTheme('cartoon')
                       setThemeDropdownOpen(false)
                     }}
-                    className={`w-full flex items-center gap-2 px-3 py-2 transition-colors text-nofx-text-muted hover:text-white
-                      ${theme === 'cartoon' ? 'bg-nofx-gold/10' : 'hover:bg-white/5'}`}
+                    className="w-full flex items-center gap-2 px-4 py-2.5 transition-colors"
+                    style={{
+                      background: theme === 'cartoon' ? 'rgba(240, 185, 11, 0.15)' : 'transparent',
+                      color: theme === 'cartoon' ? 'var(--nofx-gold)' : 'var(--text-primary)',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (theme !== 'cartoon') {
+                        e.currentTarget.style.background = 'var(--panel-bg-hover)'
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (theme !== 'cartoon') {
+                        e.currentTarget.style.background = 'transparent'
+                      }
+                    }}
                   >
                     <Sparkles className="w-4 h-4" />
-                    <span className="text-sm">{t('themeCartoon', language)}</span>
+                    <span className="text-sm font-medium">{t('themeCartoon', language)}</span>
                   </button>
                 </div>
               )}

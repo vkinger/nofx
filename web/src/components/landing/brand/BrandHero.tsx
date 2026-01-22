@@ -2,8 +2,11 @@ import { motion } from 'framer-motion'
 import { ArrowRight, Github } from 'lucide-react'
 import { Marquee } from './Marquee'
 import { OFFICIAL_LINKS } from '../../../constants/branding'
+import { useTheme } from '../../../contexts/ThemeContext'
 
 export default function BrandHero() {
+    const { theme } = useTheme()
+    const isDark = theme === 'dark'
     const handleScroll = () => {
         const element = document.getElementById('features')
         if (element) {
@@ -40,7 +43,12 @@ export default function BrandHero() {
                             Autonomous trading agents. High-frequency execution.
                             <br />
                             Institutional-grade strategies for the
-                            <span className="text-white font-bold ml-2 bg-nofx-accent px-2 py-0.5">DEGENERATES</span>.
+                            <span 
+                                className="font-bold ml-2 bg-nofx-accent px-2 py-0.5"
+                                style={{ color: isDark ? '#FFFFFF' : '#000000' }}
+                            >
+                                DEGENERATES
+                            </span>.
                         </p>
 
                         <div className="flex flex-wrap gap-4">
@@ -56,7 +64,19 @@ export default function BrandHero() {
                                 href={OFFICIAL_LINKS.github}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="border-2 border-white/20 text-white text-lg font-bold px-8 py-4 uppercase tracking-wider hover:bg-white/10 hover:border-white transition-all flex items-center gap-2"
+                                className="border-2 text-lg font-bold px-8 py-4 uppercase tracking-wider transition-all flex items-center gap-2"
+                                style={{
+                                    borderColor: 'var(--panel-border)',
+                                    color: 'var(--text-primary)',
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.borderColor = 'var(--text-primary)'
+                                    e.currentTarget.style.backgroundColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'var(--panel-bg-hover)'
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.borderColor = 'var(--panel-border)'
+                                    e.currentTarget.style.backgroundColor = 'transparent'
+                                }}
                             >
                                 <Github className="w-5 h-5" /> Source
                             </a>

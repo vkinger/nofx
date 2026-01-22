@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { DecisionRecord, DecisionAction } from '../types'
 import { t, type Language } from '../i18n/translations'
+import { useTheme } from '../contexts/ThemeContext'
 
 interface DecisionCardProps {
   decision: DecisionRecord
@@ -44,6 +45,8 @@ function getConfidenceColor(confidence: number | undefined): string {
 
 // Single Action Card Component
 function ActionCard({ action, language, onSymbolClick }: { action: DecisionAction; language: Language; onSymbolClick?: (symbol: string) => void }) {
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
   const config = ACTION_CONFIG[action.action] || ACTION_CONFIG.wait
   const isLong = action.action.includes('long')
   const isOpen = action.action.includes('open')
@@ -52,7 +55,9 @@ function ActionCard({ action, language, onSymbolClick }: { action: DecisionActio
     <div
       className="rounded-lg p-4 transition-all duration-200 hover:scale-[1.01]"
       style={{
-        background: 'linear-gradient(135deg, #1E2329 0%, #181C21 100%)',
+        background: isDark 
+          ? 'linear-gradient(135deg, rgba(30, 36, 42, 0.95) 0%, rgba(24, 28, 33, 0.95) 100%)'
+          : 'var(--panel-bg)',
         border: `1px solid ${config.color}33`,
         boxShadow: `0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.03)`,
       }}
@@ -63,7 +68,7 @@ function ActionCard({ action, language, onSymbolClick }: { action: DecisionActio
           <span className="text-xl">{config.icon}</span>
           <span
             className="font-mono font-bold text-lg cursor-pointer transition-all duration-200 hover:scale-110"
-            style={{ color: '#EAECEF' }}
+            style={{ color: 'var(--text-primary)' }}
             onClick={() => onSymbolClick?.(action.symbol)}
             title="Click to view chart"
           >
@@ -99,13 +104,13 @@ function ActionCard({ action, language, onSymbolClick }: { action: DecisionActio
 
       {/* Trading Details Grid */}
       {isOpen && (
-        <div className="grid grid-cols-4 gap-3 mt-3 pt-3" style={{ borderTop: '1px solid #2B3139' }}>
+        <div className="grid grid-cols-4 gap-3 mt-3 pt-3" style={{ borderTop: `1px solid var(--panel-border)` }}>
           {/* Entry Price */}
           <div className="text-center">
-            <div className="text-xs mb-1" style={{ color: '#848E9C' }}>
+            <div className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
               {t('entryPrice', language)}
             </div>
-            <div className="font-mono font-semibold" style={{ color: '#EAECEF' }}>
+            <div className="font-mono font-semibold" style={{ color: 'var(--text-primary)' }}>
               {formatPrice(action.price)}
             </div>
           </div>
@@ -119,7 +124,7 @@ function ActionCard({ action, language, onSymbolClick }: { action: DecisionActio
               {formatPrice(action.stop_loss)}
             </div>
             {action.stop_loss && action.price && (
-              <div className="text-xs mt-0.5" style={{ color: '#848E9C' }}>
+              <div className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
                 {calcPctChange(action.price, action.stop_loss, isLong)}
               </div>
             )}
@@ -134,7 +139,7 @@ function ActionCard({ action, language, onSymbolClick }: { action: DecisionActio
               {formatPrice(action.take_profit)}
             </div>
             {action.take_profit && action.price && (
-              <div className="text-xs mt-0.5" style={{ color: '#848E9C' }}>
+              <div className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
                 {calcPctChange(action.price, action.take_profit, isLong)}
               </div>
             )}
@@ -142,7 +147,7 @@ function ActionCard({ action, language, onSymbolClick }: { action: DecisionActio
 
           {/* Leverage */}
           <div className="text-center">
-            <div className="text-xs mb-1" style={{ color: '#848E9C' }}>
+            <div className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
               {t('leverage', language)}
             </div>
             <div className="font-mono font-semibold" style={{ color: '#F0B90B' }}>
@@ -154,8 +159,8 @@ function ActionCard({ action, language, onSymbolClick }: { action: DecisionActio
 
       {/* Risk/Reward Ratio for open positions */}
       {isOpen && action.stop_loss && action.take_profit && action.price && (
-        <div className="mt-3 pt-3 flex items-center justify-between" style={{ borderTop: '1px solid #2B3139' }}>
-          <span className="text-xs" style={{ color: '#848E9C' }}>{t('riskReward', language)}</span>
+        <div className="mt-3 pt-3 flex items-center justify-between" style={{ borderTop: `1px solid var(--panel-border)` }}>
+          <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{t('riskReward', language)}</span>
           <div className="flex items-center gap-2">
             {(() => {
               const slDist = Math.abs(action.price - action.stop_loss)
@@ -166,14 +171,14 @@ function ActionCard({ action, language, onSymbolClick }: { action: DecisionActio
                 <>
                   <div className="flex gap-1">
                     <span style={{ color: '#F6465D' }}>1</span>
-                    <span style={{ color: '#848E9C' }}>:</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>:</span>
                     <span style={{ color: '#0ECB81' }}>{ratio.toFixed(1)}</span>
                   </div>
                   <div
                     className="h-1.5 rounded-full"
                     style={{
                       width: '60px',
-                      background: '#2B3139',
+                      background: 'var(--panel-border)',
                     }}
                   >
                     <div
@@ -193,8 +198,8 @@ function ActionCard({ action, language, onSymbolClick }: { action: DecisionActio
 
       {/* Reasoning */}
       {action.reasoning && (
-        <div className="mt-3 pt-3" style={{ borderTop: '1px solid #2B3139' }}>
-          <div className="text-xs line-clamp-2" style={{ color: '#848E9C' }}>
+        <div className="mt-3 pt-3" style={{ borderTop: `1px solid var(--panel-border)` }}>
+          <div className="text-xs line-clamp-2" style={{ color: 'var(--text-secondary)' }}>
             💡 {action.reasoning}
           </div>
         </div>
@@ -218,6 +223,8 @@ function ActionCard({ action, language, onSymbolClick }: { action: DecisionActio
 }
 
 export function DecisionCard({ decision, language, onSymbolClick }: DecisionCardProps) {
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
   const [showSystemPrompt, setShowSystemPrompt] = useState(false)
   const [showInputPrompt, setShowInputPrompt] = useState(false)
   const [showCoT, setShowCoT] = useState(false)
@@ -249,9 +256,13 @@ export function DecisionCard({ decision, language, onSymbolClick }: DecisionCard
     <div
       className="rounded-xl p-5 transition-all duration-300 hover:translate-y-[-2px]"
       style={{
-        border: '1px solid #2B3139',
-        background: 'linear-gradient(180deg, #1E2329 0%, #181C21 100%)',
-        boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)',
+        border: `1px solid var(--panel-border)`,
+        background: isDark 
+          ? 'linear-gradient(180deg, rgba(30, 36, 42, 0.95) 0%, rgba(24, 28, 33, 0.95) 100%)'
+          : 'var(--panel-bg)',
+        boxShadow: isDark 
+          ? '0 4px 16px rgba(0, 0, 0, 0.3)'
+          : '0 4px 16px rgba(0, 0, 0, 0.1)',
       }}
     >
       {/* Header */}
@@ -264,10 +275,10 @@ export function DecisionCard({ decision, language, onSymbolClick }: DecisionCard
             <span className="text-xl">🤖</span>
           </div>
           <div>
-            <div className="font-bold" style={{ color: '#EAECEF' }}>
+            <div className="font-bold" style={{ color: 'var(--text-primary)' }}>
               {t('cycle', language)} #{decision.cycle_number}
             </div>
-            <div className="text-xs" style={{ color: '#848E9C' }}>
+            <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
               {new Date(decision.timestamp).toLocaleString()}
             </div>
           </div>
@@ -300,7 +311,16 @@ export function DecisionCard({ decision, language, onSymbolClick }: DecisionCard
           <div>
             <button
               onClick={() => setShowSystemPrompt(!showSystemPrompt)}
-              className="flex items-center gap-2 text-sm transition-colors w-full justify-between p-2 rounded hover:bg-white/5"
+              className="flex items-center gap-2 text-sm transition-colors w-full justify-between p-2 rounded"
+              style={{
+                background: 'transparent',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--panel-bg-hover)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent'
+              }}
             >
               <div className="flex items-center gap-2">
                 <span className="text-base">⚙️</span>
@@ -343,9 +363,9 @@ export function DecisionCard({ decision, language, onSymbolClick }: DecisionCard
               <div
                 className="mt-2 rounded-lg p-4 text-sm font-mono whitespace-pre-wrap max-h-96 overflow-y-auto"
                 style={{
-                  background: '#0B0E11',
-                  border: '1px solid #2B3139',
-                  color: '#EAECEF',
+                  background: 'var(--panel-bg)',
+                  border: `1px solid var(--panel-border)`,
+                  color: 'var(--text-primary)',
                 }}
               >
                 {decision.system_prompt}
@@ -359,7 +379,16 @@ export function DecisionCard({ decision, language, onSymbolClick }: DecisionCard
           <div>
             <button
               onClick={() => setShowInputPrompt(!showInputPrompt)}
-              className="flex items-center gap-2 text-sm transition-colors w-full justify-between p-2 rounded hover:bg-white/5"
+              className="flex items-center gap-2 text-sm transition-colors w-full justify-between p-2 rounded"
+              style={{
+                background: 'transparent',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--panel-bg-hover)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent'
+              }}
             >
               <div className="flex items-center gap-2">
                 <span className="text-base">📥</span>
@@ -402,9 +431,9 @@ export function DecisionCard({ decision, language, onSymbolClick }: DecisionCard
               <div
                 className="mt-2 rounded-lg p-4 text-sm font-mono whitespace-pre-wrap max-h-96 overflow-y-auto"
                 style={{
-                  background: '#0B0E11',
-                  border: '1px solid #2B3139',
-                  color: '#EAECEF',
+                  background: 'var(--panel-bg)',
+                  border: `1px solid var(--panel-border)`,
+                  color: 'var(--text-primary)',
                 }}
               >
                 {decision.input_prompt}
@@ -418,7 +447,16 @@ export function DecisionCard({ decision, language, onSymbolClick }: DecisionCard
           <div>
             <button
               onClick={() => setShowCoT(!showCoT)}
-              className="flex items-center gap-2 text-sm transition-colors w-full justify-between p-2 rounded hover:bg-white/5"
+              className="flex items-center gap-2 text-sm transition-colors w-full justify-between p-2 rounded"
+              style={{
+                background: 'transparent',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--panel-bg-hover)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent'
+              }}
             >
               <div className="flex items-center gap-2">
                 <span className="text-base">🧠</span>
@@ -437,9 +475,9 @@ export function DecisionCard({ decision, language, onSymbolClick }: DecisionCard
               <div
                 className="mt-2 rounded-lg p-4 text-sm font-mono whitespace-pre-wrap max-h-96 overflow-y-auto"
                 style={{
-                  background: '#0B0E11',
-                  border: '1px solid #2B3139',
-                  color: '#EAECEF',
+                  background: 'var(--panel-bg)',
+                  border: `1px solid var(--panel-border)`,
+                  color: 'var(--text-primary)',
                 }}
               >
                 {decision.cot_trace}
@@ -453,10 +491,13 @@ export function DecisionCard({ decision, language, onSymbolClick }: DecisionCard
       {decision.execution_log && decision.execution_log.length > 0 && (
         <div
           className="rounded-lg p-3 mt-4 text-xs font-mono space-y-1"
-          style={{ background: '#0B0E11', border: '1px solid #2B3139' }}
+          style={{ 
+            background: isDark ? 'rgba(11, 14, 17, 0.6)' : 'var(--panel-bg)', 
+            border: '1px solid var(--panel-border)',
+          }}
         >
           {decision.execution_log.map((log, index) => (
-            <div key={`${log}-${index}`} style={{ color: '#EAECEF' }}>
+            <div key={`${log}-${index}`} style={{ color: 'var(--text-primary)' }}>
               {log}
             </div>
           ))}

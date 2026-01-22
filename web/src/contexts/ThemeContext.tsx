@@ -14,6 +14,15 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 
+// Helper function to apply theme class (defined before use)
+function applyThemeClass(themeToApply: Theme) {
+  const root = document.documentElement
+  // Remove all theme classes
+  root.classList.remove('dark-theme', 'light-theme', 'fresh-theme', 'cartoon-theme')
+  // Add the current theme class
+  root.classList.add(`${themeToApply}-theme`)
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
   // Initialize theme from localStorage or default to dark
   const [theme, setThemeState] = useState<Theme>(() => {
@@ -26,15 +35,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     
     return initialTheme
   })
-
-  // Helper function to apply theme class
-  const applyThemeClass = (themeToApply: Theme) => {
-    const root = document.documentElement
-    // Remove all theme classes
-    root.classList.remove('dark-theme', 'light-theme', 'fresh-theme', 'cartoon-theme')
-    // Add the current theme class
-    root.classList.add(`${themeToApply}-theme`)
-  }
 
   // Apply theme to document when theme changes
   useEffect(() => {

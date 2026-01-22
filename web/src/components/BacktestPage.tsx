@@ -96,13 +96,13 @@ function StatCard({
   const trendColors = {
     up: '#0ECB81',
     down: '#F6465D',
-    neutral: '#848E9C',
+    neutral: 'var(--text-secondary)',
   }
 
   return (
     <div
       className="p-4 rounded-xl"
-      style={{ background: 'rgba(30, 35, 41, 0.6)', border: '1px solid #2B3139' }}
+      style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)' }}
     >
       <div className="flex items-center gap-2 mb-2">
         <Icon className="w-4 h-4" style={{ color: '#F0B90B' }} />
@@ -146,7 +146,7 @@ function ProgressRing({ progress, size = 120 }: { progress: number; size?: numbe
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke="#2B3139"
+          stroke="var(--panel-border)"
           strokeWidth={strokeWidth}
           fill="none"
         />
@@ -227,26 +227,26 @@ function BacktestChart({
           <CartesianGrid stroke="rgba(43, 49, 57, 0.5)" strokeDasharray="3 3" />
           <XAxis
             dataKey="time"
-            tick={{ fill: '#848E9C', fontSize: 10 }}
-            axisLine={{ stroke: '#2B3139' }}
-            tickLine={{ stroke: '#2B3139' }}
+            tick={{ fill: 'var(--text-secondary)', fontSize: 10 }}
+            axisLine={{ stroke: 'var(--panel-border)' }}
+            tickLine={{ stroke: 'var(--panel-border)' }}
             hide
           />
           <YAxis
-            tick={{ fill: '#848E9C', fontSize: 10 }}
-            axisLine={{ stroke: '#2B3139' }}
-            tickLine={{ stroke: '#2B3139' }}
+            tick={{ fill: 'var(--text-secondary)', fontSize: 10 }}
+            axisLine={{ stroke: 'var(--panel-border)' }}
+            tickLine={{ stroke: 'var(--panel-border)' }}
             width={60}
             domain={['auto', 'auto']}
           />
           <Tooltip
             contentStyle={{
-              background: '#1E2329',
-              border: '1px solid #2B3139',
+              background: 'var(--panel-bg)',
+              border: '1px solid var(--panel-border)',
               borderRadius: 8,
-              color: '#EAECEF',
+              color: 'var(--text-primary)',
             }}
-            labelStyle={{ color: '#848E9C' }}
+            labelStyle={{ color: 'var(--text-secondary)' }}
             formatter={(value: number) => [`$${value.toFixed(2)}`, 'Equity']}
           />
           <Area
@@ -323,8 +323,8 @@ function CandlestickChartComponent({
     // Create chart
     const chart = createChart(container, {
       layout: {
-        background: { type: ColorType.Solid, color: '#0B0E11' },
-        textColor: '#848E9C',
+        background: { type: ColorType.Solid, color: 'var(--background)' },
+        textColor: 'var(--text-secondary)',
       },
       grid: {
         vertLines: { color: 'rgba(43, 49, 57, 0.5)' },
@@ -334,10 +334,10 @@ function CandlestickChartComponent({
         mode: CrosshairMode.Normal,
       },
       rightPriceScale: {
-        borderColor: '#2B3139',
+        borderColor: 'var(--panel-border)',
       },
       timeScale: {
-        borderColor: '#2B3139',
+        borderColor: 'var(--panel-border)',
         timeVisible: true,
         secondsVisible: false,
       },
@@ -476,19 +476,19 @@ function CandlestickChartComponent({
         </div>
 
         <div className="flex items-center gap-2">
-          <Clock size={14} style={{ color: '#848E9C' }} />
-          <span className="text-sm" style={{ color: '#848E9C' }}>
+          <Clock size={14} style={{ color: 'var(--text-secondary)' }} />
+          <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
             {language === 'zh' ? '周期' : 'Interval'}
           </span>
-          <div className="flex rounded overflow-hidden" style={{ border: '1px solid #2B3139' }}>
+          <div className="flex rounded overflow-hidden" style={{ border: '1px solid var(--panel-border)' }}>
             {CHART_TIMEFRAMES.map((tf) => (
               <button
                 key={tf}
                 onClick={() => setSelectedTimeframe(tf)}
                 className="px-2.5 py-1 text-xs font-medium transition-colors"
                 style={{
-                  background: selectedTimeframe === tf ? '#F0B90B' : '#1E2329',
-                  color: selectedTimeframe === tf ? '#0B0E11' : '#848E9C',
+                  background: selectedTimeframe === tf ? 'var(--nofx-gold)' : 'var(--panel-bg)',
+                  color: selectedTimeframe === tf ? '#000' : 'var(--text-secondary)',
                 }}
               >
                 {tf}
@@ -506,7 +506,7 @@ function CandlestickChartComponent({
       <div
         ref={chartContainerRef}
         className="w-full rounded-lg overflow-hidden"
-        style={{ background: '#0B0E11', minHeight: 400 }}
+        style={{ background: 'var(--background)', minHeight: 400 }}
       >
         {isLoading && (
           <div className="flex items-center justify-center h-[400px]" style={{ color: '#848E9C' }}>
@@ -642,7 +642,7 @@ function PositionsDisplay({
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <Activity className="w-4 h-4" style={{ color: '#F0B90B' }} />
-          <span className="text-sm font-medium" style={{ color: '#EAECEF' }}>
+          <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
             {language === 'zh' ? '当前持仓' : 'Active Positions'}
           </span>
           <span
@@ -677,7 +677,7 @@ function PositionsDisplay({
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               className="flex items-center justify-between p-2 rounded"
-              style={{ background: '#1E2329' }}
+              style={{ background: 'var(--panel-bg)' }}
             >
               <div className="flex items-center gap-2">
                 <div
@@ -692,7 +692,7 @@ function PositionsDisplay({
                 </div>
                 <div>
                   <div className="flex items-center gap-1.5">
-                    <span className="font-mono font-bold text-sm" style={{ color: '#EAECEF' }}>
+                    <span className="font-mono font-bold text-sm" style={{ color: 'var(--text-primary)' }}>
                       {pos.symbol.replace('USDT', '')}
                     </span>
                     <span
@@ -717,7 +717,7 @@ function PositionsDisplay({
                   <span style={{ color: '#848E9C' }}>
                     {language === 'zh' ? '开仓' : 'Entry'}: ${pos.entry_price.toFixed(2)}
                   </span>
-                  <span style={{ color: '#EAECEF' }}>
+                  <span style={{ color: 'var(--text-primary)' }}>
                     {language === 'zh' ? '现价' : 'Mark'}: ${pos.mark_price.toFixed(2)}
                   </span>
                 </div>
@@ -1045,9 +1045,9 @@ export function BacktestPage() {
       case 'liquidated':
         return '#F6465D'
       case 'paused':
-        return '#848E9C'
+        return 'var(--text-secondary)'
       default:
-        return '#848E9C'
+        return 'var(--text-secondary)'
     }
   }
 
@@ -1098,18 +1098,18 @@ export function BacktestPage() {
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold flex items-center gap-3" style={{ color: '#EAECEF' }}>
-              <Brain className="w-7 h-7" style={{ color: '#F0B90B' }} />
+            <h1 className="text-2xl font-bold flex items-center gap-3" style={{ color: 'var(--text-primary)' }}>
+              <Brain className="w-7 h-7" style={{ color: 'var(--nofx-gold)' }} />
               {tr('title')}
             </h1>
-            <p className="text-sm mt-1" style={{ color: '#848E9C' }}>
+            <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
               {tr('subtitle')}
             </p>
           </div>
           <button
             onClick={() => setWizardStep(1)}
             className="px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-all hover:opacity-90"
-            style={{ background: '#F0B90B', color: '#0B0E11' }}
+            style={{ background: 'var(--nofx-gold)', color: '#000' }}
           >
             <Play className="w-4 h-4" />
             {language === 'zh' ? '新建回测' : 'New Backtest'}
@@ -1128,8 +1128,8 @@ export function BacktestPage() {
                       onClick={() => setWizardStep(step as WizardStep)}
                       className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all"
                       style={{
-                        background: wizardStep >= step ? '#F0B90B' : '#2B3139',
-                        color: wizardStep >= step ? '#0B0E11' : '#848E9C',
+                        background: wizardStep >= step ? 'var(--nofx-gold)' : 'var(--panel-border)',
+                        color: wizardStep >= step ? '#000' : 'var(--text-secondary)',
                       }}
                     >
                       {step}
@@ -1137,12 +1137,12 @@ export function BacktestPage() {
                     {step < 3 && (
                       <div
                         className="w-8 h-0.5 mx-1"
-                        style={{ background: wizardStep > step ? '#F0B90B' : '#2B3139' }}
+                        style={{ background: wizardStep > step ? 'var(--nofx-gold)' : 'var(--panel-border)' }}
                       />
                     )}
                   </div>
                 ))}
-                <span className="ml-2 text-xs" style={{ color: '#848E9C' }}>
+                <span className="ml-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
                   {wizardStep === 1
                     ? language === 'zh'
                       ? '选择模型'
@@ -1169,12 +1169,12 @@ export function BacktestPage() {
                       className="space-y-4"
                     >
                       <div>
-                        <label className="block text-xs mb-2" style={{ color: '#848E9C' }}>
+                        <label className="block text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
                           {tr('form.aiModelLabel')}
                         </label>
                         <select
                           className="w-full p-3 rounded-lg text-sm"
-                          style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
+                          style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', color: 'var(--text-primary)' }}
                           value={formState.aiModelId}
                           onChange={(e) => handleFormChange('aiModelId', e.target.value)}
                         >
@@ -1202,12 +1202,12 @@ export function BacktestPage() {
 
                       {/* Strategy Selection (Optional) */}
                       <div>
-                        <label className="block text-xs mb-2" style={{ color: '#848E9C' }}>
+                        <label className="block text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
                           {language === 'zh' ? '策略配置（可选）' : 'Strategy (Optional)'}
                         </label>
                         <select
                           className="w-full p-3 rounded-lg text-sm"
-                          style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
+                          style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', color: 'var(--text-primary)' }}
                           value={formState.strategyId}
                           onChange={(e) => handleFormChange('strategyId', e.target.value)}
                         >
@@ -1224,7 +1224,7 @@ export function BacktestPage() {
                               <span style={{ color: '#F0B90B' }}>
                                 {language === 'zh' ? '币种来源:' : 'Coin Source:'}
                               </span>
-                              <span className="font-medium" style={{ color: '#EAECEF' }}>
+                              <span className="font-medium" style={{ color: 'var(--text-primary)' }}>
                                 {coinSourceDescription.type}
                                 {coinSourceDescription.limit && ` (${coinSourceDescription.limit})`}
                                 {coinSourceDescription.desc && ` - ${coinSourceDescription.desc}`}
@@ -1242,7 +1242,7 @@ export function BacktestPage() {
                       </div>
 
                       <div>
-                        <label className="block text-xs mb-2" style={{ color: '#848E9C' }}>
+                        <label className="block text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
                           {tr('form.symbolsLabel')}
                           {strategyHasDynamicCoins && (
                             <span className="ml-2" style={{ color: '#5E6673' }}>
@@ -1267,9 +1267,9 @@ export function BacktestPage() {
                                   }}
                                   className="px-2 py-1 rounded text-xs transition-all"
                                   style={{
-                                    background: isSelected ? 'rgba(240,185,11,0.15)' : '#1E2329',
-                                    border: `1px solid ${isSelected ? '#F0B90B' : '#2B3139'}`,
-                                    color: isSelected ? '#F0B90B' : '#848E9C',
+                                    background: isSelected ? 'rgba(240,185,11,0.15)' : 'var(--panel-bg)',
+                                    border: `1px solid ${isSelected ? 'var(--nofx-gold)' : 'var(--panel-border)'}`,
+                                    color: isSelected ? 'var(--nofx-gold)' : 'var(--text-secondary)',
                                   }}
                                 >
                                   {sym.replace('USDT', '')}
@@ -1299,7 +1299,7 @@ export function BacktestPage() {
                               type="button"
                               onClick={() => handleFormChange('symbols', '')}
                               className="absolute top-2 right-2 px-2 py-1 rounded text-xs"
-                              style={{ background: '#F0B90B', color: '#0B0E11' }}
+                              style={{ background: 'var(--nofx-gold)', color: '#000' }}
                             >
                               {language === 'zh' ? '清空使用策略币种' : 'Clear to use strategy'}
                             </button>
@@ -1312,7 +1312,7 @@ export function BacktestPage() {
                         onClick={() => setWizardStep(2)}
                         disabled={!selectedModel?.enabled}
                         className="w-full py-2.5 rounded-lg font-medium flex items-center justify-center gap-2 transition-all disabled:opacity-50"
-                        style={{ background: '#F0B90B', color: '#0B0E11' }}
+                        style={{ background: 'var(--nofx-gold)', color: '#000' }}
                       >
                         {language === 'zh' ? '下一步' : 'Next'}
                         <ChevronRight className="w-4 h-4" />
@@ -1330,7 +1330,7 @@ export function BacktestPage() {
                       className="space-y-4"
                     >
                       <div>
-                        <label className="block text-xs mb-2" style={{ color: '#848E9C' }}>
+                        <label className="block text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
                           {tr('form.timeRangeLabel')}
                         </label>
                         <div className="flex flex-wrap gap-1 mb-2">
@@ -1350,14 +1350,14 @@ export function BacktestPage() {
                           <input
                             type="datetime-local"
                             className="p-2 rounded-lg text-xs"
-                            style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
+                            style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', color: 'var(--text-primary)' }}
                             value={formState.start}
                             onChange={(e) => handleFormChange('start', e.target.value)}
                           />
                           <input
                             type="datetime-local"
                             className="p-2 rounded-lg text-xs"
-                            style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
+                            style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', color: 'var(--text-primary)' }}
                             value={formState.end}
                             onChange={(e) => handleFormChange('end', e.target.value)}
                           />
@@ -1365,7 +1365,7 @@ export function BacktestPage() {
                       </div>
 
                       <div>
-                        <label className="block text-xs mb-2" style={{ color: '#848E9C' }}>
+                        <label className="block text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
                           {language === 'zh' ? '时间周期' : 'Timeframes'}
                         </label>
                         <div className="flex flex-wrap gap-1">
@@ -1403,7 +1403,7 @@ export function BacktestPage() {
                           <input
                             type="number"
                             className="w-full p-2 rounded-lg text-xs"
-                            style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
+                            style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', color: 'var(--text-primary)' }}
                             value={formState.balance}
                             onChange={(e) => handleFormChange('balance', Number(e.target.value))}
                           />
@@ -1414,7 +1414,7 @@ export function BacktestPage() {
                           </label>
                           <select
                             className="w-full p-2 rounded-lg text-xs"
-                            style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
+                            style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', color: 'var(--text-primary)' }}
                             value={formState.decisionTf}
                             onChange={(e) => handleFormChange('decisionTf', e.target.value)}
                           >
@@ -1441,7 +1441,7 @@ export function BacktestPage() {
                           type="button"
                           onClick={() => setWizardStep(3)}
                           className="flex-1 py-2 rounded-lg font-medium flex items-center justify-center gap-2"
-                          style={{ background: '#F0B90B', color: '#0B0E11' }}
+                          style={{ background: 'var(--nofx-gold)', color: '#000' }}
                         >
                           {language === 'zh' ? '下一步' : 'Next'}
                           <ChevronRight className="w-4 h-4" />
@@ -1467,7 +1467,7 @@ export function BacktestPage() {
                           <input
                             type="number"
                             className="w-full p-2 rounded-lg text-xs"
-                            style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
+                            style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', color: 'var(--text-primary)' }}
                             value={formState.btcEthLeverage}
                             onChange={(e) => handleFormChange('btcEthLeverage', Number(e.target.value))}
                           />
@@ -1479,7 +1479,7 @@ export function BacktestPage() {
                           <input
                             type="number"
                             className="w-full p-2 rounded-lg text-xs"
-                            style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
+                            style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', color: 'var(--text-primary)' }}
                             value={formState.altcoinLeverage}
                             onChange={(e) => handleFormChange('altcoinLeverage', Number(e.target.value))}
                           />
@@ -1494,7 +1494,7 @@ export function BacktestPage() {
                           <input
                             type="number"
                             className="w-full p-2 rounded-lg text-xs"
-                            style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
+                            style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', color: 'var(--text-primary)' }}
                             value={formState.fee}
                             onChange={(e) => handleFormChange('fee', Number(e.target.value))}
                           />
@@ -1506,7 +1506,7 @@ export function BacktestPage() {
                           <input
                             type="number"
                             className="w-full p-2 rounded-lg text-xs"
-                            style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
+                            style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', color: 'var(--text-primary)' }}
                             value={formState.slippage}
                             onChange={(e) => handleFormChange('slippage', Number(e.target.value))}
                           />
@@ -1518,7 +1518,7 @@ export function BacktestPage() {
                           <input
                             type="number"
                             className="w-full p-2 rounded-lg text-xs"
-                            style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
+                            style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', color: 'var(--text-primary)' }}
                             value={formState.cadence}
                             onChange={(e) => handleFormChange('cadence', Number(e.target.value))}
                           />
@@ -1583,7 +1583,7 @@ export function BacktestPage() {
                           type="submit"
                           disabled={isStarting}
                           className="flex-1 py-2 rounded-lg font-bold flex items-center justify-center gap-2 disabled:opacity-50"
-                          style={{ background: '#F0B90B', color: '#0B0E11' }}
+                          style={{ background: 'var(--nofx-gold)', color: '#000' }}
                         >
                           {isStarting ? (
                             <RefreshCw className="w-4 h-4 animate-spin" />

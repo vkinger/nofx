@@ -10,6 +10,7 @@ import { t, type Language } from '../i18n/translations'
 import { LogOut, Loader2, Eye, EyeOff, Copy, Check } from 'lucide-react'
 import { DeepVoidBackground } from '../components/DeepVoidBackground'
 import { GridRiskPanel } from '../components/strategy/GridRiskPanel'
+import { useTheme } from '../contexts/ThemeContext'
 import type {
     SystemStatus,
     AccountInfo,
@@ -177,6 +178,8 @@ export function TraderDashboardPage({
     onNavigateToTraders,
     exchanges,
 }: TraderDashboardPageProps) {
+    const { theme } = useTheme()
+    const isDark = theme === 'dark'
     const [closingPosition, setClosingPosition] = useState<string | null>(null)
     const [selectedChartSymbol, setSelectedChartSymbol] = useState<string | undefined>(undefined)
     const [showOnlyValidActions, setShowOnlyValidActions] = useState<boolean>(false)
@@ -402,7 +405,7 @@ export function TraderDashboardPage({
                 <div
                     className="mb-6 rounded-lg p-6 animate-scale-in nofx-glass group"
                     style={{
-                        background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.6) 0%, rgba(15, 23, 42, 0.4) 100%)',
+                        background: 'var(--panel-bg)',
                     }}
                 >
                     <div className="flex items-start justify-between mb-4">
@@ -499,7 +502,7 @@ export function TraderDashboardPage({
                             )}
                         </div>
                     </div>
-                    <div className="flex items-center gap-6 text-sm flex-wrap text-nofx-text-muted font-mono pl-2">
+                    <div className="flex items-center gap-6 text-sm flex-wrap font-mono pl-2" style={{ color: 'var(--text-secondary)' }}>
                         <span className="flex items-center gap-2">
                             <span className="opacity-60">AI Model:</span>
                             <span
@@ -516,29 +519,29 @@ export function TraderDashboardPage({
                                 )}
                             </span>
                         </span>
-                        <span className="w-px h-3 bg-white/10 hidden md:block" />
+                        <span className="w-px h-3 hidden md:block" style={{ background: 'var(--panel-border)' }} />
                         <span className="flex items-center gap-2">
                             <span className="opacity-60">Exchange:</span>
-                            <span className="text-nofx-text-main font-semibold">
+                            <span className="font-semibold" style={{ color: selectedTrader.exchange_id ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
                                 {getExchangeDisplayNameFromList(
                                     selectedTrader.exchange_id,
                                     exchanges
                                 )}
                             </span>
                         </span>
-                        <span className="w-px h-3 bg-white/10 hidden md:block" />
+                        <span className="w-px h-3 hidden md:block" style={{ background: 'var(--panel-border)' }} />
                         <span className="flex items-center gap-2">
                             <span className="opacity-60">Strategy:</span>
-                            <span className="text-nofx-gold font-semibold tracking-wide">
-                                {selectedTrader.strategy_name || 'No Strategy'}
+                            <span className="font-semibold tracking-wide" style={{ color: selectedTrader.strategy_name ? 'var(--nofx-gold)' : 'var(--text-secondary)' }}>
+                                {selectedTrader.strategy_name || (language === 'zh' ? '未配置策略' : 'No Strategy')}
                             </span>
                         </span>
                         {status && (
-                            <div className="hidden md:contents">
-                                <span className="w-px h-3 bg-white/10" />
-                                <span>Cycles: <span className="text-nofx-text-main">{status.call_count}</span></span>
-                                <span className="w-px h-3 bg-white/10" />
-                                <span>Runtime: <span className="text-nofx-text-main">{status.runtime_minutes} min</span></span>
+                            <div className="hidden md:contents" style={{ color: 'var(--text-secondary)' }}>
+                                <span className="w-px h-3" style={{ background: 'var(--panel-border)' }} />
+                                <span>Cycles: <span style={{ color: 'var(--text-primary)' }}>{status.call_count}</span></span>
+                                <span className="w-px h-3" style={{ background: 'var(--panel-border)' }} />
+                                <span>Runtime: <span style={{ color: 'var(--text-primary)' }}>{status.runtime_minutes} min</span></span>
                             </div>
                         )}
                     </div>
@@ -546,7 +549,14 @@ export function TraderDashboardPage({
 
                 {/* Debug Info */}
                 {account && (
-                    <div className="mb-4 px-3 py-1.5 rounded bg-black/40 border border-white/5 text-[10px] font-mono text-nofx-text-muted flex justify-between items-center opacity-60 hover:opacity-100 transition-opacity">
+                    <div 
+                        className="mb-4 px-3 py-1.5 rounded text-[10px] font-mono flex justify-between items-center opacity-60 hover:opacity-100 transition-opacity"
+                        style={{
+                            background: isDark ? 'rgba(0, 0, 0, 0.4)' : 'var(--panel-bg)',
+                            border: '1px solid var(--panel-border)',
+                            color: 'var(--text-secondary)',
+                        }}
+                    >
                         <span>SYSTEM_STATUS::ONLINE</span>
                         <div className="flex gap-4">
                             <span>LAST_UPDATE::{lastUpdate}</span>
@@ -631,7 +641,7 @@ export function TraderDashboardPage({
                                 <div className="w-24 h-24 rounded-full bg-blue-500 blur-3xl" />
                             </div>
                             <div className="flex items-center justify-between mb-5 relative z-10">
-                                <h2 className="text-lg font-bold flex items-center gap-2 text-nofx-text-main uppercase tracking-wide">
+                                <h2 className="text-lg font-bold flex items-center gap-2 uppercase tracking-wide" style={{ color: 'var(--text-primary)' }}>
                                     <span className="text-blue-500">◈</span> {t('currentPositions', language)}
                                 </h2>
                                 {positions && positions.length > 0 && (
@@ -813,7 +823,7 @@ export function TraderDashboardPage({
                         style={{ animationDelay: '0.2s' }}
                     >
                         {/* Header */}
-                        <div className="flex items-center gap-3 mb-5 pb-4 border-b border-white/5 shrink-0">
+                        <div className="flex items-center gap-3 mb-5 pb-4 shrink-0" style={{ borderBottom: `1px solid var(--panel-border)` }}>
                             <div
                                 className="w-10 h-10 rounded-xl flex items-center justify-center text-xl shadow-[0_4px_14px_rgba(99,102,241,0.4)]"
                                 style={{
@@ -823,7 +833,7 @@ export function TraderDashboardPage({
                                 🧠
                             </div>
                             <div className="flex-1">
-                                <h2 className="text-xl font-bold text-nofx-text-main">
+                                <h2 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
                                     {t('recentDecisions', language)}
                                 </h2>
                                 {decisions && decisions.length > 0 && (
@@ -836,7 +846,12 @@ export function TraderDashboardPage({
                             <select
                                 value={decisionsLimit}
                                 onChange={(e) => onDecisionsLimitChange(Number(e.target.value))}
-                                className="px-3 py-1.5 rounded-lg text-sm font-medium cursor-pointer transition-all bg-black/40 text-nofx-text-main border border-white/10 hover:border-nofx-accent focus:outline-none"
+                                className="px-3 py-1.5 rounded-lg text-sm font-medium cursor-pointer transition-all focus:outline-none"
+                                style={{
+                                  background: 'var(--panel-bg)',
+                                  color: 'var(--text-primary)',
+                                  border: `1px solid var(--panel-border)`,
+                                }}
                             >
                                 <option value={5}>5</option>
                                 <option value={10}>10</option>
@@ -949,7 +964,7 @@ export function TraderDashboardPage({
                         style={{ animationDelay: '0.25s' }}
                     >
                         <div className="flex items-center justify-between mb-5">
-                            <h2 className="text-xl font-bold flex items-center gap-2 text-nofx-text-main">
+                            <h2 className="text-xl font-bold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
                                 <span className="text-2xl">📜</span>
                                 {t('positionHistory.title', language)}
                             </h2>
@@ -980,25 +995,49 @@ function StatCard({
     subtitle?: string
     icon?: string
 }) {
+    const { theme } = useTheme()
+    const isDark = theme === 'dark'
+    
     return (
-        <div className="group nofx-glass p-5 rounded-lg transition-all duration-300 hover:bg-white/5 hover:translate-y-[-2px] border border-white/5 hover:border-nofx-gold/20 relative overflow-hidden">
+        <div 
+            className="group p-5 rounded-lg transition-all duration-300 hover:translate-y-[-2px] relative overflow-hidden"
+            style={{
+                background: isDark 
+                    ? 'linear-gradient(135deg, rgba(30, 36, 42, 0.6) 0%, rgba(24, 28, 33, 0.6) 100%)'
+                    : 'var(--panel-bg)',
+                border: '1px solid var(--panel-border)',
+            }}
+            onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                e.currentTarget.style.background = isDark 
+                    ? 'linear-gradient(135deg, rgba(30, 36, 42, 0.8) 0%, rgba(24, 28, 33, 0.8) 100%)'
+                    : 'var(--panel-bg-hover)'
+            }}
+            onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = 'var(--panel-border)'
+                e.currentTarget.style.background = isDark 
+                    ? 'linear-gradient(135deg, rgba(30, 36, 42, 0.6) 0%, rgba(24, 28, 33, 0.6) 100%)'
+                    : 'var(--panel-bg)'
+            }}
+        >
             <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity text-4xl grayscale group-hover:grayscale-0">
                 {icon}
             </div>
-            <div className="text-xs mb-2 font-mono uppercase tracking-wider text-nofx-text-muted flex items-center gap-2">
+            <div className="text-xs mb-2 font-mono uppercase tracking-wider flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
                 {title}
             </div>
             <div className="flex items-baseline gap-1 mb-1">
-                <div className="text-2xl font-bold font-mono text-nofx-text-main tracking-tight group-hover:text-white transition-colors">
+                <div className="text-2xl font-bold font-mono tracking-tight transition-colors" style={{ color: 'var(--text-primary)' }}>
                     {value}
                 </div>
-                {unit && <span className="text-xs font-mono text-nofx-text-muted opacity-60">{unit}</span>}
+                {unit && <span className="text-xs font-mono opacity-60" style={{ color: 'var(--text-secondary)' }}>{unit}</span>}
             </div>
 
             {change !== undefined && (
                 <div className="flex items-center gap-1">
                     <div
-                        className={`text-sm mono font-bold flex items-center gap-1 ${positive ? 'text-nofx-green' : 'text-nofx-red'}`}
+                        className="text-sm mono font-bold flex items-center gap-1"
+                        style={{ color: positive ? '#0ECB81' : '#F6465D' }}
                     >
                         <span>{positive ? '▲' : '▼'}</span>
                         <span>{positive ? '+' : ''}{change.toFixed(2)}%</span>
@@ -1006,7 +1045,7 @@ function StatCard({
                 </div>
             )}
             {subtitle && (
-                <div className="text-xs mt-2 mono text-nofx-text-muted opacity-80">
+                <div className="text-xs mt-2 mono opacity-80" style={{ color: 'var(--text-secondary)' }}>
                     {subtitle}
                 </div>
             )}

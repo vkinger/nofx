@@ -91,14 +91,14 @@ export function GridConfigEditor({
   }
 
   const inputStyle = {
-    background: '#1E2329',
-    border: '1px solid #2B3139',
-    color: '#EAECEF',
+    background: 'var(--panel-bg)',
+    border: `1px solid var(--panel-border)`,
+    color: 'var(--text-primary)',
   }
 
   const sectionStyle = {
-    background: '#0B0E11',
-    border: '1px solid #2B3139',
+    background: 'var(--panel-bg)',
+    border: `1px solid var(--panel-border)`,
   }
 
   return (
@@ -107,7 +107,7 @@ export function GridConfigEditor({
       <div>
         <div className="flex items-center gap-2 mb-4">
           <DollarSign className="w-5 h-5" style={{ color: '#F0B90B' }} />
-          <h3 className="font-medium" style={{ color: '#EAECEF' }}>
+          <h3 className="font-medium" style={{ color: 'var(--text-primary)' }}>
             {t('tradingPair')}
           </h3>
         </div>
@@ -115,17 +115,17 @@ export function GridConfigEditor({
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Symbol */}
           <div className="p-4 rounded-lg" style={sectionStyle}>
-            <label className="block text-sm mb-1" style={{ color: '#EAECEF' }}>
+            <label className="block text-sm mb-1" style={{ color: 'var(--text-primary)' }}>
               {t('symbol')}
             </label>
-            <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
+            <p className="text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
               {t('symbolDesc')}
             </p>
             <select
               value={config.symbol}
               onChange={(e) => updateField('symbol', e.target.value)}
               disabled={disabled}
-              className="w-full px-3 py-2 rounded"
+              className="w-full px-3 py-2 rounded transition-colors"
               style={inputStyle}
             >
               <option value="BTCUSDT">BTC/USDT</option>
@@ -139,10 +139,10 @@ export function GridConfigEditor({
 
           {/* Investment */}
           <div className="p-4 rounded-lg" style={sectionStyle}>
-            <label className="block text-sm mb-1" style={{ color: '#EAECEF' }}>
+            <label className="block text-sm mb-1" style={{ color: 'var(--text-primary)' }}>
               {t('totalInvestment')}
             </label>
-            <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
+            <p className="text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
               {t('totalInvestmentDesc')}
             </p>
             <input
@@ -159,10 +159,10 @@ export function GridConfigEditor({
 
           {/* Leverage */}
           <div className="p-4 rounded-lg" style={sectionStyle}>
-            <label className="block text-sm mb-1" style={{ color: '#EAECEF' }}>
+            <label className="block text-sm mb-1" style={{ color: 'var(--text-primary)' }}>
               {t('leverage')}
             </label>
-            <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
+            <p className="text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
               {t('leverageDesc')}
             </p>
             <input
@@ -183,7 +183,7 @@ export function GridConfigEditor({
       <div>
         <div className="flex items-center gap-2 mb-4">
           <Grid className="w-5 h-5" style={{ color: '#F0B90B' }} />
-          <h3 className="font-medium" style={{ color: '#EAECEF' }}>
+          <h3 className="font-medium" style={{ color: 'var(--text-primary)' }}>
             {t('gridParameters')}
           </h3>
         </div>
@@ -191,10 +191,10 @@ export function GridConfigEditor({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Grid Count */}
           <div className="p-4 rounded-lg" style={sectionStyle}>
-            <label className="block text-sm mb-1" style={{ color: '#EAECEF' }}>
+            <label className="block text-sm mb-1" style={{ color: 'var(--text-primary)' }}>
               {t('gridCount')}
             </label>
-            <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
+            <p className="text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
               {t('gridCountDesc')}
             </p>
             <input
@@ -211,10 +211,10 @@ export function GridConfigEditor({
 
           {/* Distribution */}
           <div className="p-4 rounded-lg" style={sectionStyle}>
-            <label className="block text-sm mb-1" style={{ color: '#EAECEF' }}>
+            <label className="block text-sm mb-1" style={{ color: 'var(--text-primary)' }}>
               {t('distribution')}
             </label>
-            <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
+            <p className="text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
               {t('distributionDesc')}
             </p>
             <select
@@ -236,7 +236,7 @@ export function GridConfigEditor({
       <div>
         <div className="flex items-center gap-2 mb-4">
           <TrendingUp className="w-5 h-5" style={{ color: '#F0B90B' }} />
-          <h3 className="font-medium" style={{ color: '#EAECEF' }}>
+          <h3 className="font-medium" style={{ color: 'var(--text-primary)' }}>
             {t('priceBounds')}
           </h3>
         </div>
@@ -245,10 +245,10 @@ export function GridConfigEditor({
         <div className="p-4 rounded-lg mb-4" style={sectionStyle}>
           <div className="flex items-center justify-between">
             <div>
-              <label className="block text-sm" style={{ color: '#EAECEF' }}>
+              <label className="block text-sm" style={{ color: 'var(--text-primary)' }}>
                 {t('useAtrBounds')}
               </label>
-              <p className="text-xs" style={{ color: '#848E9C' }}>
+              <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                 {t('useAtrBoundsDesc')}
               </p>
             </div>
@@ -267,10 +267,10 @@ export function GridConfigEditor({
 
         {config.use_atr_bounds ? (
           <div className="p-4 rounded-lg" style={sectionStyle}>
-            <label className="block text-sm mb-1" style={{ color: '#EAECEF' }}>
+            <label className="block text-sm mb-1" style={{ color: 'var(--text-primary)' }}>
               {t('atrMultiplier')}
             </label>
-            <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
+            <p className="text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
               {t('atrMultiplierDesc')}
             </p>
             <input
@@ -288,10 +288,10 @@ export function GridConfigEditor({
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="p-4 rounded-lg" style={sectionStyle}>
-              <label className="block text-sm mb-1" style={{ color: '#EAECEF' }}>
+              <label className="block text-sm mb-1" style={{ color: 'var(--text-primary)' }}>
                 {t('upperPrice')}
               </label>
-              <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
+              <p className="text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
                 {t('upperPriceDesc')}
               </p>
               <input
@@ -306,10 +306,10 @@ export function GridConfigEditor({
               />
             </div>
             <div className="p-4 rounded-lg" style={sectionStyle}>
-              <label className="block text-sm mb-1" style={{ color: '#EAECEF' }}>
+              <label className="block text-sm mb-1" style={{ color: 'var(--text-primary)' }}>
                 {t('lowerPrice')}
               </label>
-              <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
+              <p className="text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
                 {t('lowerPriceDesc')}
               </p>
               <input
@@ -331,17 +331,17 @@ export function GridConfigEditor({
       <div>
         <div className="flex items-center gap-2 mb-4">
           <Shield className="w-5 h-5" style={{ color: '#F0B90B' }} />
-          <h3 className="font-medium" style={{ color: '#EAECEF' }}>
+          <h3 className="font-medium" style={{ color: 'var(--text-primary)' }}>
             {t('riskControl')}
           </h3>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
           <div className="p-4 rounded-lg" style={sectionStyle}>
-            <label className="block text-sm mb-1" style={{ color: '#EAECEF' }}>
+            <label className="block text-sm mb-1" style={{ color: 'var(--text-primary)' }}>
               {t('maxDrawdown')}
             </label>
-            <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
+            <p className="text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
               {t('maxDrawdownDesc')}
             </p>
             <input
@@ -357,10 +357,10 @@ export function GridConfigEditor({
           </div>
 
           <div className="p-4 rounded-lg" style={sectionStyle}>
-            <label className="block text-sm mb-1" style={{ color: '#EAECEF' }}>
+            <label className="block text-sm mb-1" style={{ color: 'var(--text-primary)' }}>
               {t('stopLoss')}
             </label>
-            <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
+            <p className="text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
               {t('stopLossDesc')}
             </p>
             <input
@@ -376,10 +376,10 @@ export function GridConfigEditor({
           </div>
 
           <div className="p-4 rounded-lg" style={sectionStyle}>
-            <label className="block text-sm mb-1" style={{ color: '#EAECEF' }}>
+            <label className="block text-sm mb-1" style={{ color: 'var(--text-primary)' }}>
               {t('dailyLossLimit')}
             </label>
-            <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
+            <p className="text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
               {t('dailyLossLimitDesc')}
             </p>
             <input
@@ -399,10 +399,10 @@ export function GridConfigEditor({
         <div className="p-4 rounded-lg" style={sectionStyle}>
           <div className="flex items-center justify-between">
             <div>
-              <label className="block text-sm" style={{ color: '#EAECEF' }}>
+              <label className="block text-sm" style={{ color: 'var(--text-primary)' }}>
                 {t('useMakerOnly')}
               </label>
-              <p className="text-xs" style={{ color: '#848E9C' }}>
+              <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                 {t('useMakerOnlyDesc')}
               </p>
             </div>

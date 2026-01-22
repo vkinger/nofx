@@ -1,6 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -10,7 +7,9 @@ html {
   overflow-y: scroll;
 }
 
-:root {
+/* 默认深色主题变量 - 只在没有主题类时生效 */
+html:not(.light-theme):not(.fresh-theme):not(.cartoon-theme),
+html:not(.light-theme):not(.fresh-theme):not(.cartoon-theme) :root {
   /* NoFX Neo-Gold Design System */
   --nofx-gold: #F0B90B;
   --nofx-bg: #05070A;
@@ -23,17 +22,17 @@ html {
   --glow-accent: 0 0 20px rgba(0, 240, 255, 0.3);
   --glow-text: 0 0 10px rgba(240, 185, 11, 0.5);
 
-  --background: #05070A;
-  --header-bg: rgba(2, 3, 4, 0.85);
-  /* Deep Abyssal */
+  --background: #13161A;
+  --header-bg: rgba(19, 22, 26, 0.95);
+  /* Deep Abyssal - 更亮的背景，避免纯黑 */
 
-  --glass-bg: rgba(5, 7, 10, 0.4);
-  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-bg: rgba(25, 30, 36, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.15);
 
-  --panel-bg: rgba(14, 18, 23, 0.6);
-  --panel-bg-hover: rgba(20, 24, 29, 0.8);
-  --panel-border: rgba(255, 255, 255, 0.1);
-  --panel-border-hover: rgba(240, 185, 11, 0.5);
+  --panel-bg: rgba(30, 36, 42, 0.95);
+  --panel-bg-hover: rgba(35, 42, 50, 1);
+  --panel-border: rgba(255, 255, 255, 0.2);
+  --panel-border-hover: rgba(240, 185, 11, 0.6);
 
   --foreground: #EAECEF;
   --text-primary: #EAECEF;
@@ -56,45 +55,97 @@ html {
   --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.6);
   --shadow-glow: 0 0 30px rgba(240, 185, 11, 0.15);
 
+  color-scheme: dark;
+}
+
+/* 深色主题明确声明 */
+html.dark-theme,
+html.dark-theme :root {
+  /* NoFX Neo-Gold Design System */
+  --nofx-gold: #F0B90B;
+  --nofx-bg: #05070A;
+  --nofx-accent: #00F0FF;
+  --nofx-glass: rgba(5, 7, 10, 0.7);
+  --nofx-border: rgba(240, 185, 11, 0.2);
+
+  /* Cinematic Glows */
+  --glow-primary: 0 0 20px rgba(240, 185, 11, 0.3);
+  --glow-accent: 0 0 20px rgba(0, 240, 255, 0.3);
+  --glow-text: 0 0 10px rgba(240, 185, 11, 0.5);
+
+  --background: #13161A;
+  --header-bg: rgba(19, 22, 26, 0.95);
+
+  --glass-bg: rgba(25, 30, 36, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.15);
+
+  --panel-bg: rgba(30, 36, 42, 0.95);
+  --panel-bg-hover: rgba(35, 42, 50, 1);
+  --panel-border: rgba(255, 255, 255, 0.2);
+  --panel-border-hover: rgba(240, 185, 11, 0.6);
+
+  --foreground: #EAECEF;
+  --text-primary: #EAECEF;
+  --text-secondary: #848E9C;
+  --text-tertiary: #5E6673;
+  --text-disabled: #474D57;
+
+  /* Trading Colors */
+  --binance-green: #0ECB81;
+  --binance-green-bg: rgba(14, 203, 129, 0.12);
+  --binance-green-border: rgba(14, 203, 129, 0.3);
+  --binance-red: #F6465D;
+  --binance-red-bg: rgba(246, 70, 93, 0.12);
+  --binance-red-border: rgba(246, 70, 93, 0.3);
+  --binance-yellow: #F0B90B;
+
+  /* Shadows */
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.6);
+  --shadow-glow: 0 0 30px rgba(240, 185, 11, 0.15);
+
+  color-scheme: dark;
+}
+
+/* 通用样式 */
+html {
   font-family: 'IBM Plex Mono', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   line-height: 1.6;
   font-weight: 400;
-  color-scheme: dark;
-  color: var(--foreground);
-  background-color: var(--background);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Light Theme Variables */
+/* Light Theme Variables - 优化对比度和可读性 */
 html.light-theme,
 :root.light-theme {
   --nofx-bg: #FFFFFF;
-  --nofx-glass: rgba(255, 255, 255, 0.9);
+  --nofx-glass: rgba(255, 255, 255, 0.95);
   --nofx-border: rgba(240, 185, 11, 0.3);
 
   --glow-primary: 0 0 20px rgba(240, 185, 11, 0.2);
   --glow-accent: 0 0 20px rgba(0, 240, 255, 0.2);
   --glow-text: 0 0 10px rgba(240, 185, 11, 0.3);
 
-  --background: #F8F9FA;
-  --header-bg: rgba(255, 255, 255, 0.95);
+  --background: #F5F7FA;
+  --header-bg: rgba(255, 255, 255, 0.98);
 
-  --glass-bg: rgba(255, 255, 255, 0.6);
-  --glass-border: rgba(0, 0, 0, 0.1);
+  --glass-bg: rgba(255, 255, 255, 0.8);
+  --glass-border: rgba(0, 0, 0, 0.12);
 
-  --panel-bg: rgba(255, 255, 255, 0.8);
-  --panel-bg-hover: rgba(248, 249, 250, 0.95);
-  --panel-border: rgba(0, 0, 0, 0.1);
-  --panel-border-hover: rgba(240, 185, 11, 0.4);
+  --panel-bg: rgba(255, 255, 255, 0.95);
+  --panel-bg-hover: rgba(255, 255, 255, 1);
+  --panel-border: rgba(0, 0, 0, 0.12);
+  --panel-border-hover: rgba(240, 185, 11, 0.5);
 
-  --foreground: #1A1A1A;
-  --text-primary: #1A1A1A;
-  --text-secondary: #6B7280;
-  --text-tertiary: #9CA3AF;
-  --text-disabled: #D1D5DB;
+  --foreground: #111827;
+  --text-primary: #111827;
+  --text-secondary: #4B5563;
+  --text-tertiary: #6B7280;
+  --text-disabled: #9CA3AF;
 
   --binance-green-bg: rgba(14, 203, 129, 0.15);
   --binance-green-border: rgba(14, 203, 129, 0.4);
@@ -115,28 +166,28 @@ html.dark-theme,
   /* Keep all dark theme variables as default */
 }
 
-/* Fresh Theme - 清新主题 (Light green/blue tones) */
+/* Fresh Theme - 清新主题 (Light green/blue tones) - 优化对比度 */
 html.fresh-theme,
 :root.fresh-theme {
   --nofx-bg: #F0F9FF;
-  --nofx-glass: rgba(240, 249, 255, 0.9);
-  --nofx-border: rgba(14, 165, 233, 0.3);
+  --nofx-glass: rgba(255, 255, 255, 0.95);
+  --nofx-border: rgba(14, 165, 233, 0.35);
   --nofx-accent: #06B6D4;
 
   --glow-primary: 0 0 20px rgba(14, 165, 233, 0.2);
   --glow-accent: 0 0 20px rgba(6, 182, 212, 0.2);
   --glow-text: 0 0 10px rgba(14, 165, 233, 0.3);
 
-  --background: #F0F9FF;
-  --header-bg: rgba(255, 255, 255, 0.95);
+  --background: #EFF6FF;
+  --header-bg: rgba(255, 255, 255, 0.98);
 
-  --glass-bg: rgba(255, 255, 255, 0.7);
-  --glass-border: rgba(14, 165, 233, 0.15);
+  --glass-bg: rgba(255, 255, 255, 0.85);
+  --glass-border: rgba(14, 165, 233, 0.2);
 
-  --panel-bg: rgba(255, 255, 255, 0.85);
-  --panel-bg-hover: rgba(240, 249, 255, 0.95);
-  --panel-border: rgba(14, 165, 233, 0.2);
-  --panel-border-hover: rgba(14, 165, 233, 0.4);
+  --panel-bg: rgba(255, 255, 255, 0.95);
+  --panel-bg-hover: rgba(255, 255, 255, 1);
+  --panel-border: rgba(14, 165, 233, 0.25);
+  --panel-border-hover: rgba(14, 165, 233, 0.5);
 
   --foreground: #0C4A6E;
   --text-primary: #0C4A6E;
@@ -157,34 +208,34 @@ html.fresh-theme,
   color-scheme: light;
 }
 
-/* Cartoon Theme - 个性卡通主题 (Vibrant, playful colors) */
+/* Cartoon Theme - 个性卡通主题 (Vibrant, playful colors) - 优化对比度 */
 html.cartoon-theme,
 :root.cartoon-theme {
   --nofx-bg: #FFF5E6;
-  --nofx-glass: rgba(255, 245, 230, 0.9);
-  --nofx-border: rgba(255, 107, 107, 0.3);
+  --nofx-glass: rgba(255, 255, 255, 0.95);
+  --nofx-border: rgba(255, 107, 107, 0.35);
   --nofx-accent: #FF6B9D;
 
   --glow-primary: 0 0 20px rgba(255, 107, 107, 0.3);
   --glow-accent: 0 0 20px rgba(255, 107, 157, 0.3);
   --glow-text: 0 0 10px rgba(255, 107, 107, 0.4);
 
-  --background: #FFF5E6;
-  --header-bg: rgba(255, 255, 255, 0.95);
+  --background: #FFF8F0;
+  --header-bg: rgba(255, 255, 255, 0.98);
 
-  --glass-bg: rgba(255, 255, 255, 0.7);
-  --glass-border: rgba(255, 107, 107, 0.2);
+  --glass-bg: rgba(255, 255, 255, 0.9);
+  --glass-border: rgba(255, 107, 107, 0.25);
 
-  --panel-bg: rgba(255, 255, 255, 0.85);
-  --panel-bg-hover: rgba(255, 245, 230, 0.95);
-  --panel-border: rgba(255, 107, 107, 0.25);
-  --panel-border-hover: rgba(255, 107, 107, 0.5);
+  --panel-bg: rgba(255, 255, 255, 0.95);
+  --panel-bg-hover: rgba(255, 255, 255, 1);
+  --panel-border: rgba(255, 107, 107, 0.3);
+  --panel-border-hover: rgba(255, 107, 107, 0.55);
 
-  --foreground: #8B4513;
-  --text-primary: #8B4513;
-  --text-secondary: #CD853F;
-  --text-tertiary: #D2691E;
-  --text-disabled: #DEB887;
+  --foreground: #7C2D12;
+  --text-primary: #7C2D12;
+  --text-secondary: #A16207;
+  --text-tertiary: #C2410C;
+  --text-disabled: #D97706;
 
   --binance-green: #4ECDC4;
   --binance-green-bg: rgba(78, 205, 196, 0.2);
@@ -205,27 +256,53 @@ html.cartoon-theme,
 /* Ensure initial theme class is applied */
 html {
   color-scheme: dark;
+  /* 默认使用深色主题变量 */
+  background-color: var(--background);
+  color: var(--foreground);
 }
 
 html.light-theme,
 html.fresh-theme,
 html.cartoon-theme {
   color-scheme: light;
+  /* 强制覆盖:root的默认值 */
+  background-color: var(--background) !important;
+  color: var(--foreground) !important;
 }
 
-/* CRT & Tech Effects */
+/* 确保主题变量优先级高于:root默认值 */
+html.light-theme,
+html.light-theme :root,
+html.fresh-theme,
+html.fresh-theme :root,
+html.cartoon-theme,
+html.cartoon-theme :root {
+  /* 这些变量已经在主题块中定义了，这里确保优先级 */
+}
+
+/* CRT & Tech Effects - 仅深色主题显示 */
 .crt-overlay {
+  pointer-events: none;
+}
+
+.dark-theme .crt-overlay {
   background:
     linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%),
     linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
   background-size: 100% 2px, 3px 100%;
-  pointer-events: none;
+}
+
+/* 浅色主题不显示CRT效果 */
+.light-theme .crt-overlay,
+.fresh-theme .crt-overlay,
+.cartoon-theme .crt-overlay {
+  display: none;
 }
 
 .tech-border {
   position: relative;
-  background: rgba(5, 7, 10, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
 }
 
 .tech-border::before,
@@ -260,8 +337,19 @@ html.cartoon-theme {
 }
 
 .bg-vignette {
-  background: radial-gradient(circle at center, transparent 0%, rgba(0, 0, 0, 0.6) 80%, #000000 100%);
   pointer-events: none;
+}
+
+/* 深色主题的vignette效果 */
+.dark-theme .bg-vignette {
+  background: radial-gradient(circle at center, transparent 0%, rgba(0, 0, 0, 0.6) 80%, #000000 100%);
+}
+
+/* 浅色主题的vignette效果 */
+.light-theme .bg-vignette,
+.fresh-theme .bg-vignette,
+.cartoon-theme .bg-vignette {
+  background: radial-gradient(circle at center, transparent 0%, rgba(0, 0, 0, 0.1) 80%, rgba(0, 0, 0, 0.2) 100%);
 }
 
 .text-glow {
@@ -285,24 +373,28 @@ body {
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* Dark theme background */
+/* Dark theme background - 更亮的渐变，避免纯黑 */
 .dark-theme body {
-  background-image: radial-gradient(circle at 50% 0%, #151921 0%, #05070a 60%);
+  background-image: radial-gradient(circle at 50% 0%, #1E2329 0%, #13161A 60%);
+  background-color: #13161A;
 }
 
 /* Light theme background */
 .light-theme body {
-  background-image: radial-gradient(circle at 50% 0%, #E5E7EB 0%, #F8F9FA 60%);
+  background-image: radial-gradient(circle at 50% 0%, #E5E7EB 0%, #F5F7FA 60%);
+  background-color: #F5F7FA;
 }
 
 /* Fresh theme background */
 .fresh-theme body {
-  background-image: radial-gradient(circle at 50% 0%, #E0F2FE 0%, #F0F9FF 60%);
+  background-image: radial-gradient(circle at 50% 0%, #E0F2FE 0%, #EFF6FF 60%);
+  background-color: #EFF6FF;
 }
 
 /* Cartoon theme background */
 .cartoon-theme body {
-  background-image: radial-gradient(circle at 50% 0%, #FFE5CC 0%, #FFF5E6 60%);
+  background-image: radial-gradient(circle at 50% 0%, #FFE5CC 0%, #FFF8F0 60%);
+  background-color: #FFF8F0;
 }
 
 /* Premium Selection Styles */
@@ -454,7 +546,7 @@ body {
 }
 
 .nofx-toast {
-  background: #0b0e11 !important;
+  background: var(--panel-bg) !important;
   border: 1px solid var(--panel-border) !important;
   color: var(--text-primary) !important;
   box-shadow: var(--shadow-lg) !important;
@@ -472,9 +564,15 @@ body {
 
 /* Success / Error / Warning tint */
 .nofx-toast[data-type='success'] {
-  background: #0b0e11 !important;
+  background: var(--panel-bg) !important;
   border-color: var(--binance-green) !important;
   border-left: 3px solid var(--binance-green) !important;
+}
+
+.light-theme .nofx-toast[data-type='success'],
+.fresh-theme .nofx-toast[data-type='success'],
+.cartoon-theme .nofx-toast[data-type='success'] {
+  background: rgba(255, 255, 255, 0.98) !important;
 }
 
 .nofx-toast[data-type='success'] .sonner-title,
@@ -483,9 +581,15 @@ body {
 }
 
 .nofx-toast[data-type='error'] {
-  background: #0b0e11 !important;
+  background: var(--panel-bg) !important;
   border-color: var(--binance-red) !important;
   border-left: 3px solid var(--binance-red) !important;
+}
+
+.light-theme .nofx-toast[data-type='error'],
+.fresh-theme .nofx-toast[data-type='error'],
+.cartoon-theme .nofx-toast[data-type='error'] {
+  background: rgba(255, 255, 255, 0.98) !important;
 }
 
 .nofx-toast[data-type='error'] .sonner-title,
@@ -495,9 +599,18 @@ body {
 
 .nofx-toast[data-type='warning'],
 .nofx-toast[data-type='info'] {
-  background: #0b0e11 !important;
+  background: var(--panel-bg) !important;
   border-color: var(--binance-yellow) !important;
   border-left: 3px solid var(--binance-yellow) !important;
+}
+
+.light-theme .nofx-toast[data-type='warning'],
+.light-theme .nofx-toast[data-type='info'],
+.fresh-theme .nofx-toast[data-type='warning'],
+.fresh-theme .nofx-toast[data-type='info'],
+.cartoon-theme .nofx-toast[data-type='warning'],
+.cartoon-theme .nofx-toast[data-type='info'] {
+  background: rgba(255, 255, 255, 0.98) !important;
 }
 
 .nofx-toast[data-type='warning'] .sonner-title,
@@ -588,24 +701,33 @@ button:disabled {
   background: rgba(240, 185, 11, 0.1);
 }
 
-/* Glass Effect Utility */
+/* Glass Effect Utility - 深色主题优化 */
 .glass {
-  background: rgba(30, 35, 41, 0.6);
+  background: var(--panel-bg);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--panel-border);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+}
+
+.dark-theme .glass {
+  background: rgba(30, 36, 42, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .glass-panel {
-  background: rgba(30, 35, 41, 0.4);
+  background: var(--panel-bg);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--panel-border);
 }
 
-/* Premium Input Styles */
-/* Premium Input Styles */
+.dark-theme .glass-panel {
+  background: rgba(30, 36, 42, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+/* Premium Input Styles - 增强对比度和可读性 */
 input,
 select,
 textarea {
@@ -613,6 +735,60 @@ textarea {
   background-color: var(--panel-bg);
   color: var(--text-primary);
   border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+}
+
+/* 深色主题输入框增强对比度 */
+.dark-theme input,
+.dark-theme select,
+.dark-theme textarea {
+  background-color: rgba(35, 42, 50, 1);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #F5F7FA;
+}
+
+.dark-theme input:focus,
+.dark-theme select:focus,
+.dark-theme textarea:focus {
+  background-color: rgba(40, 48, 58, 1);
+  border-color: var(--binance-yellow);
+  box-shadow: 0 0 0 3px rgba(240, 185, 11, 0.3);
+  color: #FFFFFF;
+}
+
+.dark-theme input::placeholder,
+.dark-theme textarea::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* 浅色主题输入框 */
+.light-theme input,
+.light-theme select,
+.light-theme textarea,
+.fresh-theme input,
+.fresh-theme select,
+.fresh-theme textarea,
+.cartoon-theme input,
+.cartoon-theme select,
+.cartoon-theme textarea {
+  background-color: rgba(255, 255, 255, 0.95);
+  border-color: rgba(0, 0, 0, 0.15);
+  color: var(--text-primary);
+}
+
+.light-theme input:focus,
+.light-theme select:focus,
+.light-theme textarea:focus,
+.fresh-theme input:focus,
+.fresh-theme select:focus,
+.fresh-theme textarea:focus,
+.cartoon-theme input:focus,
+.cartoon-theme select:focus,
+.cartoon-theme textarea:focus {
+  background-color: rgba(255, 255, 255, 1);
+  border-color: var(--binance-yellow);
+  box-shadow: 0 0 0 3px rgba(240, 185, 11, 0.15);
 }
 
 input:focus,
@@ -626,13 +802,26 @@ textarea:focus {
 
 input::placeholder,
 textarea::placeholder {
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
+  opacity: 0.7;
 }
 
-/* Specific Premium Input Utility */
+/* 深色主题通用优化 - 确保所有面板和卡片都有合适的背景 */
+.dark-theme main {
+  background-color: var(--background);
+}
+
+/* 确保深色主题下所有使用背景的元素都有足够的对比度 */
+.dark-theme [class*="rounded-lg"],
+.dark-theme [class*="rounded-xl"],
+.dark-theme [class*="rounded-2xl"] {
+  background-color: var(--panel-bg);
+}
+
+/* Specific Premium Input Utility - 深色主题优化 */
 .premium-input {
-  background: rgba(11, 14, 17, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
   border-radius: 8px;
   padding: 0.5rem 0.75rem;
   font-family: 'IBM Plex Mono', monospace;
@@ -647,9 +836,36 @@ textarea::placeholder {
   transition: all 0.2s ease;
 }
 
+.dark-theme .premium-input {
+  background: rgba(35, 42, 50, 1);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #F5F7FA;
+}
+
 .premium-input:hover {
-  border-color: rgba(240, 185, 11, 0.3);
-  background: rgba(11, 14, 17, 0.8);
+  border-color: rgba(240, 185, 11, 0.4);
+  background: var(--panel-bg-hover);
+}
+
+.dark-theme .premium-input:hover {
+  background: rgba(40, 48, 58, 1);
+  border-color: rgba(240, 185, 11, 0.5);
+}
+
+/* 浅色主题的premium-input */
+.light-theme .premium-input,
+.fresh-theme .premium-input,
+.cartoon-theme .premium-input {
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid var(--panel-border);
+  color: var(--text-primary);
+}
+
+.light-theme .premium-input:hover,
+.fresh-theme .premium-input:hover,
+.cartoon-theme .premium-input:hover {
+  background: rgba(255, 255, 255, 1);
+  border-color: var(--panel-border-hover);
 }
 
 .premium-input:focus {

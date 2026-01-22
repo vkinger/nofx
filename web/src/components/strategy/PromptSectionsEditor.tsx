@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, RotateCcw, FileText } from 'lucide-react'
+import { useTheme } from '../../contexts/ThemeContext'
 import type { PromptSectionsConfig } from '../../types'
 
 interface PromptSectionsEditorProps {
@@ -47,6 +48,8 @@ export function PromptSectionsEditor({
   disabled,
   language,
 }: PromptSectionsEditorProps) {
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     role_definition: false,
     trading_frequency: false,
@@ -106,10 +109,10 @@ export function PromptSectionsEditor({
       <div className="flex items-start gap-2 mb-4">
         <FileText className="w-5 h-5 mt-0.5" style={{ color: '#a855f7' }} />
         <div>
-          <h3 className="font-medium" style={{ color: '#EAECEF' }}>
+          <h3 className="font-medium" style={{ color: 'var(--text-primary)' }}>
             {t('promptSections')}
           </h3>
-          <p className="text-xs mt-1" style={{ color: '#848E9C' }}>
+          <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
             {t('promptSectionsDesc')}
           </p>
         </div>
@@ -126,19 +129,31 @@ export function PromptSectionsEditor({
             <div
               key={key}
               className="rounded-lg overflow-hidden"
-              style={{ background: '#0B0E11', border: '1px solid #2B3139' }}
+              style={{ 
+                background: isDark ? 'rgba(11, 14, 17, 0.6)' : 'var(--panel-bg)', 
+                border: '1px solid var(--panel-border)',
+              }}
             >
               <button
                 onClick={() => toggleSection(key)}
-                className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-white/5 transition-colors text-left"
+                className="w-full flex items-center justify-between px-3 py-2.5 transition-colors text-left"
+                style={{
+                  background: 'transparent',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'var(--panel-bg-hover)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent'
+                }}
               >
                 <div className="flex items-center gap-2">
                   {isExpanded ? (
-                    <ChevronDown className="w-4 h-4" style={{ color: '#848E9C' }} />
+                    <ChevronDown className="w-4 h-4" style={{ color: 'var(--text-secondary)' }} />
                   ) : (
-                    <ChevronRight className="w-4 h-4" style={{ color: '#848E9C' }} />
+                    <ChevronRight className="w-4 h-4" style={{ color: 'var(--text-secondary)' }} />
                   )}
-                  <span className="text-sm font-medium" style={{ color: '#EAECEF' }}>
+                  <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
                     {label}
                   </span>
                   {isModified && (
@@ -150,14 +165,14 @@ export function PromptSectionsEditor({
                     </span>
                   )}
                 </div>
-                <span className="text-[10px]" style={{ color: '#848E9C' }}>
+                <span className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>
                   {value.length} {t('chars')}
                 </span>
               </button>
 
               {isExpanded && (
                 <div className="px-3 pb-3">
-                  <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
+                  <p className="text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
                     {desc}
                   </p>
                   <textarea
@@ -165,20 +180,39 @@ export function PromptSectionsEditor({
                     onChange={(e) => updateSection(sectionKey, e.target.value)}
                     disabled={disabled}
                     rows={6}
-                    className="w-full px-3 py-2 rounded-lg resize-y font-mono text-xs"
+                    className="w-full px-3 py-2 rounded-lg resize-y font-mono text-xs transition-colors focus:outline-none"
                     style={{
-                      background: '#1E2329',
-                      border: '1px solid #2B3139',
-                      color: '#EAECEF',
+                      background: 'var(--panel-bg)',
+                      border: '1px solid var(--panel-border)',
+                      color: 'var(--text-primary)',
                       minHeight: '120px',
+                    }}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--panel-border)'
                     }}
                   />
                   <div className="flex justify-end mt-2">
                     <button
                       onClick={() => resetSection(sectionKey)}
                       disabled={disabled || !isModified}
-                      className="flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors hover:bg-white/5 disabled:opacity-30"
-                      style={{ color: '#848E9C' }}
+                      className="flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors disabled:opacity-30"
+                      style={{ 
+                        color: 'var(--text-secondary)',
+                        background: 'transparent',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!disabled && isModified) {
+                          e.currentTarget.style.background = 'var(--panel-bg-hover)'
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!disabled && isModified) {
+                          e.currentTarget.style.background = 'transparent'
+                        }
+                      }}
                     >
                       <RotateCcw className="w-3 h-3" />
                       {t('resetToDefault')}

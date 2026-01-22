@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Terminal, Copy, Check, ChevronRight, Server, Command, Shield } from 'lucide-react'
+import { useTheme } from '../../../contexts/ThemeContext'
 
 export default function DeploymentHub() {
+    const { theme } = useTheme()
+    const isDark = theme === 'dark'
     const [copied, setCopied] = useState(false)
     const installCmd = "curl -fsSL https://raw.githubusercontent.com/NoFxAiOS/nofx/main/install.sh | bash"
 
@@ -26,8 +29,11 @@ export default function DeploymentHub() {
                             <Server className="w-4 h-4" /> System Deployment
                         </div>
 
-                        <h2 className="text-4xl md:text-6xl font-black text-white leading-tight">
-                            DEPLOY <span className="text-transparent bg-clip-text bg-gradient-to-r from-nofx-gold to-white">INSTANTLY</span>
+                        <h2 
+                            className="text-4xl md:text-6xl font-black leading-tight"
+                            style={{ color: 'var(--text-primary)' }}
+                        >
+                            DEPLOY <span className="text-transparent bg-clip-text bg-gradient-to-r from-nofx-gold to-current">INSTANTLY</span>
                         </h2>
 
                         <p className="text-zinc-400 text-lg leading-relaxed font-light">
@@ -45,7 +51,7 @@ export default function DeploymentHub() {
                                         <item.icon className="w-5 h-5" />
                                     </div>
                                     <div>
-                                        <h4 className="text-white font-bold font-mono text-sm mb-1">{item.label}</h4>
+                                        <h4 className="font-bold font-mono text-sm mb-1" style={{ color: 'var(--text-primary)' }}>{item.label}</h4>
                                         <p className="text-zinc-500 text-xs">{item.desc}</p>
                                     </div>
                                 </div>
@@ -101,7 +107,21 @@ export default function DeploymentHub() {
                                                     <Check className="w-3 h-3" />
                                                 </motion.div>
                                             ) : (
-                                                <div className="text-zinc-400 bg-zinc-800 p-1.5 rounded hover:text-white hover:bg-zinc-700">
+                                                <div 
+                                                    className="p-1.5 rounded transition-colors"
+                                                    style={{
+                                                        color: 'var(--text-secondary)',
+                                                        background: 'var(--panel-bg-hover)',
+                                                    }}
+                                                    onMouseEnter={(e) => {
+                                                        e.currentTarget.style.color = 'var(--text-primary)'
+                                                        e.currentTarget.style.background = isDark ? 'rgba(55, 65, 81, 1)' : 'var(--panel-bg)'
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                        e.currentTarget.style.color = 'var(--text-secondary)'
+                                                        e.currentTarget.style.background = 'var(--panel-bg-hover)'
+                                                    }}
+                                                >
                                                     <Copy className="w-4 h-4" />
                                                 </div>
                                             )}

@@ -8,24 +8,24 @@ export default {
     extend: {
       colors: {
         'nofx-gold': {
-          DEFAULT: '#F0B90B',
+          DEFAULT: 'var(--nofx-gold)',
           dim: 'rgba(240, 185, 11, 0.1)',
           glow: 'rgba(240, 185, 11, 0.5)',
           highlight: '#FFD700',
         },
         'nofx-bg': {
-          DEFAULT: '#05070A', // Deep Void
-          deeper: '#020304',  // Abyssal
-          lighter: '#0E1217', // Surface
+          DEFAULT: 'var(--nofx-bg)',
+          deeper: 'var(--background)',
+          lighter: 'var(--panel-bg)',
         },
-        'nofx-accent': '#00F0FF', // Cyan Cyber
+        'nofx-accent': 'var(--nofx-accent)',
         'nofx-text': {
-          DEFAULT: '#EAECEF',
-          main: '#EAECEF',
-          muted: '#848E9C',
+          DEFAULT: 'var(--text-primary)',
+          main: 'var(--text-primary)',
+          muted: 'var(--text-secondary)',
         },
-        'nofx-success': '#0ECB81',
-        'nofx-danger': '#F6465D',
+        'nofx-success': 'var(--binance-green)',
+        'nofx-danger': 'var(--binance-red)',
       },
       fontFamily: {
         sans: ['Inter', 'ui-sans-serif', 'system-ui'],
