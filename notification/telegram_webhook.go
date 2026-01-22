@@ -20,6 +20,8 @@ type TelegramWebhook struct {
 	stopChan        chan struct{}
 	commandHandlers map[string]CommandHandler
 	mu              sync.RWMutex
+	processStarted  bool       // 标记 processCommands goroutine 是否已启动
+	processMu       sync.Mutex // 保护 processStarted 的锁
 }
 
 // GetChatID 获取 ChatID（用于多 webhook 路由）
@@ -75,8 +77,16 @@ func (tw *TelegramWebhook) StartWebhook(webhookURL string) error {
 		return fmt.Errorf("failed to set webhook: %w", err)
 	}
 
-	// 启动命令处理协程
-	go tw.processCommands()
+	// 启动命令处理协程（确保只启动一次）
+	tw.processMu.Lock()
+	if !tw.processStarted {
+		go tw.processCommands()
+		tw.processStarted = true
+		logger.Infof("✓ Command processing goroutine started")
+	} else {
+		logger.Warnf("⚠️ Command processing goroutine already started, skipping")
+	}
+	tw.processMu.Unlock()
 
 	logger.Infof("✓ Telegram webhook started: %s", webhookURL)
 	return nil
@@ -149,7 +159,14 @@ func (tw *TelegramWebhook) StopWebhook() {
 		return
 	}
 
-	close(tw.stopChan)
+	tw.processMu.Lock()
+	if tw.processStarted {
+		close(tw.stopChan)
+		tw.processStarted = false
+		// 重新创建 stopChan 以便下次启动
+		tw.stopChan = make(chan struct{})
+	}
+	tw.processMu.Unlock()
 
 	// 删除 Webhook
 	_, _ = tw.bot.Request(tgbotapi.DeleteWebhookConfig{DropPendingUpdates: true})
@@ -262,59 +279,78 @@ func (tw *TelegramWebhook) processCommands() {
 		case <-tw.stopChan:
 			return
 		case update := <-tw.commandChan:
-			logger.Infof("Processing command from channel - UpdateID: %d", update.UpdateID)
-			if update.Message == nil {
-				logger.Warnf("Update has no message, skipping")
-				continue
-			}
+			// 使用 defer recover 来捕获 panic，防止 goroutine 崩溃
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						logger.Errorf("Panic in command handler: %v", r)
+						// 发送错误消息给用户
+						errorMsg := "❌ 处理指令时发生错误，请稍后重试。如果问题持续，请联系管理员。"
+						if err := tw.SendMessage(errorMsg); err != nil {
+							logger.Errorf("Failed to send error message: %v", err)
+						}
+					}
+				}()
 
-			text := update.Message.Text
-			if text == "" {
-				logger.Warnf("Message text is empty, skipping")
-				continue
-			}
+				logger.Infof("Processing command from channel - UpdateID: %d", update.UpdateID)
+				if update.Message == nil {
+					logger.Warnf("Update has no message, skipping")
+					return
+				}
 
-			logger.Infof("Processing command text: %s", text)
+				text := update.Message.Text
+				if text == "" {
+					logger.Warnf("Message text is empty, skipping")
+					return
+				}
 
-			// 解析命令
-			parts := strings.Fields(text)
-			if len(parts) == 0 {
-				logger.Warnf("Command has no parts, skipping")
-				continue
-			}
+				logger.Infof("Processing command text: %s", text)
 
-			command := strings.ToLower(parts[0])
-			args := parts[1:]
-			logger.Infof("Parsed command: %s, args: %v", command, args)
+				// 解析命令
+				parts := strings.Fields(text)
+				if len(parts) == 0 {
+					logger.Warnf("Command has no parts, skipping")
+					return
+				}
 
-			tw.mu.RLock()
-			handler, ok := tw.commandHandlers[command]
-			tw.mu.RUnlock()
+				command := strings.ToLower(parts[0])
+				args := parts[1:]
+				logger.Infof("Parsed command: %s, args: %v", command, args)
 
-			var response string
-			if ok {
-				logger.Infof("Found handler for command: %s", command)
-				// 创建带参数的更新对象
-				updateWithArgs := *update
-				updateWithArgs.Message.Text = strings.Join(args, " ")
-				response = handler(&updateWithArgs)
-				logger.Infof("Handler returned response (length: %d)", len(response))
-			} else {
-				logger.Warnf("No handler found for command: %s", command)
-				response = "❌ 未知指令。发送 /help 查看帮助。"
-			}
+				tw.mu.RLock()
+				handler, ok := tw.commandHandlers[command]
+				tw.mu.RUnlock()
 
-			// 发送响应
-			if response != "" {
+				var response string
+				if ok {
+					logger.Infof("Found handler for command: %s", command)
+					// 创建带参数的更新对象（深拷贝 Message 以避免修改原始对象）
+					updateWithArgs := *update
+					if update.Message != nil {
+						messageCopy := *update.Message
+						messageCopy.Text = strings.Join(args, " ")
+						updateWithArgs.Message = &messageCopy
+					}
+					response = handler(&updateWithArgs)
+					logger.Infof("Handler returned response (length: %d)", len(response))
+				} else {
+					logger.Warnf("No handler found for command: %s", command)
+					response = "❌ 未知指令。发送 /help 查看帮助。"
+				}
+
+				// 发送响应（如果为空，发送默认消息）
+				if response == "" {
+					logger.Warnf("Response is empty for command: %s, sending default message", command)
+					response = "❌ 指令处理完成，但未返回响应。"
+				}
+
 				logger.Infof("Sending response message (length: %d)", len(response))
 				if err := tw.SendMessage(response); err != nil {
 					logger.Errorf("Failed to send command response: %v", err)
 				} else {
 					logger.Infof("Response message sent successfully")
 				}
-			} else {
-				logger.Warnf("Response is empty, not sending message")
-			}
+			}()
 		}
 	}
 }
