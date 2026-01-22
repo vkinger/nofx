@@ -69,6 +69,7 @@ html {
 }
 
 /* Light Theme Variables */
+html.light-theme,
 :root.light-theme {
   --nofx-bg: #FFFFFF;
   --nofx-glass: rgba(255, 255, 255, 0.9);
@@ -109,11 +110,13 @@ html {
 }
 
 /* Dark Theme (default) */
+html.dark-theme,
 :root.dark-theme {
   /* Keep all dark theme variables as default */
 }
 
 /* Fresh Theme - 清新主题 (Light green/blue tones) */
+html.fresh-theme,
 :root.fresh-theme {
   --nofx-bg: #F0F9FF;
   --nofx-glass: rgba(240, 249, 255, 0.9);
@@ -155,6 +158,7 @@ html {
 }
 
 /* Cartoon Theme - 个性卡通主题 (Vibrant, playful colors) */
+html.cartoon-theme,
 :root.cartoon-theme {
   --nofx-bg: #FFF5E6;
   --nofx-glass: rgba(255, 245, 230, 0.9);
