@@ -59,7 +59,7 @@ func (pb *PromptBuilder) buildSystemPromptZH() string {
 ### 风险优先
 - 保证金使用率不得超过30%
 - 单个持仓亏损达到-5%必须止损
-- 优先保护资本，再考虑盈利a s d
+- 优先保护资本，再考虑盈利 
 
 ### 跟踪止盈
 - 当持仓盈亏从峰值回撤30%时，考虑部分或全部止盈
@@ -114,14 +114,16 @@ func (pb *PromptBuilder) buildSystemPromptZH() string {
 
 ## 交易手续费说明（重要）
 
-- **开仓手续费**: 约0.04%（每笔开仓交易）
-- **平仓手续费**: 约0.04%（每笔平仓交易）
-- **完整交易循环总手续费**: 约0.08%（开仓+平仓）
+- **用户提示词中会按币种动态提供交易手续费**（若无法获取则使用默认值）
+- **默认参考费率**（可能因币种而异）:
+  - **主流币种**（BTC/ETH/BNB）: Maker ~0.02%，Taker ~0.04%
+  - **山寨币/低流动性币种**: Maker ~0.04%，Taker ~0.05%
 - **设置止盈止损时的注意事项**:
-  - 设置止损价格时，需额外增加约0.1%的缓冲，确保考虑手续费后实际亏损不超过目标
-  - 设置止盈价格时，需减少约0.1%的缓冲，确保考虑手续费后实际盈利达到目标
-  - 示例：如果目标止损是-5%，应设置止损价格在约-5.1%的位置
-  - 示例：如果目标止盈是+8%，应设置止盈价格在约+7.9%的位置
+  - 设置止损价格时，需额外增加约0.1-0.15%的缓冲（根据实际费率调整），确保考虑手续费后实际亏损不超过目标
+  - 设置止盈价格时，需减少约0.1-0.15%的缓冲（根据实际费率调整），确保考虑手续费后实际盈利达到目标
+  - 示例（低费率）: 目标止损-5% → 设置约-5.1%
+  - 示例（高费率）: 目标止损-5% → 设置约-5.15%
+  - 示例（止盈）: 目标+8% → 设置约+7.85%~7.9%
 
 ## 重要提醒
 
@@ -261,14 +263,16 @@ func (pb *PromptBuilder) buildSystemPromptEN() string {
 
 ## Trading Fees Information (Important)
 
-- **Opening fee**: ~0.04% (per opening trade)
-- **Closing fee**: ~0.04% (per closing trade)
-- **Total round-trip fee**: ~0.08% (opening + closing)
+- **Per-coin trading fees are provided dynamically in the user prompt** (fallback to defaults if unavailable)
+- **Default reference rates** (may vary by coin type):
+  - **Major coins** (BTC/ETH/BNB): Maker ~0.02%, Taker ~0.04%
+  - **Alt/low-liquidity coins**: Maker ~0.04%, Taker ~0.05%
 - **Important considerations when setting stop_loss and take_profit**:
-  - When setting stop_loss price, add ~0.1% buffer to ensure actual loss doesn't exceed your target after fees
-  - When setting take_profit price, subtract ~0.1% buffer to ensure actual profit meets your target after fees
-  - Example: If target stop_loss is -5%, set stop_loss price at ~-5.1% to account for fees
-  - Example: If target take_profit is +8%, set take_profit price at ~+7.9% to account for fees
+  - When setting stop_loss price, add ~0.1-0.15% buffer (adjust by actual fee) to ensure loss doesn't exceed target after fees
+  - When setting take_profit price, subtract ~0.1-0.15% buffer (adjust by actual fee) to ensure profit meets target after fees
+  - Example (low fee): target stop_loss -5% → set ~-5.1%
+  - Example (high fee): target stop_loss -5% → set ~-5.15%
+  - Example (take-profit): target +8% → set ~+7.85%~7.9%
 
 ## Critical Reminders
 

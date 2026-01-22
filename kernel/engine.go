@@ -1088,14 +1088,14 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString("  - Example for short: Entry 100, stop_loss 110, take_profit 95 ✓ (take_profit < stop_loss)\n\n")
 
 	sb.WriteString("- **Trading Fees (交易手续费)** (CRITICAL - 关键信息):\n")
-	sb.WriteString("  - Opening fee: ~0.04% (开仓手续费约0.04%)\n")
-	sb.WriteString("  - Closing fee: ~0.04% (平仓手续费约0.04%)\n")
-	sb.WriteString("  - Total round-trip fee: ~0.08% (完整交易循环总手续费约0.08%)\n")
+	sb.WriteString("  - **Dynamic fee rates are provided in the user prompt per coin** (交易手续费会在用户提示词中按币种动态提供)\n")
+	sb.WriteString("  - **Funding rate is also provided per coin in the user prompt** (资金费率也会在用户提示词中按币种提供)\n")
+	sb.WriteString("  - If fee data is not available, use defaults: maker ~0.02-0.04%, taker ~0.04-0.05% (若无法获取则使用默认值)\n")
 	sb.WriteString("  - **IMPORTANT**: When setting stop_loss and take_profit prices, you MUST account for trading fees:\n")
-	sb.WriteString("    - For stop_loss: Add ~0.1% buffer to ensure actual loss doesn't exceed your target (止损价格需额外增加约0.1%缓冲，确保实际亏损不超过目标)\n")
-	sb.WriteString("    - For take_profit: Subtract ~0.1% buffer to ensure actual profit meets your target (止盈价格需减少约0.1%缓冲，确保实际盈利达到目标)\n")
-	sb.WriteString("    - Example: If target stop_loss is -5%, set stop_loss price at ~-5.1% to account for fees\n")
-	sb.WriteString("    - Example: If target take_profit is +8%, set take_profit price at ~+7.9% to account for fees\n\n")
+	sb.WriteString("    - For stop_loss: Add ~0.1-0.15% buffer depending on fee level (止损价格需增加约0.1-0.15%缓冲)\n")
+	sb.WriteString("    - For take_profit: Subtract ~0.1-0.15% buffer depending on fee level (止盈价格需减少约0.1-0.15%缓冲)\n")
+	sb.WriteString("    - Example: If target stop_loss is -5%, set stop_loss price at ~-5.1% (low fee) or ~-5.15% (high fee)\n")
+	sb.WriteString("    - Example: If target take_profit is +8%, set take_profit price at ~+7.9% (low fee) or ~+7.85% (high fee)\n\n")
 
 	sb.WriteString("- **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas/expressions (e.g., use `27.76` not `3000 * 0.01`)\n\n")
 
@@ -1508,7 +1508,7 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 
 	sb.WriteString("\n\n")
 
-	if indicators.EnableOI || indicators.EnableFundingRate {
+	if indicators.EnableOI || indicators.EnableFundingRate || data.MakerFeeRate > 0 || data.TakerFeeRate > 0 {
 		sb.WriteString(fmt.Sprintf("Additional data for %s:\n\n", data.Symbol))
 
 		if indicators.EnableOI && data.OpenInterest != nil {
@@ -1518,6 +1518,11 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 
 		if indicators.EnableFundingRate {
 			sb.WriteString(fmt.Sprintf("Funding Rate: %.2e\n\n", data.FundingRate))
+		}
+
+		if data.MakerFeeRate > 0 || data.TakerFeeRate > 0 {
+			sb.WriteString(fmt.Sprintf("Trading Fee (maker/taker): %.4f%% / %.4f%% (source: %s)\n\n",
+				data.MakerFeeRate*100, data.TakerFeeRate*100, data.FeeSource))
 		}
 	}
 

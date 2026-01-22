@@ -2,14 +2,20 @@ package market
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"math"
+	"net/http"
+	"net/url"
 	"nofx/logger"
 	"nofx/provider/coinank/coinank_api"
 	"nofx/provider/coinank/coinank_enum"
 	"nofx/provider/hyperliquid"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,9 +29,18 @@ type FundingRateCache struct {
 	UpdatedAt time.Time
 }
 
+type TradingFeeRateCache struct {
+	MakerRate float64
+	TakerRate float64
+	Source    string
+	UpdatedAt time.Time
+}
+
 var (
 	fundingRateMap sync.Map // map[string]*FundingRateCache
 	frCacheTTL     = 1 * time.Hour
+	tradingFeeMap  sync.Map // map[string]*TradingFeeRateCache
+	feeCacheTTL    = 1 * time.Hour
 )
 
 // Note: Kline data now uses free/open API (coinank_api.Kline) which doesn't require authentication
@@ -220,6 +235,7 @@ func Get(symbol string) (*Data, error) {
 
 	// Get Funding Rate
 	fundingRate, _ := getFundingRate(symbol)
+	makerFeeRate, takerFeeRate, feeSource := getTradingFeeRates(symbol)
 
 	// Calculate intraday series data
 	intradayData := calculateIntradaySeries(klines3m)
@@ -237,6 +253,9 @@ func Get(symbol string) (*Data, error) {
 		CurrentRSI7:       currentRSI7,
 		OpenInterest:      oiData,
 		FundingRate:       fundingRate,
+		MakerFeeRate:      makerFeeRate,
+		TakerFeeRate:      takerFeeRate,
+		FeeSource:         feeSource,
 		IntradaySeries:    intradayData,
 		LongerTermContext: longerTermData,
 	}, nil
@@ -331,7 +350,7 @@ func GetWithTimeframes(symbol string, timeframes []string, primaryTimeframe stri
 	currentRSI7 := calculateRSI(primaryKlines, 7)
 
 	// Calculate price changes
-	priceChange1h := calculatePriceChangeByBars(primaryKlines, primaryTimeframe, 60) // 1 hour
+	priceChange1h := calculatePriceChangeByBars(primaryKlines, primaryTimeframe, 60)  // 1 hour
 	priceChange4h := calculatePriceChangeByBars(primaryKlines, primaryTimeframe, 240) // 4 hours
 
 	// Get OI data
@@ -342,6 +361,7 @@ func GetWithTimeframes(symbol string, timeframes []string, primaryTimeframe stri
 
 	// Get Funding Rate
 	fundingRate, _ := getFundingRate(symbol)
+	makerFeeRate, takerFeeRate, feeSource := getTradingFeeRates(symbol)
 
 	return &Data{
 		Symbol:        symbol,
@@ -353,6 +373,9 @@ func GetWithTimeframes(symbol string, timeframes []string, primaryTimeframe stri
 		CurrentRSI7:   currentRSI7,
 		OpenInterest:  oiData,
 		FundingRate:   fundingRate,
+		MakerFeeRate:  makerFeeRate,
+		TakerFeeRate:  takerFeeRate,
+		FeeSource:     feeSource,
 		TimeframeData: timeframeData,
 	}, nil
 }
@@ -833,6 +856,108 @@ func getFundingRate(symbol string) (float64, error) {
 	})
 
 	return rate, nil
+}
+
+func getTradingFeeRates(symbol string) (float64, float64, string) {
+	if cached, ok := tradingFeeMap.Load(symbol); ok {
+		cache := cached.(*TradingFeeRateCache)
+		if time.Since(cache.UpdatedAt) < feeCacheTTL {
+			return cache.MakerRate, cache.TakerRate, cache.Source
+		}
+	}
+
+	apiKey := strings.TrimSpace(os.Getenv("BINANCE_API_KEY"))
+	apiSecret := strings.TrimSpace(os.Getenv("BINANCE_API_SECRET"))
+	if apiKey == "" || apiSecret == "" {
+		makerRate, takerRate, source := defaultFeeRates(symbol)
+		tradingFeeMap.Store(symbol, &TradingFeeRateCache{
+			MakerRate: makerRate,
+			TakerRate: takerRate,
+			Source:    source,
+			UpdatedAt: time.Now(),
+		})
+		return makerRate, takerRate, source
+	}
+
+	makerRate, takerRate, err := fetchBinanceCommissionRate(symbol, apiKey, apiSecret)
+	if err != nil {
+		logger.Warnf("Failed to fetch commission rate for %s, using defaults: %v", symbol, err)
+		makerRate, takerRate, source := defaultFeeRates(symbol)
+		tradingFeeMap.Store(symbol, &TradingFeeRateCache{
+			MakerRate: makerRate,
+			TakerRate: takerRate,
+			Source:    source,
+			UpdatedAt: time.Now(),
+		})
+		return makerRate, takerRate, source
+	}
+
+	tradingFeeMap.Store(symbol, &TradingFeeRateCache{
+		MakerRate: makerRate,
+		TakerRate: takerRate,
+		Source:    "exchange",
+		UpdatedAt: time.Now(),
+	})
+
+	return makerRate, takerRate, "exchange"
+}
+
+func defaultFeeRates(symbol string) (float64, float64, string) {
+	base := strings.ToUpper(symbol)
+	if strings.HasPrefix(base, "BTC") || strings.HasPrefix(base, "ETH") || strings.HasPrefix(base, "BNB") {
+		return 0.0002, 0.0004, "default"
+	}
+	return 0.0004, 0.0005, "default"
+}
+
+func fetchBinanceCommissionRate(symbol, apiKey, apiSecret string) (float64, float64, error) {
+	timestamp := time.Now().UnixMilli()
+	query := url.Values{}
+	query.Set("symbol", symbol)
+	query.Set("timestamp", strconv.FormatInt(timestamp, 10))
+
+	signature := signQuery(query.Encode(), apiSecret)
+	query.Set("signature", signature)
+
+	endpoint := fmt.Sprintf("https://fapi.binance.com/fapi/v1/commissionRate?%s", query.Encode())
+	req, err := http.NewRequest("GET", endpoint, nil)
+	if err != nil {
+		return 0, 0, err
+	}
+	req.Header.Set("X-MBX-APIKEY", apiKey)
+
+	apiClient := NewAPIClient()
+	resp, err := apiClient.client.Do(req)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, 0, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return 0, 0, fmt.Errorf("commission rate api status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		MakerCommissionRate string `json:"makerCommissionRate"`
+		TakerCommissionRate string `json:"takerCommissionRate"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return 0, 0, err
+	}
+
+	makerRate, _ := strconv.ParseFloat(result.MakerCommissionRate, 64)
+	takerRate, _ := strconv.ParseFloat(result.TakerCommissionRate, 64)
+	return makerRate, takerRate, nil
+}
+
+func signQuery(query, secret string) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(query))
+	return hex.EncodeToString(mac.Sum(nil))
 }
 
 // Format formats and outputs market data

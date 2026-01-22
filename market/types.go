@@ -13,6 +13,9 @@ type Data struct {
 	CurrentRSI7       float64
 	OpenInterest      *OIData
 	FundingRate       float64
+	MakerFeeRate      float64 // Maker fee rate (decimal, e.g. 0.0002 = 0.02%)
+	TakerFeeRate      float64 // Taker fee rate (decimal, e.g. 0.0004 = 0.04%)
+	FeeSource         string  // fee source: "exchange" or "default"
 	IntradaySeries    *IntradayData
 	LongerTermContext *LongerTermData
 	// Multi-timeframe data (new)
