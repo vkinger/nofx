@@ -804,6 +804,9 @@ export function AdvancedChart({
             const isTakeProfit = order.type.includes('TAKE_PROFIT') || order.type.includes('TP')
             const isLimit = order.type === 'LIMIT'
 
+            // 格式化价格用于标题显示
+            const formattedPrice = formatPriceWithDynamicPrecision(linePrice)
+
             // 设置价格线样式
             let lineColor = '#F0B90B' // 默认黄色
             const lineStyle = 2 // 虚线
@@ -811,15 +814,15 @@ export function AdvancedChart({
 
             if (isStopLoss) {
               lineColor = '#F6465D' // 红色 - 止损
-              title = `SL ${order.quantity}`
+              title = `SL ${formattedPrice} (${order.quantity})`
             } else if (isTakeProfit) {
               lineColor = '#0ECB81' // 绿色 - 止盈
-              title = `TP ${order.quantity}`
+              title = `TP ${formattedPrice} (${order.quantity})`
             } else if (isLimit) {
               lineColor = '#F0B90B' // 黄色 - 限价单
-              title = `Limit ${order.side} ${order.quantity}`
+              title = `Limit ${order.side} ${formattedPrice} (${order.quantity})`
             } else {
-              title = `${order.type} ${order.quantity}`
+              title = `${order.type} ${formattedPrice} (${order.quantity})`
             }
 
             const priceLine = candlestickSeriesRef.current?.createPriceLine({
