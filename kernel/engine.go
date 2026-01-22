@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"nofx/logger"
 	"nofx/market"
@@ -1507,18 +1508,18 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 
 	// 明确标注币种
 	sb.WriteString(fmt.Sprintf("=== %s Market Data ===\n\n", data.Symbol))
-	sb.WriteString(fmt.Sprintf("current_price = %.4f", data.CurrentPrice))
+	sb.WriteString(fmt.Sprintf("current_price = %s", market.FormatPriceWithDynamicPrecision(data.CurrentPrice)))
 
 	if indicators.EnableEMA {
-		sb.WriteString(fmt.Sprintf(", current_ema20 = %.3f", data.CurrentEMA20))
+		sb.WriteString(fmt.Sprintf(", current_ema20 = %s", market.FormatPriceWithDynamicPrecision(data.CurrentEMA20)))
 	}
 
 	if indicators.EnableMACD {
-		sb.WriteString(fmt.Sprintf(", current_macd = %.3f", data.CurrentMACD))
+		sb.WriteString(fmt.Sprintf(", current_macd = %.6f", data.CurrentMACD))
 	}
 
 	if indicators.EnableRSI {
-		sb.WriteString(fmt.Sprintf(", current_rsi7 = %.3f", data.CurrentRSI7))
+		sb.WriteString(fmt.Sprintf(", current_rsi7 = %.2f", data.CurrentRSI7))
 	}
 
 	sb.WriteString("\n\n")
@@ -1532,8 +1533,36 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 		sb.WriteString(fmt.Sprintf("--- %s Contract Info ---\n", data.Symbol))
 
 		if hasOI {
-			sb.WriteString(fmt.Sprintf("Open Interest: %.2f (avg: %.2f)\n",
-				data.OpenInterest.Latest, data.OpenInterest.Average))
+			// 计算OI变化百分比
+			oiChange := float64(0)
+			if data.OpenInterest.Average > 0 {
+				oiChange = ((data.OpenInterest.Latest - data.OpenInterest.Average) / data.OpenInterest.Average) * 100
+			}
+
+			// OI-价格配合分析
+			// | 价格 | OI | 含义 |
+			// | ↑ | ↑ | 多头强势 (新资金做多) |
+			// | ↑ | ↓ | 空头平仓 (弱反弹) |
+			// | ↓ | ↑ | 空头强势 (新资金做空) |
+			// | ↓ | ↓ | 多头平仓 (弱下跌) |
+			priceUp := data.PriceChange1h > 0.001 || data.PriceChange4h > 0.005     // 价格上涨
+			priceDown := data.PriceChange1h < -0.001 || data.PriceChange4h < -0.005 // 价格下跌
+			oiUp := oiChange > 1                                                    // OI增加
+			oiDown := oiChange < -1                                                 // OI减少
+
+			oiSignal := ""
+			if priceUp && oiUp {
+				oiSignal = " [LONG_DOMINANT: new money buying]"
+			} else if priceUp && oiDown {
+				oiSignal = " [SHORT_COVERING: weak rally]"
+			} else if priceDown && oiUp {
+				oiSignal = " [SHORT_DOMINANT: new money selling]"
+			} else if priceDown && oiDown {
+				oiSignal = " [LONG_LIQUIDATION: weak decline]"
+			}
+
+			sb.WriteString(fmt.Sprintf("OI: %s (%+.1f%% vs avg)%s\n",
+				formatFlowValue(data.OpenInterest.Latest), oiChange, oiSignal))
 		}
 
 		// Unified funding rate and trading fee display
@@ -1658,11 +1687,9 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 }
 
 func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *market.TimeframeSeriesData, indicators store.IndicatorConfig) {
-	// 方案7：使用摘要而非完整数据（节省 10000-15000 tokens）
-	const maxKlines = 30 // 限制显示的K线数量
+	// 优化版摘要：平衡决策质量与token消耗
 	klines := data.Klines
 	if len(klines) > 0 {
-		// 计算K线摘要信息
 		latest := klines[len(klines)-1]
 		oldest := klines[0]
 
@@ -1679,113 +1706,516 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 			}
 			totalVolume += k.Volume
 		}
+		avgVolume := totalVolume / float64(len(klines))
 
 		// 计算价格变化
 		priceChange := ((latest.Close - oldest.Close) / oldest.Close) * 100
-		priceChangeAbs := latest.Close - oldest.Close
 
-		// 计算趋势（简单判断：最近3根 vs 前3根）
+		// 改进趋势判断：分段分析（首1/3 vs 中1/3 vs 尾1/3）
 		trend := "sideways"
-		if len(klines) >= 6 {
-			recent3Avg := (klines[len(klines)-1].Close + klines[len(klines)-2].Close + klines[len(klines)-3].Close) / 3
-			prev3Avg := (klines[0].Close + klines[1].Close + klines[2].Close) / 3
-			if recent3Avg > prev3Avg*1.01 {
+		trendStrength := ""
+		if len(klines) >= 9 {
+			n := len(klines)
+			seg1End := n / 3
+			seg2End := 2 * n / 3
+
+			// 计算各段平均价
+			var seg1Sum, seg2Sum, seg3Sum float64
+			for i := 0; i < seg1End; i++ {
+				seg1Sum += klines[i].Close
+			}
+			for i := seg1End; i < seg2End; i++ {
+				seg2Sum += klines[i].Close
+			}
+			for i := seg2End; i < n; i++ {
+				seg3Sum += klines[i].Close
+			}
+			seg1Avg := seg1Sum / float64(seg1End)
+			seg2Avg := seg2Sum / float64(seg2End-seg1End)
+			seg3Avg := seg3Sum / float64(n-seg2End)
+
+			// 判断趋势类型
+			if seg3Avg > seg2Avg && seg2Avg > seg1Avg {
 				trend = "uptrend"
-			} else if recent3Avg < prev3Avg*0.99 {
+				if seg3Avg > seg1Avg*1.02 {
+					trendStrength = " (strong)"
+				}
+			} else if seg3Avg < seg2Avg && seg2Avg < seg1Avg {
+				trend = "downtrend"
+				if seg3Avg < seg1Avg*0.98 {
+					trendStrength = " (strong)"
+				}
+			} else if seg3Avg > seg1Avg && seg2Avg > seg1Avg && seg2Avg > seg3Avg {
+				trend = "up-then-pullback"
+			} else if seg3Avg < seg1Avg && seg2Avg < seg1Avg && seg2Avg < seg3Avg {
+				trend = "down-then-bounce"
+			}
+		} else if len(klines) >= 3 {
+			// 简化判断
+			if latest.Close > oldest.Close*1.01 {
+				trend = "uptrend"
+			} else if latest.Close < oldest.Close*0.99 {
 				trend = "downtrend"
 			}
 		}
 
-		// 价格精度
-		pricePrecision := 4
-		if latest.Close > 1000 {
-			pricePrecision = 2
-		}
-		priceFormat := fmt.Sprintf("%%.%df", pricePrecision)
+		// 使用动态精度格式化价格
+		fmtPrice := market.FormatPriceWithDynamicPrecision
 
-		// 显示摘要而非完整数据
-		sb.WriteString(fmt.Sprintf("Summary (%d bars): Latest %s | Range [%s, %s] | Change %+.2f%% (%+.2f) | Trend: %s\n",
-			len(klines), fmt.Sprintf(priceFormat, latest.Close),
-			fmt.Sprintf(priceFormat, minPrice), fmt.Sprintf(priceFormat, maxPrice),
-			priceChange, priceChangeAbs, trend))
+		// 显示摘要（包含关键价位）
+		sb.WriteString(fmt.Sprintf("Summary (%d bars): Close %s | High %s | Low %s | Change %+.2f%% | Trend: %s%s\n",
+			len(klines), fmtPrice(latest.Close), fmtPrice(maxPrice), fmtPrice(minPrice),
+			priceChange, trend, trendStrength))
 
-		// 显示最新K线详情（仅1根）
-		t := time.Unix(latest.Time/1000, 0).UTC()
-		timeStr := t.Format("01-02 15:04")
-		volumeStr := fmt.Sprintf("%.2f", latest.Volume)
-		if latest.Volume >= 1000000 {
-			volumeStr = fmt.Sprintf("%.2e", latest.Volume)
+		// 显示最近3根K线（而非1根），便于识别K线形态
+		recentCount := 3
+		if len(klines) < recentCount {
+			recentCount = len(klines)
 		}
-		sb.WriteString(fmt.Sprintf("Latest (%s): O:%s H:%s L:%s C:%s V:%s\n\n",
-			timeStr, fmt.Sprintf(priceFormat, latest.Open), fmt.Sprintf(priceFormat, latest.High),
-			fmt.Sprintf(priceFormat, latest.Low), fmt.Sprintf(priceFormat, latest.Close), volumeStr))
+		sb.WriteString("Recent candles (oldest→newest):\n")
+		for i := recentCount; i > 0; i-- {
+			k := klines[len(klines)-i]
+			t := time.Unix(k.Time/1000, 0).UTC()
+			timeStr := t.Format("01-02 15:04")
+			// 判断K线类型
+			candleType := "doji"
+			body := k.Close - k.Open
+			totalRange := k.High - k.Low
+			if totalRange > 0 {
+				bodyRatio := math.Abs(body) / totalRange
+				if bodyRatio > 0.6 {
+					if body > 0 {
+						candleType = "bullish"
+					} else {
+						candleType = "bearish"
+					}
+				} else if bodyRatio < 0.1 {
+					candleType = "doji"
+				} else {
+					if body > 0 {
+						candleType = "small-bull"
+					} else {
+						candleType = "small-bear"
+					}
+				}
+			}
+			// 成交量对比
+			volRatio := k.Volume / avgVolume
+			volLabel := ""
+			if volRatio > 2.0 {
+				volLabel = " [HIGH VOL]"
+			} else if volRatio > 1.5 {
+				volLabel = " [+vol]"
+			} else if volRatio < 0.5 {
+				volLabel = " [-vol]"
+			}
+			sb.WriteString(fmt.Sprintf("  %s: O:%s H:%s L:%s C:%s (%s)%s\n",
+				timeStr, fmtPrice(k.Open), fmtPrice(k.High), fmtPrice(k.Low), fmtPrice(k.Close), candleType, volLabel))
+		}
+
+		// === K线组合形态识别 ===
+		var patterns []string
+		if len(klines) >= 2 {
+			k1 := klines[len(klines)-2] // 前一根
+			k2 := klines[len(klines)-1] // 最新一根
+			body1 := k1.Close - k1.Open
+			body2 := k2.Close - k2.Open
+			range2 := k2.High - k2.Low
+
+			// 吞没形态 (Engulfing)
+			if body1 < 0 && body2 > 0 && k2.Open <= k1.Close && k2.Close >= k1.Open && math.Abs(body2) > math.Abs(body1)*1.2 {
+				patterns = append(patterns, "BULLISH_ENGULFING")
+			} else if body1 > 0 && body2 < 0 && k2.Open >= k1.Close && k2.Close <= k1.Open && math.Abs(body2) > math.Abs(body1)*1.2 {
+				patterns = append(patterns, "BEARISH_ENGULFING")
+			}
+
+			// 锤子线 (Hammer) - 下影线长，实体小，在下跌趋势中
+			if range2 > 0 {
+				upperShadow2 := k2.High - math.Max(k2.Open, k2.Close)
+				lowerShadow2 := math.Min(k2.Open, k2.Close) - k2.Low
+				bodySize2 := math.Abs(body2)
+				if lowerShadow2 > bodySize2*2 && upperShadow2 < bodySize2*0.5 && trend == "downtrend" {
+					patterns = append(patterns, "HAMMER (reversal signal)")
+				}
+				// 倒锤子 (Inverted Hammer / Shooting Star)
+				if upperShadow2 > bodySize2*2 && lowerShadow2 < bodySize2*0.5 {
+					if trend == "downtrend" {
+						patterns = append(patterns, "INVERTED_HAMMER")
+					} else if trend == "uptrend" {
+						patterns = append(patterns, "SHOOTING_STAR (reversal signal)")
+					}
+				}
+			}
+
+			// 十字星 (Doji) - 开盘收盘接近
+			if range2 > 0 && math.Abs(body2)/range2 < 0.1 {
+				if k2.High-math.Max(k2.Open, k2.Close) > range2*0.3 && math.Min(k2.Open, k2.Close)-k2.Low > range2*0.3 {
+					patterns = append(patterns, "DOJI (indecision)")
+				}
+			}
+		}
+
+		// 三根K线形态
+		if len(klines) >= 3 {
+			k1 := klines[len(klines)-3]
+			k2 := klines[len(klines)-2]
+			k3 := klines[len(klines)-1]
+			body1 := k1.Close - k1.Open
+			body2 := k2.Close - k2.Open
+			body3 := k3.Close - k3.Open
+			range2 := k2.High - k2.Low
+
+			// 早晨之星 (Morning Star) - 大阴线 + 小实体 + 大阳线
+			if body1 < 0 && math.Abs(body1) > (k1.High-k1.Low)*0.5 && // 大阴线
+				range2 > 0 && math.Abs(body2)/range2 < 0.3 && // 小实体或十字星
+				body3 > 0 && math.Abs(body3) > (k3.High-k3.Low)*0.5 && // 大阳线
+				k3.Close > (k1.Open+k1.Close)/2 { // 收盘超过第一根中点
+				patterns = append(patterns, "MORNING_STAR (bullish reversal)")
+			}
+
+			// 黄昏之星 (Evening Star) - 大阳线 + 小实体 + 大阴线
+			if body1 > 0 && math.Abs(body1) > (k1.High-k1.Low)*0.5 &&
+				range2 > 0 && math.Abs(body2)/range2 < 0.3 &&
+				body3 < 0 && math.Abs(body3) > (k3.High-k3.Low)*0.5 &&
+				k3.Close < (k1.Open+k1.Close)/2 {
+				patterns = append(patterns, "EVENING_STAR (bearish reversal)")
+			}
+
+			// 三白兵 (Three White Soldiers)
+			if body1 > 0 && body2 > 0 && body3 > 0 &&
+				k2.Close > k1.Close && k3.Close > k2.Close &&
+				k2.Open > k1.Open && k3.Open > k2.Open {
+				patterns = append(patterns, "THREE_WHITE_SOLDIERS (strong bullish)")
+			}
+
+			// 三黑鸦 (Three Black Crows)
+			if body1 < 0 && body2 < 0 && body3 < 0 &&
+				k2.Close < k1.Close && k3.Close < k2.Close &&
+				k2.Open < k1.Open && k3.Open < k2.Open {
+				patterns = append(patterns, "THREE_BLACK_CROWS (strong bearish)")
+			}
+		}
+
+		if len(patterns) > 0 {
+			sb.WriteString(fmt.Sprintf("Patterns: %s\n", strings.Join(patterns, ", ")))
+		}
+
+		// === 量价配合分析 ===
+		if len(klines) >= 5 {
+			var upVolSum, downVolSum float64
+			var upCount, downCount int
+			for _, k := range klines[len(klines)-5:] {
+				if k.Close > k.Open {
+					upVolSum += k.Volume
+					upCount++
+				} else if k.Close < k.Open {
+					downVolSum += k.Volume
+					downCount++
+				}
+			}
+			vpSignal := ""
+			if upCount > 0 && downCount > 0 {
+				avgUpVol := upVolSum / float64(upCount)
+				avgDownVol := downVolSum / float64(downCount)
+				if avgUpVol > avgDownVol*1.5 {
+					vpSignal = "HEALTHY_UPTREND (up candles have higher volume)"
+				} else if avgDownVol > avgUpVol*1.5 {
+					vpSignal = "DISTRIBUTION (down candles have higher volume)"
+				} else {
+					vpSignal = "NEUTRAL (balanced volume)"
+				}
+			} else if upCount > 0 && downCount == 0 {
+				vpSignal = "STRONG_BUY (all up candles)"
+			} else if downCount > 0 && upCount == 0 {
+				vpSignal = "STRONG_SELL (all down candles)"
+			}
+			if vpSignal != "" {
+				sb.WriteString(fmt.Sprintf("Volume-Price: %s\n", vpSignal))
+			}
+		}
+
+		sb.WriteString("\n")
 	} else if len(data.MidPrices) > 0 {
-		// 限制 MidPrices 数量
+		// 兼容旧数据格式
 		midPrices := data.MidPrices
-		if len(midPrices) > maxKlines {
-			midPrices = midPrices[len(midPrices)-maxKlines:]
+		if len(midPrices) > 30 {
+			midPrices = midPrices[len(midPrices)-30:]
 		}
 		sb.WriteString(fmt.Sprintf("Mid prices: %s\n\n", formatFloatSlice(midPrices)))
 		if indicators.EnableVolume && len(data.Volume) > 0 {
 			volume := data.Volume
-			if len(volume) > maxKlines {
-				volume = volume[len(volume)-maxKlines:]
+			if len(volume) > 30 {
+				volume = volume[len(volume)-30:]
 			}
 			sb.WriteString(fmt.Sprintf("Volume: %s\n\n", formatFloatSlice(volume)))
 		}
 	}
 
-	// 方案7：指标数据使用摘要而非完整数组（节省大量 tokens）
+	// === 指标摘要优化：添加趋势信息和关键信号 ===
+	fmtPrice := market.FormatPriceWithDynamicPrecision
+	currentPrice := float64(0)
+	if len(klines) > 0 {
+		currentPrice = klines[len(klines)-1].Close
+	}
+
 	if indicators.EnableEMA {
+		var ema20Val, ema50Val float64
+		var ema20Trend, ema50Trend string
+		hasEMA20, hasEMA50 := false, false
+
 		if len(data.EMA20Values) > 0 {
+			hasEMA20 = true
 			ema20 := data.EMA20Values
-			current := ema20[len(ema20)-1]
-			previous := current
-			if len(ema20) > 1 {
-				previous = ema20[len(ema20)-2]
+			ema20Val = ema20[len(ema20)-1]
+			ema20Trend = "→"
+			if len(ema20) >= 3 {
+				v1, v2, v3 := ema20[len(ema20)-3], ema20[len(ema20)-2], ema20[len(ema20)-1]
+				if v3 > v2 && v2 > v1 {
+					ema20Trend = "↑"
+				} else if v3 < v2 && v2 < v1 {
+					ema20Trend = "↓"
+				}
 			}
-			change := ((current - previous) / previous) * 100
-			sb.WriteString(fmt.Sprintf("EMA20: %.4f (change: %+.2f%%)\n", current, change))
 		}
+
 		if len(data.EMA50Values) > 0 {
+			hasEMA50 = true
 			ema50 := data.EMA50Values
-			current := ema50[len(ema50)-1]
-			previous := current
-			if len(ema50) > 1 {
-				previous = ema50[len(ema50)-2]
+			ema50Val = ema50[len(ema50)-1]
+			ema50Trend = "→"
+			if len(ema50) >= 3 {
+				v1, v2, v3 := ema50[len(ema50)-3], ema50[len(ema50)-2], ema50[len(ema50)-1]
+				if v3 > v2 && v2 > v1 {
+					ema50Trend = "↑"
+				} else if v3 < v2 && v2 < v1 {
+					ema50Trend = "↓"
+				}
 			}
-			change := ((current - previous) / previous) * 100
-			sb.WriteString(fmt.Sprintf("EMA50: %.4f (change: %+.2f%%)\n", current, change))
+		}
+
+		// 合并输出
+		if hasEMA20 && hasEMA50 {
+			// 判断金叉/死叉状态和价格位置
+			crossState := "BEARISH"
+			if ema20Val > ema50Val {
+				crossState = "BULLISH"
+			}
+
+			pricePos := "between"
+			if currentPrice > 0 {
+				if currentPrice > ema20Val && currentPrice > ema50Val {
+					pricePos = "above both"
+				} else if currentPrice < ema20Val && currentPrice < ema50Val {
+					pricePos = "below both"
+				} else if currentPrice > ema50Val && currentPrice < ema20Val {
+					pricePos = "EMA50<Price<EMA20"
+				} else {
+					pricePos = "EMA20<Price<EMA50"
+				}
+			}
+
+			sb.WriteString(fmt.Sprintf("EMA: 20=%s(%s) | 50=%s(%s) | %s | Price %s\n",
+				fmtPrice(ema20Val), ema20Trend, fmtPrice(ema50Val), ema50Trend, crossState, pricePos))
+		} else if hasEMA20 {
+			pricePos := "at"
+			if currentPrice > ema20Val*1.005 {
+				pricePos = "above"
+			} else if currentPrice < ema20Val*0.995 {
+				pricePos = "below"
+			}
+			sb.WriteString(fmt.Sprintf("EMA20: %s (%s) | Price %s\n", fmtPrice(ema20Val), ema20Trend, pricePos))
+		} else if hasEMA50 {
+			pricePos := "at"
+			if currentPrice > ema50Val*1.005 {
+				pricePos = "above"
+			} else if currentPrice < ema50Val*0.995 {
+				pricePos = "below"
+			}
+			sb.WriteString(fmt.Sprintf("EMA50: %s (%s) | Price %s\n", fmtPrice(ema50Val), ema50Trend, pricePos))
 		}
 	}
 
 	if indicators.EnableMACD && len(data.MACDValues) > 0 {
 		macd := data.MACDValues
 		current := macd[len(macd)-1]
-		previous := current
-		if len(macd) > 1 {
-			previous = macd[len(macd)-2]
+
+		// 计算Signal线 (MACD的9周期SMA近似)
+		signalPeriod := 9
+		if len(macd) < signalPeriod {
+			signalPeriod = len(macd)
 		}
-		trend := "neutral"
-		if current > 0 && current > previous {
-			trend = "bullish"
-		} else if current < 0 && current < previous {
-			trend = "bearish"
+		var signalSum float64
+		for i := len(macd) - signalPeriod; i < len(macd); i++ {
+			signalSum += macd[i]
 		}
-		sb.WriteString(fmt.Sprintf("MACD: %.4f (trend: %s)\n", current, trend))
+		signal := signalSum / float64(signalPeriod)
+
+		// 计算Histogram (MACD - Signal)
+		histogram := current - signal
+
+		// 计算前一个Histogram用于判断趋势
+		var prevHistogram float64
+		if len(macd) >= 2 {
+			var prevSignalSum float64
+			prevEnd := len(macd) - 1
+			prevStart := prevEnd - signalPeriod
+			if prevStart < 0 {
+				prevStart = 0
+			}
+			for i := prevStart; i < prevEnd; i++ {
+				prevSignalSum += macd[i]
+			}
+			prevSignal := prevSignalSum / float64(prevEnd-prevStart)
+			prevHistogram = macd[len(macd)-2] - prevSignal
+		}
+
+		// 判断Histogram趋势
+		histTrend := "flat"
+		if histogram > prevHistogram*1.1 {
+			histTrend = "expanding"
+		} else if histogram < prevHistogram*0.9 {
+			histTrend = "contracting"
+		}
+
+		// 检测金叉/死叉
+		crossSignal := ""
+		if len(macd) >= 2 {
+			prevMACD := macd[len(macd)-2]
+			// 计算前一个signal
+			var prevSignalSum float64
+			prevEnd := len(macd) - 1
+			prevStart := prevEnd - signalPeriod
+			if prevStart < 0 {
+				prevStart = 0
+			}
+			for i := prevStart; i < prevEnd; i++ {
+				prevSignalSum += macd[i]
+			}
+			prevSignal := prevSignalSum / float64(prevEnd-prevStart)
+
+			// 金叉: MACD从下穿上Signal
+			if prevMACD <= prevSignal && current > signal {
+				crossSignal = " [GOLDEN_CROSS]"
+			}
+			// 死叉: MACD从上穿下Signal
+			if prevMACD >= prevSignal && current < signal {
+				crossSignal = " [DEATH_CROSS]"
+			}
+		}
+
+		// 动量判断
+		momentum := "neutral"
+		if histogram > 0 && histTrend == "expanding" {
+			momentum = "bullish_strengthening"
+		} else if histogram > 0 && histTrend == "contracting" {
+			momentum = "bullish_weakening"
+		} else if histogram < 0 && histTrend == "expanding" {
+			momentum = "bearish_strengthening"
+		} else if histogram < 0 && histTrend == "contracting" {
+			momentum = "bearish_weakening"
+		}
+
+		sb.WriteString(fmt.Sprintf("MACD: %.6f | Signal: %.6f | Hist: %+.6f (%s) [%s]%s\n",
+			current, signal, histogram, histTrend, momentum, crossSignal))
 	}
 
 	if indicators.EnableRSI {
+		// RSI背离检测函数
+		detectDivergence := func(rsiValues []float64, klines []market.KlineBar) string {
+			if len(rsiValues) < 10 || len(klines) < 10 {
+				return ""
+			}
+			// 取最近10个数据点进行分析
+			n := 10
+			if len(rsiValues) < n {
+				n = len(rsiValues)
+			}
+			if len(klines) < n {
+				n = len(klines)
+			}
+			rsi := rsiValues[len(rsiValues)-n:]
+			prices := make([]float64, n)
+			for i := 0; i < n; i++ {
+				prices[i] = klines[len(klines)-n+i].Close
+			}
+
+			// 找价格和RSI的局部高低点
+			// 简化：比较前半段和后半段的高低点
+			half := n / 2
+			var priceHigh1, priceHigh2, priceLow1, priceLow2 float64
+			var rsiHigh1, rsiHigh2, rsiLow1, rsiLow2 float64
+
+			priceHigh1, priceLow1 = prices[0], prices[0]
+			rsiHigh1, rsiLow1 = rsi[0], rsi[0]
+			for i := 0; i < half; i++ {
+				if prices[i] > priceHigh1 {
+					priceHigh1 = prices[i]
+				}
+				if prices[i] < priceLow1 {
+					priceLow1 = prices[i]
+				}
+				if rsi[i] > rsiHigh1 {
+					rsiHigh1 = rsi[i]
+				}
+				if rsi[i] < rsiLow1 {
+					rsiLow1 = rsi[i]
+				}
+			}
+
+			priceHigh2, priceLow2 = prices[half], prices[half]
+			rsiHigh2, rsiLow2 = rsi[half], rsi[half]
+			for i := half; i < n; i++ {
+				if prices[i] > priceHigh2 {
+					priceHigh2 = prices[i]
+				}
+				if prices[i] < priceLow2 {
+					priceLow2 = prices[i]
+				}
+				if rsi[i] > rsiHigh2 {
+					rsiHigh2 = rsi[i]
+				}
+				if rsi[i] < rsiLow2 {
+					rsiLow2 = rsi[i]
+				}
+			}
+
+			// 顶背离：价格新高但RSI未新高 (bearish signal)
+			if priceHigh2 > priceHigh1*1.005 && rsiHigh2 < rsiHigh1*0.98 {
+				return " [BEARISH_DIVERGENCE: price higher but RSI lower]"
+			}
+			// 底背离：价格新低但RSI未新低 (bullish signal)
+			if priceLow2 < priceLow1*0.995 && rsiLow2 > rsiLow1*1.02 {
+				return " [BULLISH_DIVERGENCE: price lower but RSI higher]"
+			}
+			return ""
+		}
+
 		if len(data.RSI7Values) > 0 {
 			rsi7 := data.RSI7Values
 			current := rsi7[len(rsi7)-1]
 			signal := "neutral"
 			if current > 70 {
 				signal = "overbought"
+			} else if current > 60 {
+				signal = "bullish"
 			} else if current < 30 {
 				signal = "oversold"
+			} else if current < 40 {
+				signal = "bearish"
 			}
-			sb.WriteString(fmt.Sprintf("RSI7: %.2f (%s)\n", current, signal))
+			// RSI趋势
+			rsiTrend := ""
+			if len(rsi7) >= 3 {
+				v1, v2, v3 := rsi7[len(rsi7)-3], rsi7[len(rsi7)-2], rsi7[len(rsi7)-1]
+				if v3 > v2 && v2 > v1 {
+					rsiTrend = ", rising"
+				} else if v3 < v2 && v2 < v1 {
+					rsiTrend = ", falling"
+				}
+			}
+			// 背离检测
+			divergence := detectDivergence(rsi7, klines)
+			sb.WriteString(fmt.Sprintf("RSI7: %.1f (%s%s)%s\n", current, signal, rsiTrend, divergence))
 		}
 		if len(data.RSI14Values) > 0 {
 			rsi14 := data.RSI14Values
@@ -1793,15 +2223,59 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 			signal := "neutral"
 			if current > 70 {
 				signal = "overbought"
+			} else if current > 60 {
+				signal = "bullish"
 			} else if current < 30 {
 				signal = "oversold"
+			} else if current < 40 {
+				signal = "bearish"
 			}
-			sb.WriteString(fmt.Sprintf("RSI14: %.2f (%s)\n", current, signal))
+			// RSI14也检测背离
+			divergence := detectDivergence(rsi14, klines)
+			sb.WriteString(fmt.Sprintf("RSI14: %.1f (%s)%s\n", current, signal, divergence))
 		}
 	}
 
 	if indicators.EnableATR && data.ATR14 > 0 {
-		sb.WriteString(fmt.Sprintf("ATR14: %.4f\n", data.ATR14))
+		// ATR占价格百分比，便于理解波动率
+		atrPct := float64(0)
+		if currentPrice > 0 {
+			atrPct = (data.ATR14 / currentPrice) * 100
+		}
+
+		// 波动率状态判断
+		volStatus := "normal"
+		if atrPct < 1.5 {
+			volStatus = "LOW_VOL (consolidation, breakout likely)"
+		} else if atrPct < 3.0 {
+			volStatus = "normal"
+		} else if atrPct < 6.0 {
+			volStatus = "HIGH_VOL (trending)"
+		} else {
+			volStatus = "EXTREME_VOL (caution!)"
+		}
+
+		// 尝试从K线数据判断波动率趋势
+		volTrend := ""
+		if len(klines) >= 10 {
+			// 比较最近5根K线的平均波动与前5根
+			var recent5Range, prev5Range float64
+			for i := len(klines) - 5; i < len(klines); i++ {
+				recent5Range += klines[i].High - klines[i].Low
+			}
+			for i := len(klines) - 10; i < len(klines)-5; i++ {
+				prev5Range += klines[i].High - klines[i].Low
+			}
+			recent5Range /= 5
+			prev5Range /= 5
+			if recent5Range > prev5Range*1.2 {
+				volTrend = ", expanding"
+			} else if recent5Range < prev5Range*0.8 {
+				volTrend = ", contracting"
+			}
+		}
+
+		sb.WriteString(fmt.Sprintf("ATR14: %s (%.2f%%) [%s%s]\n", fmtPrice(data.ATR14), atrPct, volStatus, volTrend))
 	}
 
 	if indicators.EnableBOLL && len(data.BOLLUpper) > 0 {
@@ -1812,21 +2286,32 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 			upper := bollUpper[len(bollUpper)-1]
 			middle := bollMiddle[len(bollMiddle)-1]
 			lower := bollLower[len(bollLower)-1]
+
+			// 价格位置
 			position := "middle"
-			if len(klines) > 0 {
-				currentPrice := klines[len(klines)-1].Close
-				if currentPrice > upper {
-					position = "above upper"
-				} else if currentPrice < lower {
-					position = "below lower"
-				} else if currentPrice > middle {
-					position = "upper half"
-				} else {
-					position = "lower half"
-				}
+			if currentPrice > upper {
+				position = "ABOVE upper (overbought)"
+			} else if currentPrice < lower {
+				position = "BELOW lower (oversold)"
+			} else if currentPrice > middle {
+				pctToUpper := ((upper - currentPrice) / (upper - middle)) * 100
+				position = fmt.Sprintf("upper half (%.0f%% to upper)", pctToUpper)
+			} else {
+				pctToLower := ((currentPrice - lower) / (middle - lower)) * 100
+				position = fmt.Sprintf("lower half (%.0f%% to lower)", pctToLower)
 			}
-			sb.WriteString(fmt.Sprintf("BOLL: Upper=%.4f Middle=%.4f Lower=%.4f (price: %s)\n",
-				upper, middle, lower, position))
+
+			// 布林带宽度（波动率指标）
+			bandwidth := ((upper - lower) / middle) * 100
+			bandwidthLabel := "normal"
+			if bandwidth < 2 {
+				bandwidthLabel = "SQUEEZE (low volatility, breakout likely)"
+			} else if bandwidth > 8 {
+				bandwidthLabel = "WIDE (high volatility)"
+			}
+
+			sb.WriteString(fmt.Sprintf("BOLL: [%s | %s | %s] Width: %.2f%% (%s) | Price: %s\n",
+				fmtPrice(lower), fmtPrice(middle), fmtPrice(upper), bandwidth, bandwidthLabel, position))
 		}
 	}
 
@@ -1844,74 +2329,138 @@ func (e *StrategyEngine) formatQuantData(data *QuantData) string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("📊 %s Quantitative Data:\n", data.Symbol))
 
+	// === 摘要式输出：用信号替代详细列表 ===
+
+	// 1. 价格动量摘要
 	if len(data.PriceChange) > 0 {
-		sb.WriteString("Price Change: ")
-		timeframes := []string{"5m", "15m", "1h", "4h", "12h", "24h"}
-		parts := []string{}
-		for _, tf := range timeframes {
-			if v, ok := data.PriceChange[tf]; ok {
-				parts = append(parts, fmt.Sprintf("%s: %+.4f%%", tf, v*100))
+		// 取关键时间框架
+		price1h, has1h := data.PriceChange["1h"]
+		price24h, has24h := data.PriceChange["24h"]
+
+		momentum := "NEUTRAL"
+		if has1h && has24h {
+			if price1h > 0.01 && price24h > 0.03 {
+				momentum = "STRONG_BULLISH"
+			} else if price1h > 0.005 && price24h > 0.01 {
+				momentum = "BULLISH"
+			} else if price1h < -0.01 && price24h < -0.03 {
+				momentum = "STRONG_BEARISH"
+			} else if price1h < -0.005 && price24h < -0.01 {
+				momentum = "BEARISH"
 			}
 		}
-		sb.WriteString(strings.Join(parts, " | "))
-		sb.WriteString("\n")
+		sb.WriteString(fmt.Sprintf("Price: 1h %+.2f%% | 24h %+.2f%% [%s]\n",
+			price1h*100, price24h*100, momentum))
 	}
 
+	// 2. 资金流摘要
 	if indicators.EnableQuantNetflow && data.Netflow != nil {
-		sb.WriteString("Fund Flow (Netflow):\n")
-		timeframes := []string{"5m", "15m", "1h", "4h", "12h", "24h"}
+		var instTotal, retailTotal float64
+		var instSignal, retailSignal string
 
+		// 计算机构总流入（取24h或最大可用时间框架）
 		if data.Netflow.Institution != nil {
-			if data.Netflow.Institution.Future != nil && len(data.Netflow.Institution.Future) > 0 {
-				sb.WriteString("  Institutional Futures:\n")
-				for _, tf := range timeframes {
-					if v, ok := data.Netflow.Institution.Future[tf]; ok {
-						sb.WriteString(fmt.Sprintf("    %s: %s\n", tf, formatFlowValue(v)))
-					}
+			if data.Netflow.Institution.Future != nil {
+				if v, ok := data.Netflow.Institution.Future["24h"]; ok {
+					instTotal += v
+				} else if v, ok := data.Netflow.Institution.Future["4h"]; ok {
+					instTotal += v
 				}
 			}
-			if data.Netflow.Institution.Spot != nil && len(data.Netflow.Institution.Spot) > 0 {
-				sb.WriteString("  Institutional Spot:\n")
-				for _, tf := range timeframes {
-					if v, ok := data.Netflow.Institution.Spot[tf]; ok {
-						sb.WriteString(fmt.Sprintf("    %s: %s\n", tf, formatFlowValue(v)))
-					}
+			if data.Netflow.Institution.Spot != nil {
+				if v, ok := data.Netflow.Institution.Spot["24h"]; ok {
+					instTotal += v
+				} else if v, ok := data.Netflow.Institution.Spot["4h"]; ok {
+					instTotal += v
 				}
 			}
 		}
 
+		// 计算散户总流入
 		if data.Netflow.Personal != nil {
-			if data.Netflow.Personal.Future != nil && len(data.Netflow.Personal.Future) > 0 {
-				sb.WriteString("  Retail Futures:\n")
-				for _, tf := range timeframes {
-					if v, ok := data.Netflow.Personal.Future[tf]; ok {
-						sb.WriteString(fmt.Sprintf("    %s: %s\n", tf, formatFlowValue(v)))
-					}
+			if data.Netflow.Personal.Future != nil {
+				if v, ok := data.Netflow.Personal.Future["24h"]; ok {
+					retailTotal += v
+				} else if v, ok := data.Netflow.Personal.Future["4h"]; ok {
+					retailTotal += v
 				}
 			}
-			if data.Netflow.Personal.Spot != nil && len(data.Netflow.Personal.Spot) > 0 {
-				sb.WriteString("  Retail Spot:\n")
-				for _, tf := range timeframes {
-					if v, ok := data.Netflow.Personal.Spot[tf]; ok {
-						sb.WriteString(fmt.Sprintf("    %s: %s\n", tf, formatFlowValue(v)))
-					}
+			if data.Netflow.Personal.Spot != nil {
+				if v, ok := data.Netflow.Personal.Spot["24h"]; ok {
+					retailTotal += v
+				} else if v, ok := data.Netflow.Personal.Spot["4h"]; ok {
+					retailTotal += v
 				}
 			}
 		}
+
+		// 判断机构信号
+		if instTotal > 1e6 {
+			instSignal = "INFLOW"
+		} else if instTotal < -1e6 {
+			instSignal = "OUTFLOW"
+		} else {
+			instSignal = "NEUTRAL"
+		}
+
+		// 判断散户信号
+		if retailTotal > 1e6 {
+			retailSignal = "INFLOW"
+		} else if retailTotal < -1e6 {
+			retailSignal = "OUTFLOW"
+		} else {
+			retailSignal = "NEUTRAL"
+		}
+
+		// 综合判断市场状态
+		marketState := ""
+		if instSignal == "INFLOW" && retailSignal == "OUTFLOW" {
+			marketState = " → SMART_MONEY_ACCUMULATION"
+		} else if instSignal == "OUTFLOW" && retailSignal == "INFLOW" {
+			marketState = " → DISTRIBUTION_WARNING"
+		} else if instSignal == "INFLOW" && retailSignal == "INFLOW" {
+			marketState = " → BROAD_BUYING"
+		} else if instSignal == "OUTFLOW" && retailSignal == "OUTFLOW" {
+			marketState = " → BROAD_SELLING"
+		}
+
+		sb.WriteString(fmt.Sprintf("Flow: Inst %s(%s) | Retail %s(%s)%s\n",
+			formatFlowValue(instTotal), instSignal,
+			formatFlowValue(retailTotal), retailSignal,
+			marketState))
 	}
 
+	// 3. OI摘要
 	if indicators.EnableQuantOI && len(data.OI) > 0 {
 		for exchange, oiData := range data.OI {
 			if len(oiData.Delta) > 0 {
-				sb.WriteString(fmt.Sprintf("Open Interest (%s):\n", exchange))
-				for _, tf := range []string{"5m", "15m", "1h", "4h", "12h", "24h"} {
-					if d, ok := oiData.Delta[tf]; ok {
-						sb.WriteString(fmt.Sprintf("    %s: %+.4f%% (%s)\n", tf, d.OIDeltaPercent, formatFlowValue(d.OIDeltaValue)))
-					}
+				// 取24h或4h的OI变化
+				var oiPct float64
+				var oiVal float64
+				if d, ok := oiData.Delta["24h"]; ok {
+					oiPct = d.OIDeltaPercent
+					oiVal = d.OIDeltaValue
+				} else if d, ok := oiData.Delta["4h"]; ok {
+					oiPct = d.OIDeltaPercent
+					oiVal = d.OIDeltaValue
 				}
+
+				oiSignal := "STABLE"
+				if oiPct > 5 {
+					oiSignal = "STRONG_INCREASE"
+				} else if oiPct > 2 {
+					oiSignal = "INCREASING"
+				} else if oiPct < -5 {
+					oiSignal = "STRONG_DECREASE"
+				} else if oiPct < -2 {
+					oiSignal = "DECREASING"
+				}
+
+				sb.WriteString(fmt.Sprintf("OI(%s): %+.2f%% (%s) [%s]\n",
+					exchange, oiPct, formatFlowValue(oiVal), oiSignal))
 			}
+			break // 只显示第一个交易所
 		}
 	}
 
