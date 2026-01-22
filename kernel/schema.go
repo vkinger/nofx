@@ -462,7 +462,7 @@ var CommonMistakes = []CommonMistake{
 
 // GetSchemaPrompt 生成Schema说明文本，用于AI Prompt（默认大模型精简版）
 func GetSchemaPrompt(lang Language) string {
-	return GetSchemaPromptWithModelSize(lang, ModelLarge)
+	return GetSchemaPromptWithModelSize(lang, ModelSmall)
 }
 
 // GetSchemaPromptWithModelSize 生成带信号说明的Schema（支持指定模型大小）
