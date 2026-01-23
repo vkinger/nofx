@@ -329,7 +329,7 @@ func GetFullDecisionWithStrategy(ctx *Context, mcpClient mcp.AIClient, engine *S
 
 	// 2. Build System Prompt using strategy engine
 	riskConfig := engine.GetRiskControlConfig()
-	systemPrompt := engine.BuildSystemPrompt(ctx.Account.TotalEquity, variant)
+	systemPrompt := engine.BuildSystemPrompt(ctx.Account.TotalEquity, variant, mcpClient)
 
 	// 3. Build User Prompt using strategy engine
 	userPrompt := engine.BuildUserPrompt(ctx)
@@ -928,7 +928,8 @@ func (e *StrategyEngine) FetchPriceRankingData() *nofxos.PriceRankingData {
 // ============================================================================
 
 // BuildSystemPrompt builds System Prompt according to strategy configuration
-func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string) string {
+// mcpClient: 用于检查模型是否支持JSON Schema（API级别），如果为nil则使用提示词集成方式
+func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string, mcpClient mcp.AIClient) string {
 	var sb strings.Builder
 	riskControl := e.config.RiskControl
 	promptSections := e.config.PromptSections
@@ -1046,6 +1047,36 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	}
 
 	// 7. Output format (STRICT - 严格格式要求)
+	// 使用新的输出格式方法（支持JSON Schema和提示词集成两种方式，传入mcpClient以支持JSON Schema API级别检查）
+	outputFormat := e.buildOutputFormat(accountEquity, btcEthPosValueRatio, riskControl, mcpClient)
+	sb.WriteString(outputFormat)
+
+	// ========== 旧版本输出格式（已提取为方法，方便回滚）==========
+	// 如需回滚，取消下面的注释，并注释掉上面的 buildOutputFormat 调用
+	// outputFormatLegacy := e.buildOutputFormatLegacy(accountEquity, btcEthPosValueRatio, riskControl)
+	// sb.WriteString(outputFormatLegacy)
+
+	// 8. Custom Prompt
+	if e.config.CustomPrompt != "" {
+		sb.WriteString("# 📌 Personalized Trading Strategy\n\n")
+		sb.WriteString(e.config.CustomPrompt)
+		sb.WriteString("\n\n")
+		sb.WriteString("Note: The above personalized strategy is a supplement to the basic rules and cannot violate the basic risk control principles.\n")
+	}
+
+	return sb.String()
+}
+
+// ============================================================================
+// Output Format Building - 输出格式构建
+// ============================================================================
+
+// buildOutputFormatLegacy 构建输出格式（旧版本，使用XML标签+JSON数组格式）
+// 此方法已废弃，保留用于回滚
+// 如需使用，取消注释 BuildSystemPrompt 中的调用
+func (e *StrategyEngine) buildOutputFormatLegacy(accountEquity float64, btcEthPosValueRatio float64, riskControl store.RiskControlConfig) string {
+	var sb strings.Builder
+
 	sb.WriteString("# ⚠️ Output Format (STRICTLY ENFORCED - 严格强制执行)\n\n")
 	sb.WriteString("**CRITICAL: You MUST follow this format exactly. Any deviation will cause parsing errors.**\n\n")
 
@@ -1134,12 +1165,266 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 
 	sb.WriteString("**Remember: Follow the format structure, but generate decisions based on actual market analysis.**\n\n")
 
-	// 8. Custom Prompt
-	if e.config.CustomPrompt != "" {
-		sb.WriteString("# 📌 Personalized Trading Strategy\n\n")
-		sb.WriteString(e.config.CustomPrompt)
-		sb.WriteString("\n\n")
-		sb.WriteString("Note: The above personalized strategy is a supplement to the basic rules and cannot violate the basic risk control principles.\n")
+	return sb.String()
+}
+
+// ============================================================================
+// 支持两种方式：
+// 1. JSON Schema集成（如果模型支持API级别的结构化输出）
+// 2. 提示词集成（在提示词中嵌入JSON Schema，兼容所有模型）
+// ============================================================================
+
+// buildOutputFormat 构建输出格式部分
+// mcpClient: 用于检查模型是否支持JSON Schema（API级别），如果为nil则使用提示词集成方式
+func (e *StrategyEngine) buildOutputFormat(accountEquity float64, btcEthPosValueRatio float64, riskControl store.RiskControlConfig, mcpClient mcp.AIClient) string {
+	// 检查模型是否支持JSON Schema（API级别）
+	supportsJSONSchema := e.checkModelSupportsJSONSchema(mcpClient)
+
+	if supportsJSONSchema {
+		// 方法1：模型支持JSON Schema（API级别）
+		// 注意：JSON Schema会在API调用时通过response_format参数传递
+		// 这里只提供简化的格式说明
+		return e.buildOutputFormatWithJSONSchemaAPI(accountEquity, btcEthPosValueRatio, riskControl)
+	} else {
+		// 方法2：提示词集成JSON Schema（兼容所有模型）
+		return e.buildOutputFormatWithPromptIntegration(accountEquity, btcEthPosValueRatio, riskControl)
+	}
+}
+
+// checkModelSupportsJSONSchema 检查模型是否支持JSON Schema（API级别）
+// 支持的模型：OpenAI GPT-4o+, Claude 3.5+
+func (e *StrategyEngine) checkModelSupportsJSONSchema(mcpClient mcp.AIClient) bool {
+	if mcpClient == nil {
+		return false
+	}
+
+	// 通过类型断言获取Client内部结构以检查Provider和Model
+	// 注意：由于AIClient是接口，我们需要通过反射或类型断言来访问内部字段
+	// 这里使用类型断言检查是否为支持JSON Schema的客户端类型
+
+	// 尝试类型断言为具体的客户端类型
+	// 由于mcp包的结构，我们需要通过其他方式检查
+	// 暂时通过检查Provider字符串来判断（需要mcp包暴露Provider字段或提供检查方法）
+
+	// TODO: 实现真正的模型支持检查逻辑
+	// 方案1：在mcp包中添加SupportsJSONSchema()方法到AIClient接口
+	// 方案2：通过类型断言检查具体客户端类型（OpenAIClient, ClaudeClient等）
+	// 方案3：检查模型名称是否包含支持JSON Schema的版本标识
+
+	// 暂时返回false，使用提示词集成方式（兼容所有模型）
+	// 未来可以通过mcp包扩展接口来支持此功能
+	return false
+}
+
+// buildOutputFormatWithJSONSchemaAPI 构建输出格式（模型支持JSON Schema API级别）
+// 当模型支持API级别的JSON Schema时，使用此方法
+// JSON Schema会通过API的response_format参数传递，提示词中只需简要说明
+func (e *StrategyEngine) buildOutputFormatWithJSONSchemaAPI(accountEquity float64, btcEthPosValueRatio float64, riskControl store.RiskControlConfig) string {
+	var sb strings.Builder
+	lang := e.GetLanguage()
+
+	sb.WriteString("# ⚠️ Output Format (JSON Schema Enforced - JSON Schema强制执行)\n\n")
+
+	if lang == LangChinese {
+		sb.WriteString("**重要：模型已启用JSON Schema结构化输出，输出格式将严格按照Schema验证。**\n\n")
+		sb.WriteString("## 输出格式要求\n\n")
+		sb.WriteString("**必须**使用以下JSON对象格式输出（包含思维链和决策数组）：\n\n")
+		sb.WriteString("```json\n")
+		sb.WriteString("{\n")
+		sb.WriteString("  \"reasoning\": \"思维链分析过程...\",\n")
+		sb.WriteString("  \"decisions\": [\n")
+		sb.WriteString("    {\n")
+		sb.WriteString("      \"symbol\": \"BTCUSDT\",\n")
+		sb.WriteString("      \"action\": \"open_long\",\n")
+		sb.WriteString("      \"leverage\": 3,\n")
+		sb.WriteString("      \"position_size_usd\": 1000,\n")
+		sb.WriteString("      \"stop_loss\": 42000,\n")
+		sb.WriteString("      \"take_profit\": 48000,\n")
+		sb.WriteString("      \"confidence\": 85,\n")
+		sb.WriteString("      \"reasoning\": \"详细的推理过程...\"\n")
+		sb.WriteString("    }\n")
+		sb.WriteString("  ]\n")
+		sb.WriteString("}\n")
+		sb.WriteString("```\n\n")
+
+		sb.WriteString("### 关键要求\n\n")
+		sb.WriteString(fmt.Sprintf("- **reasoning**: 思维链分析（必需，至少50字符）\n"))
+		sb.WriteString("- **decisions**: 决策数组（必需，0-10个决策）\n")
+		sb.WriteString(fmt.Sprintf("- **action**: 必须是以下之一：open_long, open_short, close_long, close_short, hold, wait\n"))
+		sb.WriteString(fmt.Sprintf("- **confidence**: 0-100整数（开新仓时要求≥%d）\n", riskControl.MinConfidence))
+		sb.WriteString("- **开新仓必需字段**: leverage, position_size_usd, stop_loss, take_profit\n")
+		sb.WriteString("- **价格精度**: 根据实际市场价格动态确定\n")
+		sb.WriteString("- **止盈止损关系**: 做多时stop_loss < take_profit，做空时stop_loss > take_profit\n")
+		sb.WriteString("- **风险回报比**: 必须≥3:1\n\n")
+
+		sb.WriteString("**注意：JSON Schema会在API调用时自动验证，确保输出格式完全符合要求。**\n\n")
+	} else {
+		sb.WriteString("**Important: Model has JSON Schema structured output enabled. Output format will be strictly validated against Schema.**\n\n")
+		sb.WriteString("## Output Format Requirements\n\n")
+		sb.WriteString("**Must** use the following JSON object format (containing reasoning chain and decisions array):\n\n")
+		sb.WriteString("```json\n")
+		sb.WriteString("{\n")
+		sb.WriteString("  \"reasoning\": \"Chain of thought analysis...\",\n")
+		sb.WriteString("  \"decisions\": [\n")
+		sb.WriteString("    {\n")
+		sb.WriteString("      \"symbol\": \"BTCUSDT\",\n")
+		sb.WriteString("      \"action\": \"open_long\",\n")
+		sb.WriteString("      \"leverage\": 3,\n")
+		sb.WriteString("      \"position_size_usd\": 1000,\n")
+		sb.WriteString("      \"stop_loss\": 42000,\n")
+		sb.WriteString("      \"take_profit\": 48000,\n")
+		sb.WriteString("      \"confidence\": 85,\n")
+		sb.WriteString("      \"reasoning\": \"Detailed reasoning...\"\n")
+		sb.WriteString("    }\n")
+		sb.WriteString("  ]\n")
+		sb.WriteString("}\n")
+		sb.WriteString("```\n\n")
+
+		sb.WriteString("### Key Requirements\n\n")
+		sb.WriteString(fmt.Sprintf("- **reasoning**: Chain of thought analysis (required, min 50 chars)\n"))
+		sb.WriteString("- **decisions**: Decisions array (required, 0-10 decisions)\n")
+		sb.WriteString(fmt.Sprintf("- **action**: Must be one of: open_long, open_short, close_long, close_short, hold, wait\n"))
+		sb.WriteString(fmt.Sprintf("- **confidence**: Integer 0-100 (opening positions require ≥%d)\n", riskControl.MinConfidence))
+		sb.WriteString("- **Required for new positions**: leverage, position_size_usd, stop_loss, take_profit\n")
+		sb.WriteString("- **Price precision**: Dynamically determined based on actual market price\n")
+		sb.WriteString("- **SL/TP relationship**: For LONG: stop_loss < take_profit, For SHORT: stop_loss > take_profit\n")
+		sb.WriteString("- **Risk-reward ratio**: Must be ≥3:1\n\n")
+
+		sb.WriteString("**Note: JSON Schema will automatically validate output format during API call to ensure full compliance.**\n\n")
+	}
+
+	return sb.String()
+}
+
+// buildOutputFormatWithPromptIntegration 构建输出格式（提示词集成JSON Schema）
+// 当模型不支持API级别的JSON Schema时，使用此方法
+// 在提示词中嵌入完整的JSON Schema说明
+func (e *StrategyEngine) buildOutputFormatWithPromptIntegration(accountEquity float64, btcEthPosValueRatio float64, riskControl store.RiskControlConfig) string {
+	var sb strings.Builder
+	lang := e.GetLanguage()
+
+	sb.WriteString("# ⚠️ Output Format (STRICTLY ENFORCED - 严格强制执行)\n\n")
+
+	if lang == LangChinese {
+		sb.WriteString("**CRITICAL: You MUST follow this format exactly. Any deviation will cause parsing errors.**\n\n")
+
+		sb.WriteString("## 输出格式要求\n\n")
+		sb.WriteString("**必须**使用以下JSON对象格式输出（包含思维链和决策数组）：\n\n")
+		sb.WriteString("```json\n")
+		sb.WriteString("{\n")
+		sb.WriteString("  \"reasoning\": \"思维链分析过程...\",\n")
+		sb.WriteString("  \"decisions\": [\n")
+		sb.WriteString("    {\n")
+		sb.WriteString("      \"symbol\": \"BTCUSDT\",\n")
+		sb.WriteString("      \"action\": \"open_long\",\n")
+		sb.WriteString("      \"leverage\": 3,\n")
+		sb.WriteString("      \"position_size_usd\": 1000,\n")
+		sb.WriteString("      \"stop_loss\": 42000,\n")
+		sb.WriteString("      \"take_profit\": 48000,\n")
+		sb.WriteString("      \"confidence\": 85,\n")
+		sb.WriteString("      \"reasoning\": \"详细的推理过程...\"\n")
+		sb.WriteString("    }\n")
+		sb.WriteString("  ]\n")
+		sb.WriteString("}\n")
+		sb.WriteString("```\n\n")
+
+		// 嵌入JSON Schema（紧凑版）
+		schema := GetDecisionJSONSchemaCompact(lang)
+		sb.WriteString("## JSON Schema（必须严格遵守）\n\n")
+		sb.WriteString("**以下JSON Schema定义了输出格式的所有约束，请严格按照Schema输出：**\n\n")
+		sb.WriteString("```json\n")
+		sb.WriteString(schema)
+		sb.WriteString("\n```\n\n")
+
+		sb.WriteString("### 关键字段说明\n\n")
+		sb.WriteString(fmt.Sprintf("- **reasoning**: 思维链分析（必需，至少50字符），详细说明分析思路、市场判断、风险评估\n"))
+		sb.WriteString("- **decisions**: 决策数组（必需，0-10个决策对象）\n")
+		sb.WriteString(fmt.Sprintf("- **action**: 必须是以下之一：open_long, open_short, close_long, close_short, hold, wait, partial_close, full_close, add_position\n"))
+		sb.WriteString(fmt.Sprintf("- **confidence**: 0-100整数（开新仓时要求≥%d）\n", riskControl.MinConfidence))
+		sb.WriteString("- **开新仓必需字段**: leverage, position_size_usd, stop_loss, take_profit\n")
+		sb.WriteString("- **价格精度**: 根据实际市场价格动态确定（价格<0.0001用8位小数，<0.001用6位小数，<0.01用6位小数，<1.0用4位小数，<100用4位小数，≥100用2位小数）\n")
+		sb.WriteString("- **止盈止损关系**: 做多时stop_loss必须 < take_profit，做空时stop_loss必须 > take_profit\n")
+		sb.WriteString("- **风险回报比**: 必须≥3:1（止盈空间至少是止损空间的3倍）\n")
+		sb.WriteString("- **手续费考虑**: 做多时止损价调高约0.1%，止盈价调低约0.1%；做空时止损价调低约0.1%，止盈价调高约0.1%\n\n")
+
+		sb.WriteString("### 输出示例\n\n")
+		examplePositionSize := accountEquity * btcEthPosValueRatio
+		sb.WriteString("```json\n")
+		sb.WriteString("{\n")
+		sb.WriteString("  \"reasoning\": \"分析账户状态：当前保证金使用率25%，在安全范围内。分析持仓：BTCUSDT当前PnL +2.96%，接近历史峰值+2.99%，回撤仅0.03%。5分钟K线显示价格接近短期阻力位，成交量开始萎缩，上涨动能减弱。建议部分平仓锁定利润。\",\n")
+		sb.WriteString("  \"decisions\": [\n")
+		sb.WriteString(fmt.Sprintf("    {\"symbol\": \"BTCUSDT\", \"action\": \"open_short\", \"leverage\": %d, \"position_size_usd\": %.0f, \"stop_loss\": 97000, \"take_profit\": 91000, \"confidence\": 85, \"reasoning\": \"市场显示看跌信号，RSI超买，OI下降\"},\n",
+			riskControl.BTCETHMaxLeverage, examplePositionSize))
+		sb.WriteString("    {\"symbol\": \"ETHUSDT\", \"action\": \"close_long\", \"confidence\": 80, \"reasoning\": \"达到止盈目标\"}\n")
+		sb.WriteString("  ]\n")
+		sb.WriteString("}\n")
+		sb.WriteString("```\n\n")
+
+		sb.WriteString("**⚠️ 重要提醒：**\n")
+		sb.WriteString("- 所有数值必须是实际数字，不能是公式或表达式\n")
+		sb.WriteString("- 必须严格按照JSON Schema的约束输出\n")
+		sb.WriteString("- 开新仓时必须提供所有必需字段\n")
+		sb.WriteString("- 价格精度根据实际市场价格动态确定\n\n")
+	} else {
+		sb.WriteString("**CRITICAL: You MUST follow this format exactly. Any deviation will cause parsing errors.**\n\n")
+
+		sb.WriteString("## Output Format Requirements\n\n")
+		sb.WriteString("**Must** use the following JSON object format (containing reasoning chain and decisions array):\n\n")
+		sb.WriteString("```json\n")
+		sb.WriteString("{\n")
+		sb.WriteString("  \"reasoning\": \"Chain of thought analysis...\",\n")
+		sb.WriteString("  \"decisions\": [\n")
+		sb.WriteString("    {\n")
+		sb.WriteString("      \"symbol\": \"BTCUSDT\",\n")
+		sb.WriteString("      \"action\": \"open_long\",\n")
+		sb.WriteString("      \"leverage\": 3,\n")
+		sb.WriteString("      \"position_size_usd\": 1000,\n")
+		sb.WriteString("      \"stop_loss\": 42000,\n")
+		sb.WriteString("      \"take_profit\": 48000,\n")
+		sb.WriteString("      \"confidence\": 85,\n")
+		sb.WriteString("      \"reasoning\": \"Detailed reasoning...\"\n")
+		sb.WriteString("    }\n")
+		sb.WriteString("  ]\n")
+		sb.WriteString("}\n")
+		sb.WriteString("```\n\n")
+
+		// 嵌入JSON Schema（紧凑版）
+		schema := GetDecisionJSONSchemaCompact(lang)
+		sb.WriteString("## JSON Schema (Must Strictly Follow)\n\n")
+		sb.WriteString("**The following JSON Schema defines all constraints for output format. Please output strictly according to the Schema:**\n\n")
+		sb.WriteString("```json\n")
+		sb.WriteString(schema)
+		sb.WriteString("\n```\n\n")
+
+		sb.WriteString("### Key Field Descriptions\n\n")
+		sb.WriteString(fmt.Sprintf("- **reasoning**: Chain of thought analysis (required, min 50 chars), detailing analysis approach, market judgment, risk assessment\n"))
+		sb.WriteString("- **decisions**: Decisions array (required, 0-10 decision objects)\n")
+		sb.WriteString(fmt.Sprintf("- **action**: Must be one of: open_long, open_short, close_long, close_short, hold, wait, partial_close, full_close, add_position\n"))
+		sb.WriteString(fmt.Sprintf("- **confidence**: Integer 0-100 (opening positions require ≥%d)\n", riskControl.MinConfidence))
+		sb.WriteString("- **Required for new positions**: leverage, position_size_usd, stop_loss, take_profit\n")
+		sb.WriteString("- **Price precision**: Dynamically determined based on actual market price (<0.0001 use 8 decimals, <0.001 use 6 decimals, <0.01 use 6 decimals, <1.0 use 4 decimals, <100 use 4 decimals, ≥100 use 2 decimals)\n")
+		sb.WriteString("- **SL/TP relationship**: For LONG: stop_loss must < take_profit, For SHORT: stop_loss must > take_profit\n")
+		sb.WriteString("- **Risk-reward ratio**: Must be ≥3:1 (take profit space must be at least 3x stop loss space)\n")
+		sb.WriteString("- **Fee consideration**: For LONG: set SL ~0.1% higher, TP ~0.1% lower; For SHORT: set SL ~0.1% lower, TP ~0.1% higher\n\n")
+
+		sb.WriteString("### Output Example\n\n")
+		examplePositionSize := accountEquity * btcEthPosValueRatio
+		sb.WriteString("```json\n")
+		sb.WriteString("{\n")
+		sb.WriteString("  \"reasoning\": \"Analyze account status: Current margin usage 25%, within safe range. Analyze positions: BTCUSDT current PnL +2.96%, near historical peak +2.99%, only 0.03% pullback. 5M chart shows price approaching short-term resistance, volume declining, upward momentum weakening. Suggest partial close to lock profits.\",\n")
+		sb.WriteString("  \"decisions\": [\n")
+		sb.WriteString(fmt.Sprintf("    {\"symbol\": \"BTCUSDT\", \"action\": \"open_short\", \"leverage\": %d, \"position_size_usd\": %.0f, \"stop_loss\": 97000, \"take_profit\": 91000, \"confidence\": 85, \"reasoning\": \"Market shows bearish signals, RSI overbought, OI decreasing\"},\n",
+			riskControl.BTCETHMaxLeverage, examplePositionSize))
+		sb.WriteString("    {\"symbol\": \"ETHUSDT\", \"action\": \"close_long\", \"confidence\": 80, \"reasoning\": \"Reached take-profit target\"}\n")
+		sb.WriteString("  ]\n")
+		sb.WriteString("}\n")
+		sb.WriteString("```\n\n")
+
+		sb.WriteString("**⚠️ Important Reminders:**\n")
+		sb.WriteString("- All numeric values must be actual numbers, not formulas or expressions\n")
+		sb.WriteString("- Must strictly follow JSON Schema constraints\n")
+		sb.WriteString("- All required fields must be provided when opening positions\n")
+		sb.WriteString("- Price precision dynamically determined based on actual market price\n\n")
 	}
 
 	return sb.String()
@@ -2540,16 +2825,44 @@ func parseFullDecisionResponse(aiResponse string, accountEquity float64, btcEthL
 }
 
 func extractCoTTrace(response string) string {
+	// 优先尝试新格式：JSON对象中的reasoning字段
+	type newFormatResponse struct {
+		Reasoning string     `json:"reasoning"`
+		Decisions []Decision `json:"decisions"`
+	}
+
+	// 尝试解析新格式的JSON对象
+	s := removeInvisibleRunes(response)
+	s = strings.TrimSpace(s)
+	s = fixMissingQuotes(s)
+
+	// 查找JSON对象（包含reasoning和decisions字段）
+	jsonObjStart := strings.Index(s, `{"reasoning"`)
+	if jsonObjStart >= 0 {
+		// 找到可能的JSON对象开始位置，尝试提取完整的JSON对象
+		jsonObjEnd := findMatchingBrace(s, jsonObjStart)
+		if jsonObjEnd > jsonObjStart {
+			jsonObjStr := s[jsonObjStart : jsonObjEnd+1]
+			var newFormat newFormatResponse
+			if err := json.Unmarshal([]byte(jsonObjStr), &newFormat); err == nil && newFormat.Reasoning != "" {
+				logger.Infof("✓ Extracted reasoning chain using new JSON format (reasoning field)")
+				return strings.TrimSpace(newFormat.Reasoning)
+			}
+		}
+	}
+
+	// 回退到旧格式：XML标签
 	if match := reReasoningTag.FindStringSubmatch(response); match != nil && len(match) > 1 {
-		logger.Infof("✓ Extracted reasoning chain using <reasoning> tag")
+		logger.Infof("✓ Extracted reasoning chain using <reasoning> tag (legacy format)")
 		return strings.TrimSpace(match[1])
 	}
 
 	if decisionIdx := strings.Index(response, "<decision>"); decisionIdx > 0 {
-		logger.Infof("✓ Extracted content before <decision> tag as reasoning chain")
+		logger.Infof("✓ Extracted content before <decision> tag as reasoning chain (legacy format)")
 		return strings.TrimSpace(response[:decisionIdx])
 	}
 
+	// 回退到旧格式：JSON数组前的文本
 	jsonStart := strings.Index(response, "[")
 	if jsonStart > 0 {
 		logger.Infof("⚠️  Extracted reasoning chain using old format ([ character separator)")
@@ -2559,15 +2872,97 @@ func extractCoTTrace(response string) string {
 	return strings.TrimSpace(response)
 }
 
+// findMatchingBrace 找到与开始位置匹配的右花括号位置
+func findMatchingBrace(s string, start int) int {
+	if start < 0 || start >= len(s) || s[start] != '{' {
+		return -1
+	}
+
+	depth := 0
+	inString := false
+	escape := false
+
+	for i := start; i < len(s); i++ {
+		char := s[i]
+
+		if escape {
+			escape = false
+			continue
+		}
+
+		if char == '\\' {
+			escape = true
+			continue
+		}
+
+		if char == '"' {
+			inString = !inString
+			continue
+		}
+
+		if inString {
+			continue
+		}
+
+		if char == '{' {
+			depth++
+		} else if char == '}' {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+
+	return -1
+}
+
 func extractDecisions(response string) ([]Decision, error) {
 	s := removeInvisibleRunes(response)
 	s = strings.TrimSpace(s)
 	s = fixMissingQuotes(s)
 
+	// ========== 优先尝试新格式：JSON对象（包含reasoning和decisions字段）==========
+	type newFormatResponse struct {
+		Reasoning string     `json:"reasoning"`
+		Decisions []Decision `json:"decisions"`
+	}
+
+	// 尝试解析新格式的JSON对象
+	jsonObjStart := strings.Index(s, `{"reasoning"`)
+	if jsonObjStart >= 0 {
+		jsonObjEnd := findMatchingBrace(s, jsonObjStart)
+		if jsonObjEnd > jsonObjStart {
+			jsonObjStr := s[jsonObjStart : jsonObjEnd+1]
+			var newFormat newFormatResponse
+			if err := json.Unmarshal([]byte(jsonObjStr), &newFormat); err == nil {
+				if len(newFormat.Decisions) > 0 {
+					logger.Infof("✓ Extracted decisions using new JSON format (decisions field)")
+					return newFormat.Decisions, nil
+				}
+			}
+		}
+	}
+
+	// 也尝试从```json代码块中提取新格式
+	// 匹配 ```json { "reasoning": "...", "decisions": [...] } ```
+	reNewFormatFence := regexp.MustCompile(`(?is)` + "```json\\s*(\\{[^`]*?\"decisions\"\\s*:\\s*\\[.*?\\][^`]*?\\})\\s*```")
+	if m := reNewFormatFence.FindStringSubmatch(s); m != nil && len(m) > 1 {
+		jsonObjStr := strings.TrimSpace(m[1])
+		var newFormat newFormatResponse
+		if err := json.Unmarshal([]byte(jsonObjStr), &newFormat); err == nil {
+			if len(newFormat.Decisions) > 0 {
+				logger.Infof("✓ Extracted decisions using new JSON format from code fence")
+				return newFormat.Decisions, nil
+			}
+		}
+	}
+
+	// ========== 回退到旧格式：XML标签 + JSON数组 ==========
 	var jsonPart string
 	if match := reDecisionTag.FindStringSubmatch(s); match != nil && len(match) > 1 {
 		jsonPart = strings.TrimSpace(match[1])
-		logger.Infof("✓ Extracted JSON using <decision> tag")
+		logger.Infof("✓ Extracted JSON using <decision> tag (legacy format)")
 	} else {
 		jsonPart = s
 		logger.Infof("⚠️  <decision> tag not found, searching JSON in full text")
@@ -2575,6 +2970,7 @@ func extractDecisions(response string) ([]Decision, error) {
 
 	jsonPart = fixMissingQuotes(jsonPart)
 
+	// 尝试从```json代码块中提取JSON数组（旧格式）
 	if m := reJSONFence.FindStringSubmatch(jsonPart); m != nil && len(m) > 1 {
 		jsonContent := strings.TrimSpace(m[1])
 		jsonContent = compactArrayOpen(jsonContent)
@@ -2586,9 +2982,11 @@ func extractDecisions(response string) ([]Decision, error) {
 		if err := json.Unmarshal([]byte(jsonContent), &decisions); err != nil {
 			return nil, fmt.Errorf("JSON parsing failed: %w\nJSON content: %s", err, jsonContent)
 		}
+		logger.Infof("✓ Extracted decisions from JSON code fence (legacy format)")
 		return decisions, nil
 	}
 
+	// 尝试直接提取JSON数组（旧格式）
 	jsonContent := strings.TrimSpace(reJSONArray.FindString(jsonPart))
 	if jsonContent == "" {
 		logger.Infof("⚠️  [SafeFallback] AI didn't output JSON decision, entering safe wait mode")
@@ -2619,6 +3017,7 @@ func extractDecisions(response string) ([]Decision, error) {
 		return nil, fmt.Errorf("JSON parsing failed: %w\nJSON content: %s", err, jsonContent)
 	}
 
+	logger.Infof("✓ Extracted decisions from JSON array (legacy format)")
 	return decisions, nil
 }
 

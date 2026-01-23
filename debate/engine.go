@@ -180,7 +180,8 @@ func (e *DebateEngine) runDebate(session *store.DebateSessionWithDetails, strate
 	}
 
 	// Build system prompt based on strategy (same as AI Test)
-	baseSystemPrompt := strategyEngine.BuildSystemPrompt(1000.0, session.PromptVariant)
+	// Note: mcpClient is nil here, will use prompt integration method
+	baseSystemPrompt := strategyEngine.BuildSystemPrompt(1000.0, session.PromptVariant, nil)
 
 	// Build user prompt with market data (OI ranking data is included via ctx.OIRankingData)
 	userPrompt := strategyEngine.BuildUserPrompt(ctx)
@@ -551,7 +552,8 @@ func (e *DebateEngine) collectVotes(session *store.DebateSessionWithDetails, str
 	var votes []*store.DebateVote
 
 	// Build voting context
-	baseSystemPrompt := strategyEngine.BuildSystemPrompt(1000.0, session.PromptVariant)
+	// Note: mcpClient is nil here, will use prompt integration method
+	baseSystemPrompt := strategyEngine.BuildSystemPrompt(1000.0, session.PromptVariant, nil)
 
 	for _, participant := range session.Participants {
 		vote, err := e.getParticipantVote(session, participant, baseSystemPrompt, allMessages)
@@ -620,10 +622,10 @@ func (e *DebateEngine) getParticipantVote(
 	// If no valid decisions, create a default one with session symbol
 	if primaryDecision == nil && session.Symbol != "" {
 		primaryDecision = &store.DebateDecision{
-			Action:     "hold",
-			Symbol:     session.Symbol,
-			Confidence: 50,
-			Leverage:   5,
+			Action:      "hold",
+			Symbol:      session.Symbol,
+			Confidence:  50,
+			Leverage:    5,
 			PositionPct: 0.2,
 		}
 		decisions = []*store.DebateDecision{primaryDecision}
@@ -1105,16 +1107,16 @@ func parseDecisions(response string) ([]*store.DebateDecision, int) {
 	if jsonContent != "" {
 		// Intermediate struct to handle both field naming conventions
 		type rawDecision struct {
-			Action       string  `json:"action"`
-			Symbol       string  `json:"symbol"`
-			Confidence   int     `json:"confidence"`
-			Leverage     int     `json:"leverage"`
-			PositionPct  float64 `json:"position_pct"`
-			StopLoss     float64 `json:"stop_loss"`
-			TakeProfit   float64 `json:"take_profit"`
-			StopLossPct  float64 `json:"stop_loss_pct"`  // Alternative field name
+			Action        string  `json:"action"`
+			Symbol        string  `json:"symbol"`
+			Confidence    int     `json:"confidence"`
+			Leverage      int     `json:"leverage"`
+			PositionPct   float64 `json:"position_pct"`
+			StopLoss      float64 `json:"stop_loss"`
+			TakeProfit    float64 `json:"take_profit"`
+			StopLossPct   float64 `json:"stop_loss_pct"`   // Alternative field name
 			TakeProfitPct float64 `json:"take_profit_pct"` // Alternative field name
-			Reasoning    string  `json:"reasoning"`
+			Reasoning     string  `json:"reasoning"`
 		}
 
 		convertRawDecision := func(r *rawDecision) *store.DebateDecision {
