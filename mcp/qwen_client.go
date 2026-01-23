@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"encoding/json"
 	"net/http"
 )
 
@@ -80,4 +81,45 @@ func (qwenClient *QwenClient) SetAPIKey(apiKey string, customURL string, customM
 
 func (qwenClient *QwenClient) setAuthHeader(reqHeaders http.Header) {
 	qwenClient.Client.setAuthHeader(reqHeaders)
+}
+
+// buildMCPRequestBody Qwen uses OpenAI-compatible API, so JSON Schema format is the same as OpenAI
+func (c *QwenClient) buildMCPRequestBody(systemPrompt, userPrompt string) map[string]any {
+	// Call base implementation
+	requestBody := c.Client.buildMCPRequestBody(systemPrompt, userPrompt)
+
+	// Add JSON Schema support if model supports it and schema is provided
+	if c.JSONSchema != "" && checkModelSupportsJSONSchema(c.Provider, c.Model) {
+		// Parse JSON Schema string to map
+		var schemaMap map[string]interface{}
+		if err := json.Unmarshal([]byte(c.JSONSchema), &schemaMap); err == nil {
+			// Validate that schemaMap is not empty
+			if len(schemaMap) > 0 {
+				// Qwen uses OpenAI-compatible format: response_format with json_schema
+				requestBody["response_format"] = map[string]interface{}{
+					"type": "json_schema",
+					"json_schema": map[string]interface{}{
+						"name":        "trading_decision",
+						"schema":      schemaMap,
+						"strict":      true, // Enable strict mode for guaranteed schema compliance
+						"description": "Trading decision output format",
+					},
+				}
+				c.logger.Infof("🔧 [MCP Qwen] JSON Schema enabled for structured output")
+			} else {
+				c.logger.Warnf("⚠️ [MCP Qwen] JSON Schema is empty after parsing, skipping response_format")
+			}
+		} else {
+			c.logger.Warnf("⚠️ [MCP Qwen] Failed to parse JSON Schema: %v, JSON Schema content (first 200 chars): %s", err, c.JSONSchema[:min(len(c.JSONSchema), 200)])
+		}
+	} else {
+		// Log why JSON Schema is not being used
+		if c.JSONSchema == "" {
+			c.logger.Debugf("🔍 [MCP Qwen] JSON Schema is empty, not using structured output")
+		} else if !checkModelSupportsJSONSchema(c.Provider, c.Model) {
+			c.logger.Debugf("🔍 [MCP Qwen] Model %s/%s does not support JSON Schema API", c.Provider, c.Model)
+		}
+	}
+
+	return requestBody
 }

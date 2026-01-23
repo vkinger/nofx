@@ -81,19 +81,31 @@ func (c *OpenAIClient) buildMCPRequestBody(systemPrompt, userPrompt string) map[
 		// Parse JSON Schema string to map
 		var schemaMap map[string]interface{}
 		if err := json.Unmarshal([]byte(c.JSONSchema), &schemaMap); err == nil {
-			// OpenAI format: response_format with json_schema
-			requestBody["response_format"] = map[string]interface{}{
-				"type": "json_schema",
-				"json_schema": map[string]interface{}{
-					"name":        "trading_decision",
-					"schema":      schemaMap,
-					"strict":      true, // Enable strict mode for guaranteed schema compliance
-					"description": "Trading decision output format",
-				},
+			// Validate that schemaMap is not empty
+			if len(schemaMap) > 0 {
+				// OpenAI format: response_format with json_schema
+				requestBody["response_format"] = map[string]interface{}{
+					"type": "json_schema",
+					"json_schema": map[string]interface{}{
+						"name":        "trading_decision",
+						"schema":      schemaMap,
+						"strict":      true, // Enable strict mode for guaranteed schema compliance
+						"description": "Trading decision output format",
+					},
+				}
+				c.logger.Infof("🔧 [MCP OpenAI] JSON Schema enabled for structured output")
+			} else {
+				c.logger.Warnf("⚠️ [MCP OpenAI] JSON Schema is empty after parsing, skipping response_format")
 			}
-			c.logger.Infof("🔧 [MCP OpenAI] JSON Schema enabled for structured output")
 		} else {
-			c.logger.Warnf("⚠️ [MCP OpenAI] Failed to parse JSON Schema: %v", err)
+			c.logger.Warnf("⚠️ [MCP OpenAI] Failed to parse JSON Schema: %v, JSON Schema content (first 200 chars): %s", err, c.JSONSchema[:min(len(c.JSONSchema), 200)])
+		}
+	} else {
+		// Log why JSON Schema is not being used
+		if c.JSONSchema == "" {
+			c.logger.Debugf("🔍 [MCP OpenAI] JSON Schema is empty, not using structured output")
+		} else if !checkModelSupportsJSONSchema(c.Provider, c.Model) {
+			c.logger.Debugf("🔍 [MCP OpenAI] Model %s/%s does not support JSON Schema API", c.Provider, c.Model)
 		}
 	}
 
