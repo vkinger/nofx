@@ -647,6 +647,26 @@ func (e *StrategyEngine) GetCandidateCoins() ([]CandidateCoin, error) {
 		// 空列表是正常情况，直接返回
 		return e.filterExcludedCoins(coins), nil
 
+	case "oi_low":
+		// 持仓减少榜，适合做空
+		if !coinSource.UseOILow {
+			logger.Infof("⚠️  source_type is 'oi_low' but use_oi_low is false, falling back to static coins")
+			for _, symbol := range coinSource.StaticCoins {
+				symbol = market.Normalize(symbol)
+				candidates = append(candidates, CandidateCoin{
+					Symbol:  symbol,
+					Sources: []string{"static"},
+				})
+			}
+			return e.filterExcludedCoins(candidates), nil
+		}
+		coins, err := e.getOILowCoins(coinSource.OILowLimit)
+		if err != nil {
+			return nil, err
+		}
+		// 空列表是正常情况，直接返回
+		return e.filterExcludedCoins(coins), nil
+
 	case "mixed":
 		if coinSource.UseAI500 {
 			poolCoins, err := e.getAI500Coins(coinSource.AI500Limit)
@@ -775,7 +795,7 @@ func (e *StrategyEngine) getOITopCoins(limit int) ([]CandidateCoin, error) {
 
 func (e *StrategyEngine) getOILowCoins(limit int) ([]CandidateCoin, error) {
 	if limit <= 0 {
-		limit = 10
+		limit = 20
 	}
 
 	positions, err := e.nofxosClient.GetOILowPositions()
