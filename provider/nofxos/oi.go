@@ -131,11 +131,11 @@ func (c *Client) GetOITopSymbols() ([]string, error) {
 
 // GetOILowPositions retrieves OI decrease positions (for short opportunities)
 func (c *Client) GetOILowPositions() ([]OIPosition, error) {
-	data, err := c.GetOIRanking("1h", 20)
+	positions, _, err := c.fetchOIRanking("low", "1h", 20)
 	if err != nil {
 		return nil, err
 	}
-	return data.LowPositions, nil
+	return positions, nil
 }
 
 // GetOILowSymbols retrieves OI low coin symbol list
