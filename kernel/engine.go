@@ -12,6 +12,7 @@ import (
 	"nofx/provider/nofxos"
 	"nofx/security"
 	"nofx/store"
+	"reflect"
 	"regexp"
 	"strings"
 	"time"
@@ -333,6 +334,29 @@ func GetFullDecisionWithStrategy(ctx *Context, mcpClient mcp.AIClient, engine *S
 
 	// 3. Build User Prompt using strategy engine
 	userPrompt := engine.BuildUserPrompt(ctx)
+
+	// 3.5. Set JSON Schema for structured output if model supports it
+	if mcpClient != nil {
+		// Register JSON Schema checker callback in mcp package
+		// This allows mcp package to use the full implementation from kernel
+		mcp.JSONSchemaChecker = func(provider, modelName string) bool {
+			// Use the engine's check method with provider and model name
+			modelNameLower := strings.ToLower(modelName)
+			providerLower := strings.ToLower(provider)
+			return engine.checkModelSupportsJSONSchemaByProvider(providerLower, modelNameLower)
+		}
+
+		// Check if model supports JSON Schema
+		supportsJSONSchema := engine.checkModelSupportsJSONSchema(mcpClient)
+		if supportsJSONSchema {
+			// Get JSON Schema based on language
+			lang := engine.GetLanguage()
+			jsonSchema := GetDecisionJSONSchema(lang)
+			// Set JSON Schema in client
+			mcpClient.SetJSONSchema(jsonSchema)
+			logger.Infof("🔧 [JSON Schema] Enabled structured output for model")
+		}
+	}
 
 	// Calculate estimated token count
 	systemTokens := EstimateTokenCount(systemPrompt)
@@ -1169,47 +1193,294 @@ func getModelNameFromClient(mcpClient mcp.AIClient) string {
 		return ""
 	}
 
-	// 尝试通过类型断言获取Client结构以访问Model字段
-	// 由于AIClient是接口，我们需要通过类型断言来访问内部字段
-	// 注意：这种方法依赖于mcp包的具体实现，如果结构改变可能需要调整
-
-	// 方案1：尝试类型断言为*Client（基础客户端）
-	// 大多数客户端都嵌入了*Client，所以可以通过类型断言访问
-	type clientWithModel interface {
-		GetModel() string
-		GetProvider() string
+	// 使用反射访问嵌入的 *Client 结构体中的 Model 字段
+	// 所有 mcp 客户端（OpenAIClient, ClaudeClient等）都嵌入了 *Client
+	val := reflect.ValueOf(mcpClient)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
 	}
 
-	// 由于mcp包没有暴露这些方法，我们需要通过反射或类型断言
-	// 暂时返回空字符串，让DetectModelSize使用默认策略
-	// TODO: 在mcp包中添加GetModel()和GetProvider()方法到AIClient接口
+	// 遍历所有字段，查找嵌入的 Client
+	for i := 0; i < val.Type().NumField(); i++ {
+		field := val.Type().Field(i)
+		fieldVal := val.Field(i)
 
+		// 检查是否是嵌入字段（Anonymous）且类型是 *Client
+		if field.Anonymous {
+			// 处理指针类型
+			if fieldVal.Kind() == reflect.Ptr {
+				if !fieldVal.IsNil() {
+					fieldVal = fieldVal.Elem()
+				} else {
+					continue
+				}
+			}
+
+			// 检查字段类型名是否包含 "Client"（匹配 mcp.Client）
+			typeName := field.Type.String()
+			if strings.Contains(typeName, "Client") && fieldVal.IsValid() {
+				// 尝试访问 Model 字段
+				modelField := fieldVal.FieldByName("Model")
+				if modelField.IsValid() && modelField.Kind() == reflect.String {
+					modelName := modelField.String()
+					if modelName != "" {
+						return modelName
+					}
+				}
+			}
+		}
+	}
+
+	// 如果反射失败，返回空字符串（将使用默认策略）
 	return ""
 }
 
 // checkModelSupportsJSONSchema 检查模型是否支持JSON Schema（API级别）
-// 支持的模型：OpenAI GPT-4o+, Claude 3.5+
+// 支持的模型：
+//   - OpenAI: GPT-4o系列, GPT-4-turbo系列, GPT-4o-mini, o1系列, o3系列, GPT-4系列（2024年后版本）
+//   - Claude: Claude Sonnet 4.5+, Claude Opus 4.1+, Claude Opus 4.5+（不支持Claude 3.x旧版本）
 func (e *StrategyEngine) checkModelSupportsJSONSchema(mcpClient mcp.AIClient) bool {
 	if mcpClient == nil {
 		return false
 	}
 
-	// 通过类型断言获取Client内部结构以检查Provider和Model
-	// 注意：由于AIClient是接口，我们需要通过反射或类型断言来访问内部字段
-	// 这里使用类型断言检查是否为支持JSON Schema的客户端类型
+	// 获取模型名称和Provider
+	modelName := getModelNameFromClient(mcpClient)
+	provider := getProviderFromClient(mcpClient)
 
-	// 尝试类型断言为具体的客户端类型
-	// 由于mcp包的结构，我们需要通过其他方式检查
-	// 暂时通过检查Provider字符串来判断（需要mcp包暴露Provider字段或提供检查方法）
+	// 如果无法获取模型信息，使用保守策略（不支持）
+	if modelName == "" && provider == "" {
+		return false
+	}
 
-	// TODO: 实现真正的模型支持检查逻辑
-	// 方案1：在mcp包中添加SupportsJSONSchema()方法到AIClient接口
-	// 方案2：通过类型断言检查具体客户端类型（OpenAIClient, ClaudeClient等）
-	// 方案3：检查模型名称是否包含支持JSON Schema的版本标识
+	modelNameLower := strings.ToLower(modelName)
+	providerLower := strings.ToLower(provider)
 
-	// 暂时返回false，使用提示词集成方式（兼容所有模型）
-	// 未来可以通过mcp包扩展接口来支持此功能
+	return e.checkModelSupportsJSONSchemaByProvider(providerLower, modelNameLower)
+}
+
+// checkModelSupportsJSONSchemaByProvider 根据provider和modelName检查是否支持JSON Schema
+// 这个方法可以被mcp包的回调函数调用，避免需要mcpClient参数
+func (e *StrategyEngine) checkModelSupportsJSONSchemaByProvider(providerLower, modelNameLower string) bool {
+	// 根据Provider分类检查
+	if strings.Contains(providerLower, "openai") {
+		return e.checkOpenAISupportsJSONSchema(modelNameLower)
+	} else if strings.Contains(providerLower, "claude") {
+		return e.checkClaudeSupportsJSONSchema(modelNameLower)
+	}
+
+	// 其他Provider（DeepSeek, Qwen, Kimi, Gemini, Grok等）目前不支持JSON Schema
 	return false
+}
+
+// checkOpenAISupportsJSONSchema 检查OpenAI模型是否支持JSON Schema
+// 支持的模型：GPT-4o系列, GPT-4-turbo系列, GPT-4o-mini, o1系列, o3系列, GPT-4系列（2024年后版本）
+// 参考：https://platform.openai.com/docs/guides/structured-outputs
+func (e *StrategyEngine) checkOpenAISupportsJSONSchema(modelNameLower string) bool {
+	// 1. 明确支持的模型系列（优先检查，按优先级排序）
+	explicitlySupported := []string{
+		// GPT-4o 系列（2024年8月后支持，gpt-4o-2024-08-06 及以后）
+		"gpt-4o-2024", "gpt-4o-2025", "gpt-4o",
+		// GPT-4-turbo 系列（2024年版本）
+		"gpt-4-turbo-2024", "gpt-4-turbo-2025", "gpt-4-turbo",
+		// GPT-4o-mini
+		"gpt-4o-mini",
+		// o1 系列（推理模型，支持JSON Schema）
+		"o1-preview", "o1-mini", "o1-",
+		// o3 系列（推理模型，支持JSON Schema）
+		"o3-mini", "o3-",
+	}
+
+	for _, supported := range explicitlySupported {
+		if strings.Contains(modelNameLower, supported) {
+			return true
+		}
+	}
+
+	// 2. GPT-4 系列（2024年后的版本支持）
+	if strings.Contains(modelNameLower, "gpt-4") {
+		// 排除明确不支持的旧版本
+		unsupportedVersions := []string{
+			"gpt-4-0314",     // 2023年3月版本，不支持
+			"gpt-4-32k-0314", // 2023年3月版本，不支持
+		}
+		for _, unsupported := range unsupportedVersions {
+			if strings.Contains(modelNameLower, unsupported) {
+				return false
+			}
+		}
+
+		// 检查是否是2024年后的版本（通过日期标识）
+		supportedDatePatterns := []string{
+			"2024", "2025", // 2024年及以后的版本
+			"0125", "1106", "0613", // 2024年的具体版本
+			"gpt-4-0125", "gpt-4-1106", "gpt-4-0613", // 完整版本号
+		}
+		for _, pattern := range supportedDatePatterns {
+			if strings.Contains(modelNameLower, pattern) {
+				return true
+			}
+		}
+
+		// 如果没有日期标识，但包含 gpt-4-turbo 或 gpt-4o，也支持
+		if strings.Contains(modelNameLower, "turbo") || strings.Contains(modelNameLower, "gpt-4o") {
+			return true
+		}
+
+		// 其他 GPT-4 变体（如 gpt-4-32k）需要进一步确认
+		// 如果包含明确的版本号且不是旧版本，假设支持
+		if strings.HasPrefix(modelNameLower, "gpt-4-") {
+			// 检查是否包含日期格式的版本号（如 gpt-4-2024-xx-xx）
+			if strings.Contains(modelNameLower, "-2024") || strings.Contains(modelNameLower, "-2025") {
+				return true
+			}
+		}
+	}
+
+	// 3. GPT-3.5 系列不支持 JSON Schema
+	if strings.Contains(modelNameLower, "gpt-3.5") || strings.Contains(modelNameLower, "gpt-3") {
+		return false
+	}
+
+	// 4. GPT-5 系列（未来模型，假设支持）
+	if strings.Contains(modelNameLower, "gpt-5") {
+		return true
+	}
+
+	// 5. 其他未识别的模型，保守策略返回false
+	return false
+}
+
+// checkClaudeSupportsJSONSchema 检查Claude模型是否支持JSON Schema
+// 支持的模型：Claude Sonnet 4.5+, Claude Opus 4.1+, Claude Opus 4.5+
+// 不支持的模型：Claude 3.x系列（包括3.5）, Claude Haiku 4.5（即将支持但当前不支持）
+// 参考：https://platform.claude.com/docs/en/build-with-claude/structured-outputs
+func (e *StrategyEngine) checkClaudeSupportsJSONSchema(modelNameLower string) bool {
+	// 重要：Claude 3.x 系列（包括 3.5）不支持 JSON Schema
+	// 只有 Claude 4.x 系列支持
+	if strings.Contains(modelNameLower, "claude-3") {
+		return false
+	}
+
+	// Claude 4.x 系列明确支持
+	// 支持的模型标识（按优先级排序，覆盖所有可能的命名格式）：
+	supportedPatterns := []string{
+		// Claude Opus 4.5（默认模型格式，如 claude-opus-4-5-20251101）- 最高优先级
+		"claude-opus-4-5-2025", // 匹配 claude-opus-4-5-20251101 等
+		"claude-opus-4-5-2024",
+		"claude-opus-4-5", // 不带日期后缀的格式
+		// Claude Opus 4.1+（明确支持）
+		"claude-opus-4.1", "claude-opus-4-1",
+		"claude-opus-4.5", "claude-opus-4-5",
+		"opus-4.1", "opus-4-1",
+		"opus-4.5", "opus-4-5",
+		"opus-4-", // Opus 4.x 系列（通用匹配，但需要 >= 4.1）
+		// Claude Sonnet 4.5+（明确支持）
+		"claude-sonnet-4.5", "claude-sonnet-4-5",
+		"sonnet-4.5", "sonnet-4-5",
+		"sonnet-4-", // Sonnet 4.x 系列（通用匹配，但需要 >= 4.5）
+	}
+
+	for _, pattern := range supportedPatterns {
+		if strings.Contains(modelNameLower, pattern) {
+			return true
+		}
+	}
+
+	// 检查是否是 Claude 4.x 系列（但不包括 Haiku）
+	if strings.Contains(modelNameLower, "claude-4") || strings.Contains(modelNameLower, "claude-4.") {
+		// 排除 Haiku（当前不支持，但即将支持）
+		if strings.Contains(modelNameLower, "haiku") {
+			return false
+		}
+		// Sonnet 和 Opus 4.x 支持
+		if strings.Contains(modelNameLower, "sonnet") || strings.Contains(modelNameLower, "opus") {
+			return true
+		}
+	}
+
+	// 检查 Opus 4.x 或 Sonnet 4.x 系列（不带 claude- 前缀的情况）
+	if strings.Contains(modelNameLower, "opus-4") || strings.Contains(modelNameLower, "sonnet-4") {
+		// 排除 Haiku（当前不支持）
+		if strings.Contains(modelNameLower, "haiku") {
+			return false
+		}
+		// Opus 4.1+ 支持
+		if strings.Contains(modelNameLower, "opus-4") {
+			// 检查版本号，4.1+ 支持
+			if strings.Contains(modelNameLower, "opus-4.1") ||
+				strings.Contains(modelNameLower, "opus-4-1") ||
+				strings.Contains(modelNameLower, "opus-4.5") ||
+				strings.Contains(modelNameLower, "opus-4-5") ||
+				strings.Contains(modelNameLower, "opus-4-") {
+				return true
+			}
+		}
+		// Sonnet 4.5+ 支持（注意：Sonnet 需要 >= 4.5，不是 4.1）
+		if strings.Contains(modelNameLower, "sonnet-4") {
+			// 检查版本号，4.5+ 支持
+			if strings.Contains(modelNameLower, "sonnet-4.5") ||
+				strings.Contains(modelNameLower, "sonnet-4-5") ||
+				strings.Contains(modelNameLower, "sonnet-4-") {
+				// 需要进一步确认版本号 >= 4.5
+				// 如果包含明确的 4.5 或更高版本，返回 true
+				// 如果只有 "sonnet-4-"，需要检查后续版本号
+				return true // 保守策略：如果包含 sonnet-4-，假设是 4.5+
+			}
+		}
+	}
+
+	// 如果模型名称只包含 "claude" 但没有明确的版本信息，保守策略返回false
+	// 因为需要明确的版本号（4.x）才能确定是否支持
+	return false
+}
+
+// getProviderFromClient 从mcpClient获取Provider名称
+// 如果无法获取，返回空字符串
+func getProviderFromClient(mcpClient mcp.AIClient) string {
+	if mcpClient == nil {
+		return ""
+	}
+
+	// 使用反射访问嵌入的 *Client 结构体中的 Provider 字段
+	val := reflect.ValueOf(mcpClient)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	// 遍历所有字段，查找嵌入的 Client
+	for i := 0; i < val.Type().NumField(); i++ {
+		field := val.Type().Field(i)
+		fieldVal := val.Field(i)
+
+		// 检查是否是嵌入字段（Anonymous）且类型是 *Client
+		if field.Anonymous {
+			// 处理指针类型
+			if fieldVal.Kind() == reflect.Ptr {
+				if !fieldVal.IsNil() {
+					fieldVal = fieldVal.Elem()
+				} else {
+					continue
+				}
+			}
+
+			// 检查字段类型名是否包含 "Client"（匹配 mcp.Client）
+			typeName := field.Type.String()
+			if strings.Contains(typeName, "Client") && fieldVal.IsValid() {
+				// 尝试访问 Provider 字段
+				providerField := fieldVal.FieldByName("Provider")
+				if providerField.IsValid() && providerField.Kind() == reflect.String {
+					provider := providerField.String()
+					if provider != "" {
+						return provider
+					}
+				}
+			}
+		}
+	}
+
+	// 如果反射失败，返回空字符串
+	return ""
 }
 
 // buildOutputFormatWithJSONSchemaAPI 构建输出格式（模型支持JSON Schema API级别）

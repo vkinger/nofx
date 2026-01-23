@@ -35,7 +35,96 @@ var (
 
 	// TokenUsageCallback is called after each AI request with token usage info
 	TokenUsageCallback func(usage TokenUsage)
+
+	// JSONSchemaChecker is a callback function to check if a model supports JSON Schema
+	// This allows external packages (like kernel) to provide the implementation
+	// without creating circular dependencies
+	// If not set, falls back to a simple default implementation
+	JSONSchemaChecker func(provider, modelName string) bool
 )
+
+// checkModelSupportsJSONSchema 检查模型是否支持JSON Schema（API级别）
+// 优先使用外部设置的回调函数（来自kernel包），如果没有设置则使用默认实现
+func checkModelSupportsJSONSchema(provider, modelName string) bool {
+	// 如果设置了外部回调函数，使用它（来自kernel包的完整实现）
+	if JSONSchemaChecker != nil {
+		return JSONSchemaChecker(provider, modelName)
+	}
+
+	// 默认实现（简化版，作为fallback）
+	if provider == "" || modelName == "" {
+		return false
+	}
+
+	providerLower := strings.ToLower(provider)
+	modelNameLower := strings.ToLower(modelName)
+
+	// OpenAI 模型检查
+	if strings.Contains(providerLower, "openai") {
+		// GPT-4o 系列
+		if strings.Contains(modelNameLower, "gpt-4o") {
+			return true
+		}
+		// GPT-4-turbo 系列
+		if strings.Contains(modelNameLower, "gpt-4-turbo") {
+			return true
+		}
+		// GPT-4o-mini
+		if strings.Contains(modelNameLower, "gpt-4o-mini") {
+			return true
+		}
+		// o1 系列
+		if strings.Contains(modelNameLower, "o1") {
+			return true
+		}
+		// o3 系列
+		if strings.Contains(modelNameLower, "o3") {
+			return true
+		}
+		// GPT-4 系列（2024年后版本）
+		if strings.Contains(modelNameLower, "gpt-4") {
+			// 排除旧版本
+			if strings.Contains(modelNameLower, "gpt-4-0314") {
+				return false
+			}
+			// 检查是否包含2024或2025
+			if strings.Contains(modelNameLower, "2024") || strings.Contains(modelNameLower, "2025") {
+				return true
+			}
+			// 其他 GPT-4 变体（假设支持）
+			return true
+		}
+		// GPT-5 系列
+		if strings.Contains(modelNameLower, "gpt-5") {
+			return true
+		}
+	}
+
+	// Claude 模型检查
+	if strings.Contains(providerLower, "claude") {
+		// Claude 3.x 系列不支持
+		if strings.Contains(modelNameLower, "claude-3") {
+			return false
+		}
+		// Claude 4.x 系列支持
+		if strings.Contains(modelNameLower, "claude-4") || strings.Contains(modelNameLower, "claude-opus-4") || strings.Contains(modelNameLower, "claude-sonnet-4") {
+			// 排除 Haiku
+			if strings.Contains(modelNameLower, "haiku") {
+				return false
+			}
+			return true
+		}
+		// Opus 4.x 或 Sonnet 4.x
+		if strings.Contains(modelNameLower, "opus-4") || strings.Contains(modelNameLower, "sonnet-4") {
+			if strings.Contains(modelNameLower, "haiku") {
+				return false
+			}
+			return true
+		}
+	}
+
+	return false
+}
 
 // TokenUsage represents token usage from AI API response
 type TokenUsage struct {
@@ -52,11 +141,12 @@ type Client struct {
 	APIKey     string
 	BaseURL    string
 	Model      string
-	UseFullURL bool // Whether to use full URL (without appending /chat/completions)
-	MaxTokens  int  // Maximum tokens for AI response
+	UseFullURL bool   // Whether to use full URL (without appending /chat/completions)
+	MaxTokens  int    // Maximum tokens for AI response
+	JSONSchema string // Optional JSON Schema for structured output (if model supports it)
 
 	httpClient *http.Client
-	logger     Logger // Logger (replaceable)
+	logger     Logger  // Logger (replaceable)
 	config     *Config // Config object (stores all configurations)
 
 	// hooks are used to implement dynamic dispatch (polymorphism)
@@ -75,21 +165,22 @@ func New() AIClient {
 // NewClient creates client (supports options pattern)
 //
 // Usage examples:
-//   // Basic usage (backward compatible)
-//   client := mcp.NewClient()
 //
-//   // Custom logger
-//   client := mcp.NewClient(mcp.WithLogger(customLogger))
+//	// Basic usage (backward compatible)
+//	client := mcp.NewClient()
 //
-//   // Custom timeout
-//   client := mcp.NewClient(mcp.WithTimeout(60*time.Second))
+//	// Custom logger
+//	client := mcp.NewClient(mcp.WithLogger(customLogger))
 //
-//   // Combine multiple options
-//   client := mcp.NewClient(
-//       mcp.WithDeepSeekConfig("sk-xxx"),
-//       mcp.WithLogger(customLogger),
-//       mcp.WithTimeout(60*time.Second),
-//   )
+//	// Custom timeout
+//	client := mcp.NewClient(mcp.WithTimeout(60*time.Second))
+//
+//	// Combine multiple options
+//	client := mcp.NewClient(
+//	    mcp.WithDeepSeekConfig("sk-xxx"),
+//	    mcp.WithLogger(customLogger),
+//	    mcp.WithTimeout(60*time.Second),
+//	)
 func NewClient(opts ...ClientOption) AIClient {
 	// 1. Create default config
 	cfg := DefaultConfig()
@@ -144,6 +235,14 @@ func (client *Client) SetAPIKey(apiKey, apiURL, customModel string) {
 
 func (client *Client) SetTimeout(timeout time.Duration) {
 	client.httpClient.Timeout = timeout
+}
+
+// SetJSONSchema sets JSON Schema for structured output (if model supports it)
+func (client *Client) SetJSONSchema(jsonSchema string) {
+	client.JSONSchema = jsonSchema
+	if jsonSchema != "" {
+		client.logger.Infof("🔧 [MCP] JSON Schema set for structured output")
+	}
 }
 
 // CallWithMessages template method - fixed retry flow (cannot be overridden)
@@ -252,6 +351,10 @@ func (client *Client) buildMCPRequestBody(systemPrompt, userPrompt string) map[s
 	} else {
 		requestBody["max_tokens"] = client.MaxTokens
 	}
+
+	// Note: JSON Schema support is handled by specific client implementations (OpenAI/Claude)
+	// They override buildMCPRequestBody to add response_format/output_format parameters
+
 	return requestBody
 }
 
@@ -423,12 +526,13 @@ func (client *Client) isRetryableError(err error) bool {
 // - Streaming response (future support)
 //
 // Usage example:
-//   request := NewRequestBuilder().
-//       WithSystemPrompt("You are helpful").
-//       WithUserPrompt("Hello").
-//       WithTemperature(0.8).
-//       Build()
-//   result, err := client.CallWithRequest(request)
+//
+//	request := NewRequestBuilder().
+//	    WithSystemPrompt("You are helpful").
+//	    WithUserPrompt("Hello").
+//	    WithTemperature(0.8).
+//	    Build()
+//	result, err := client.CallWithRequest(request)
 func (client *Client) CallWithRequest(req *Request) (string, error) {
 	if client.APIKey == "" {
 		return "", fmt.Errorf("AI API key not set, please call SetAPIKey first")

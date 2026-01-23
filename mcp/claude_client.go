@@ -71,6 +71,10 @@ func (c *ClaudeClient) SetAPIKey(apiKey string, customURL string, customModel st
 func (c *ClaudeClient) setAuthHeader(reqHeaders http.Header) {
 	reqHeaders.Set("x-api-key", c.APIKey)
 	reqHeaders.Set("anthropic-version", "2023-06-01")
+	// Add structured outputs beta header if JSON Schema is enabled
+	if c.JSONSchema != "" && checkModelSupportsJSONSchema(c.Provider, c.Model) {
+		reqHeaders.Set("anthropic-beta", "structured-outputs-2025-11-13")
+	}
 }
 
 // buildUrl Claude uses /messages endpoint
@@ -87,6 +91,22 @@ func (c *ClaudeClient) buildMCPRequestBody(systemPrompt, userPrompt string) map[
 		"messages": []map[string]string{
 			{"role": "user", "content": userPrompt},
 		},
+	}
+
+	// Add JSON Schema support if model supports it and schema is provided
+	if c.JSONSchema != "" && checkModelSupportsJSONSchema(c.Provider, c.Model) {
+		// Parse JSON Schema string to map
+		var schemaMap map[string]interface{}
+		if err := json.Unmarshal([]byte(c.JSONSchema), &schemaMap); err == nil {
+			// Claude format: output_format with json_schema
+			requestBody["output_format"] = map[string]interface{}{
+				"type":        "json_schema",
+				"json_schema": schemaMap,
+			}
+			c.logger.Infof("🔧 [MCP Claude] JSON Schema enabled for structured output")
+		} else {
+			c.logger.Warnf("⚠️ [MCP Claude] Failed to parse JSON Schema: %v", err)
+		}
 	}
 
 	return requestBody

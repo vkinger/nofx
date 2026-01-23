@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"encoding/json"
 	"net/http"
 )
 
@@ -68,4 +69,33 @@ func (c *OpenAIClient) SetAPIKey(apiKey string, customURL string, customModel st
 // OpenAI uses standard Bearer auth
 func (c *OpenAIClient) setAuthHeader(reqHeaders http.Header) {
 	c.Client.setAuthHeader(reqHeaders)
+}
+
+// buildMCPRequestBody OpenAI-specific request body with JSON Schema support
+func (c *OpenAIClient) buildMCPRequestBody(systemPrompt, userPrompt string) map[string]any {
+	// Call base implementation
+	requestBody := c.Client.buildMCPRequestBody(systemPrompt, userPrompt)
+
+	// Add JSON Schema support if model supports it and schema is provided
+	if c.JSONSchema != "" && checkModelSupportsJSONSchema(c.Provider, c.Model) {
+		// Parse JSON Schema string to map
+		var schemaMap map[string]interface{}
+		if err := json.Unmarshal([]byte(c.JSONSchema), &schemaMap); err == nil {
+			// OpenAI format: response_format with json_schema
+			requestBody["response_format"] = map[string]interface{}{
+				"type": "json_schema",
+				"json_schema": map[string]interface{}{
+					"name":        "trading_decision",
+					"schema":      schemaMap,
+					"strict":      true, // Enable strict mode for guaranteed schema compliance
+					"description": "Trading decision output format",
+				},
+			}
+			c.logger.Infof("🔧 [MCP OpenAI] JSON Schema enabled for structured output")
+		} else {
+			c.logger.Warnf("⚠️ [MCP OpenAI] Failed to parse JSON Schema: %v", err)
+		}
+	}
+
+	return requestBody
 }
