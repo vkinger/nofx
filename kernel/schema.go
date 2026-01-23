@@ -464,9 +464,12 @@ var CommonMistakes = []CommonMistake{
 
 // ========== Prompt生成函数 ==========
 
-// GetSchemaPrompt 生成Schema说明文本，用于AI Prompt（默认大模型精简版）
-func GetSchemaPrompt(lang Language) string {
-	return GetSchemaPromptWithModelSize(lang, ModelSmall)
+// GetSchemaPrompt 生成Schema说明文本，用于AI Prompt
+// 根据模型名称自动判断使用精简版还是完整版
+// modelName: 模型名称（如 "gpt-4o", "claude-3-5-sonnet", "gpt-3.5-turbo" 等），如果为空则使用默认值
+func GetSchemaPrompt(lang Language, modelName string) string {
+	modelSize := DetectModelSize(modelName)
+	return GetSchemaPromptWithModelSize(lang, modelSize)
 }
 
 // GetSchemaPromptWithModelSize 生成带信号说明的Schema（支持指定模型大小）
@@ -481,6 +484,69 @@ func GetSchemaPromptWithModelSize(lang Language, modelSize ModelSize) string {
 	// 追加信号说明
 	prompt += GetSignalExplanation(lang, modelSize)
 	return prompt
+}
+
+// DetectModelSize 根据模型名称自动判断模型大小
+// 返回 ModelLarge（大模型，使用精简版）或 ModelSmall（小模型，使用完整版）
+func DetectModelSize(modelName string) ModelSize {
+	if modelName == "" {
+		// 默认使用完整版（保守策略，确保小模型也能理解）
+		return ModelSmall
+	}
+
+	modelNameLower := strings.ToLower(modelName)
+
+	// 大模型列表（使用精简版）
+	largeModels := []string{
+		// OpenAI
+		"gpt-4", "gpt-4o", "gpt-4-turbo", "gpt-4-", "o1", "o3",
+		// Claude
+		"claude-3", "claude-opus", "claude-sonnet", "claude-haiku",
+		// DeepSeek
+		"deepseek-chat", "deepseek-v2",
+		// Gemini
+		"gemini-pro", "gemini-ultra", "gemini-1.5",
+		// Qwen
+		"qwen-turbo", "qwen-plus", "qwen-max",
+		// Kimi
+		"moonshot-v1",
+		// Grok
+		"grok-beta",
+	}
+
+	// 检查是否为大模型
+	for _, largeModel := range largeModels {
+		if strings.Contains(modelNameLower, largeModel) {
+			return ModelLarge
+		}
+	}
+
+	// 小模型列表（使用完整版）
+	smallModels := []string{
+		// OpenAI
+		"gpt-3.5", "gpt-3",
+		// 其他小模型
+		"text-davinci", "text-curie", "text-babbage", "text-ada",
+	}
+
+	// 检查是否为小模型
+	for _, smallModel := range smallModels {
+		if strings.Contains(modelNameLower, smallModel) {
+			return ModelSmall
+		}
+	}
+
+	// 默认策略：如果模型名称包含数字，尝试判断
+	// 例如：gpt-4.x 系列通常是大模型，gpt-3.x 系列通常是小模型
+	if strings.Contains(modelNameLower, "gpt-4") || strings.Contains(modelNameLower, "gpt-5") {
+		return ModelLarge
+	}
+	if strings.Contains(modelNameLower, "gpt-3") {
+		return ModelSmall
+	}
+
+	// 如果无法判断，默认使用完整版（保守策略）
+	return ModelSmall
 }
 
 // getSchemaPromptZH 生成中文Prompt

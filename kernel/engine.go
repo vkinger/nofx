@@ -936,7 +936,8 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 
 	// 0. Data Dictionary & Schema (ensure AI understands all fields)
 	lang := e.GetLanguage()
-	schemaPrompt := GetSchemaPrompt(lang)
+	modelName := getModelNameFromClient(mcpClient)
+	schemaPrompt := GetSchemaPrompt(lang, modelName)
 	sb.WriteString(schemaPrompt)
 	sb.WriteString("\n\n")
 	sb.WriteString("---\n\n")
@@ -1189,6 +1190,31 @@ func (e *StrategyEngine) buildOutputFormat(accountEquity float64, btcEthPosValue
 		// 方法2：提示词集成JSON Schema（兼容所有模型）
 		return e.buildOutputFormatWithPromptIntegration(accountEquity, btcEthPosValueRatio, riskControl)
 	}
+}
+
+// getModelNameFromClient 从mcpClient获取模型名称
+// 如果无法获取，返回空字符串（将使用默认值）
+func getModelNameFromClient(mcpClient mcp.AIClient) string {
+	if mcpClient == nil {
+		return ""
+	}
+
+	// 尝试通过类型断言获取Client结构以访问Model字段
+	// 由于AIClient是接口，我们需要通过类型断言来访问内部字段
+	// 注意：这种方法依赖于mcp包的具体实现，如果结构改变可能需要调整
+
+	// 方案1：尝试类型断言为*Client（基础客户端）
+	// 大多数客户端都嵌入了*Client，所以可以通过类型断言访问
+	type clientWithModel interface {
+		GetModel() string
+		GetProvider() string
+	}
+
+	// 由于mcp包没有暴露这些方法，我们需要通过反射或类型断言
+	// 暂时返回空字符串，让DetectModelSize使用默认策略
+	// TODO: 在mcp包中添加GetModel()和GetProvider()方法到AIClient接口
+
+	return ""
 }
 
 // checkModelSupportsJSONSchema 检查模型是否支持JSON Schema（API级别）

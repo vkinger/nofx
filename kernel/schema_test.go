@@ -134,7 +134,7 @@ func TestCommonMistakes(t *testing.T) {
 // TestGetSchemaPrompt 测试Schema提示词生成
 func TestGetSchemaPrompt(t *testing.T) {
 	t.Run("Chinese", func(t *testing.T) {
-		prompt := GetSchemaPrompt(LangChinese)
+		prompt := GetSchemaPrompt(LangChinese, "")
 
 		if prompt == "" {
 			t.Fatal("Chinese schema prompt is empty")
@@ -158,7 +158,7 @@ func TestGetSchemaPrompt(t *testing.T) {
 	})
 
 	t.Run("English", func(t *testing.T) {
-		prompt := GetSchemaPrompt(LangEnglish)
+		prompt := GetSchemaPrompt(LangEnglish, "")
 
 		if prompt == "" {
 			t.Fatal("English schema prompt is empty")
@@ -182,8 +182,8 @@ func TestGetSchemaPrompt(t *testing.T) {
 	})
 
 	t.Run("Consistency", func(t *testing.T) {
-		promptZH := GetSchemaPrompt(LangChinese)
-		promptEN := GetSchemaPrompt(LangEnglish)
+		promptZH := GetSchemaPrompt(LangChinese, "")
+		promptEN := GetSchemaPrompt(LangEnglish, "")
 
 		// 两个版本都应该包含相同数量的字段定义
 		// 虽然内容不同，但结构应该相似
@@ -204,13 +204,13 @@ func TestGetSchemaPrompt(t *testing.T) {
 func BenchmarkGetSchemaPrompt(b *testing.B) {
 	b.Run("Chinese", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_ = GetSchemaPrompt(LangChinese)
+			_ = GetSchemaPrompt(LangChinese, "")
 		}
 	})
 
 	b.Run("English", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_ = GetSchemaPrompt(LangEnglish)
+			_ = GetSchemaPrompt(LangEnglish, "")
 		}
 	})
 }

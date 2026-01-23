@@ -20,7 +20,8 @@ func FormatContextForAI(ctx *Context, lang Language) string {
 	var sb strings.Builder
 
 	// 1. 添加Schema说明（让AI理解数据格式）
-	sb.WriteString(GetSchemaPrompt(lang))
+	// 注意：formatter中没有mcpClient，使用空字符串（将使用默认策略）
+	sb.WriteString(GetSchemaPrompt(lang, ""))
 	sb.WriteString("\n---\n\n")
 
 	// 2. 当前状态概览
@@ -355,7 +356,6 @@ func formatKlineDataZH(symbol string, tfData map[string]*market.TimeframeSeriesD
 	return sb.String()
 }
 
-
 // getOIInterpretationZH 获取OI变化解读（中文）
 func getOIInterpretationZH(oiChange, priceChange string) string {
 	if oiChange == "增加" && priceChange == "上涨" {
@@ -619,7 +619,6 @@ func formatKlineDataEN(symbol string, tfData map[string]*market.TimeframeSeriesD
 
 	return sb.String()
 }
-
 
 // getOIInterpretationEN 获取OI变化解读（英文）
 func getOIInterpretationEN(oiChange, priceChange string) string {
