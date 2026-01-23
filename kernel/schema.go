@@ -1,6 +1,10 @@
 package kernel
 
-import "strings"
+import (
+	"encoding/json"
+	"regexp"
+	"strings"
+)
 
 // ============================================================================
 // Trading Data Schema - 交易数据字典
@@ -750,4 +754,452 @@ func getSignalExplanationEN(modelSize ModelSize) string {
 	}
 
 	return sb.String()
+}
+
+// ============================================================================
+// JSON Schema for AI Output Format - AI输出格式的JSON Schema
+// ============================================================================
+// 将系统提示词中的输出格式要求转换为JSON Schema，用于结构化输出
+// ============================================================================
+
+// GetDecisionJSONSchema 获取决策输出的JSON Schema（JSON字符串格式）
+// 用于AI的结构化输出，确保输出格式符合要求
+func GetDecisionJSONSchema(lang Language) string {
+	if lang == LangChinese {
+		return getDecisionJSONSchemaZH()
+	}
+	return getDecisionJSONSchemaEN()
+}
+
+// getDecisionJSONSchemaZH 生成中文描述的JSON Schema
+func getDecisionJSONSchemaZH() string {
+	return `{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "description": "交易决策输出对象，包含思维链分析和决策数组",
+  "required": ["reasoning", "decisions"],
+  "properties": {
+    "reasoning": {
+      "type": "string",
+      "description": "思维链分析过程，详细说明分析思路、市场判断、风险评估等思考过程。这是必需字段，必须详细说明决策依据和推理过程",
+      "minLength": 50,
+      "examples": [
+        "分析账户状态：当前保证金使用率25%，在安全范围内。分析持仓：BTCUSDT当前PnL +2.96%，接近历史峰值+2.99%，回撤仅0.03%。5分钟K线显示价格接近短期阻力位，成交量开始萎缩，上涨动能减弱。建议部分平仓锁定利润。"
+      ]
+    },
+    "decisions": {
+      "type": "array",
+      "description": "交易决策数组，每个元素代表一个交易决策",
+      "items": {
+        "type": "object",
+        "required": ["symbol", "action", "reasoning"],
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "交易对符号，例如：BTCUSDT、ETHUSDT",
+        "pattern": "^[A-Z0-9]+USDT$",
+        "examples": ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
+      },
+      "action": {
+        "type": "string",
+        "description": "交易动作类型",
+        "enum": [
+          "open_long",
+          "open_short",
+          "close_long",
+          "close_short",
+          "hold",
+          "wait",
+          "partial_close",
+          "full_close",
+          "add_position"
+        ],
+        "enumDescriptions": {
+          "open_long": "开多仓",
+          "open_short": "开空仓",
+          "close_long": "平多仓",
+          "close_short": "平空仓",
+          "hold": "持有当前仓位，不进行任何操作",
+          "wait": "等待，不采取任何行动",
+          "partial_close": "部分平仓，平掉部分持仓",
+          "full_close": "全部平仓，平掉所有持仓",
+          "add_position": "在现有仓位上加仓"
+        }
+      },
+      "leverage": {
+        "type": "integer",
+        "description": "杠杆倍数，开新仓时必需。BTC/ETH最大20倍，其他币种最大5倍",
+        "minimum": 1,
+        "maximum": 20,
+        "examples": [3, 5, 10, 20]
+      },
+      "position_size_usd": {
+        "type": "number",
+        "description": "仓位大小（USDT），开新仓时必需。必须大于等于最小开仓金额（一般币种≥12 USDT，BTC/ETH≥60 USDT）",
+        "minimum": 12,
+        "examples": [100, 500, 1000, 5000]
+      },
+      "stop_loss": {
+        "type": "number",
+        "description": "止损价格（必需数值，不能是公式或表达式）。开新仓时强烈建议提供。格式要求：1) 必须是正数(>0)；2) 必须是实际价格数值，不能是表达式如'3000*0.01'；3) 价格精度：根据实际市场价格动态确定（价格<0.0001用8位小数，<0.001用6位小数，<0.01用6位小数，<1.0用4位小数，<100用4位小数，≥100用2位小数）。方向要求：做多(open_long)时止损在下方(stop_loss < take_profit)，做空(open_short)时止损在上方(stop_loss > take_profit)。手续费考虑：做多时止损价应调高约0.1%（更接近入场价），做空时止损价应调低约0.1%（更接近入场价），确保扣除手续费后实际亏损不超过-5%。风险回报比：止损空间与止盈空间的比例应≥1:3（即止盈空间至少是止损空间的3倍）",
+        "minimum": 0.0001,
+        "exclusiveMinimum": true,
+        "examples": [42000, 42000.5, 0.1560, 0.15605, 0.00002070]
+      },
+      "take_profit": {
+        "type": "number",
+        "description": "止盈价格（必需数值，不能是公式或表达式）。开新仓时强烈建议提供。格式要求：1) 必须是正数(>0)；2) 必须是实际价格数值，不能是表达式如'3000*0.01'；3) 价格精度：根据实际市场价格动态确定（价格<0.0001用8位小数，<0.001用6位小数，<0.01用6位小数，<1.0用4位小数，<100用4位小数，≥100用2位小数）。方向要求：做多(open_long)时止盈在上方(take_profit > stop_loss)，做空(open_short)时止盈在下方(take_profit < stop_loss)。手续费考虑：做多时止盈价应调低约0.1%（更接近入场价），做空时止盈价应调高约0.1%（更接近入场价），确保扣除手续费后实际盈利达到目标。风险回报比：止盈空间与止损空间的比例应≥3:1（即止盈空间至少是止损空间的3倍）",
+        "minimum": 0.0001,
+        "exclusiveMinimum": true,
+        "examples": [48000, 48000.5, 0.1720, 0.17205, 0.00002070]
+      },
+      "confidence": {
+        "type": "integer",
+        "description": "信心度（0-100），表示对该决策的把握程度",
+        "minimum": 0,
+        "maximum": 100,
+        "examples": [75, 85, 90]
+      },
+      "reasoning": {
+        "type": "string",
+        "description": "详细的推理过程，必须详细说明决策依据。这是必需字段，不能为空",
+        "minLength": 10,
+        "examples": [
+          "当前PnL +2.96%，接近历史峰值+2.99%（回撤仅0.03%）。建议部分平仓锁定利润，因为：1) 持仓时间仅11分钟，已获得3%收益；2) 5分钟K线显示价格接近短期阻力位；3) 成交量开始萎缩，上涨动能减弱。"
+        ]
+      },
+      "risk_usd": {
+        "type": "number",
+        "description": "最大风险金额（USDT），可选字段",
+        "minimum": 0,
+        "examples": [20, 50, 100]
+      },
+      "price": {
+        "type": "number",
+        "description": "限价单价格（用于网格交易）",
+        "minimum": 0
+      },
+      "quantity": {
+        "type": "number",
+        "description": "订单数量（用于网格交易）",
+        "minimum": 0
+      },
+      "level_index": {
+        "type": "integer",
+        "description": "网格层级索引（用于网格交易）",
+        "minimum": 0
+      },
+      "order_id": {
+        "type": "string",
+        "description": "订单ID（用于取消订单）"
+      }
+    },
+    "allOf": [
+      {
+        "if": {
+          "properties": {
+            "action": {
+              "enum": ["open_long", "open_short"]
+            }
+          }
+        },
+        "then": {
+          "required": ["leverage", "position_size_usd", "stop_loss", "take_profit"],
+          "properties": {
+            "stop_loss": {
+              "description": "开新仓时必需。做多时：stop_loss必须 < take_profit（止损在下方，止盈在上方）。做空时：stop_loss必须 > take_profit（止损在上方，止盈在下方）。必须考虑手续费和风险回报比≥1:3。价格精度根据实际市场价格动态确定。"
+            },
+            "take_profit": {
+              "description": "开新仓时必需。做多时：take_profit必须 > stop_loss（止盈在上方，止损在下方）。做空时：take_profit必须 < stop_loss（止盈在下方，止损在上方）。必须考虑手续费和风险回报比≥3:1。价格精度根据实际市场价格动态确定。"
+            }
+          }
+        }
+      },
+      {
+        "if": {
+          "properties": {
+            "action": {
+              "const": "open_long"
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "stop_loss": {
+              "description": "做多时：stop_loss必须 < take_profit（止损在下方，止盈在上方）。示例：入场价45000，止损42000，止盈54000（风险回报比=9000/3000=3:1）。价格精度根据实际市场价格动态确定。"
+            },
+            "take_profit": {
+              "description": "做多时：take_profit必须 > stop_loss（止盈在上方，止损在下方）。示例：入场价45000，止损42000，止盈54000（风险回报比=9000/3000=3:1）。价格精度根据实际市场价格动态确定。"
+            }
+          }
+        }
+      },
+      {
+        "if": {
+          "properties": {
+            "action": {
+              "const": "open_short"
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "stop_loss": {
+              "description": "做空时：stop_loss必须 > take_profit（止损在上方，止盈在下方）。示例：入场价45000，止损48000，止盈36000（风险回报比=9000/3000=3:1）。价格精度根据实际市场价格动态确定。"
+            },
+            "take_profit": {
+              "description": "做空时：take_profit必须 < stop_loss（止盈在下方，止损在上方）。示例：入场价45000，止损48000，止盈36000（风险回报比=9000/3000=3:1）。价格精度根据实际市场价格动态确定。"
+            }
+          }
+        }
+      }
+    ],
+    "minItems": 0,
+    "maxItems": 10
+    }
+  }
+}`
+}
+
+// getDecisionJSONSchemaEN 生成英文描述的JSON Schema
+func getDecisionJSONSchemaEN() string {
+	return `{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "description": "Trading decision output object, containing reasoning chain and decisions array",
+  "required": ["reasoning", "decisions"],
+  "properties": {
+    "reasoning": {
+      "type": "string",
+      "description": "Chain of thought analysis process, detailing analysis approach, market judgment, risk assessment, and other thinking processes. This is a required field and must explain decision basis and reasoning in detail",
+      "minLength": 50,
+      "examples": [
+        "Analyze account status: Current margin usage 25%, within safe range. Analyze positions: BTCUSDT current PnL +2.96%, near historical peak +2.99%, only 0.03% pullback. 5M chart shows price approaching short-term resistance, volume declining, upward momentum weakening. Suggest partial close to lock profits."
+      ]
+    },
+    "decisions": {
+      "type": "array",
+      "description": "Array of trading decisions, each element represents one trading decision",
+      "items": {
+        "type": "object",
+        "required": ["symbol", "action", "reasoning"],
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "Trading pair symbol, e.g., BTCUSDT, ETHUSDT",
+        "pattern": "^[A-Z0-9]+USDT$",
+        "examples": ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
+      },
+      "action": {
+        "type": "string",
+        "description": "Trading action type",
+        "enum": [
+          "open_long",
+          "open_short",
+          "close_long",
+          "close_short",
+          "hold",
+          "wait",
+          "partial_close",
+          "full_close",
+          "add_position"
+        ],
+        "enumDescriptions": {
+          "open_long": "Open long position",
+          "open_short": "Open short position",
+          "close_long": "Close long position",
+          "close_short": "Close short position",
+          "hold": "Hold current position, no action",
+          "wait": "Wait, take no action",
+          "partial_close": "Partially close position",
+          "full_close": "Fully close position",
+          "add_position": "Add to existing position"
+        }
+      },
+      "leverage": {
+        "type": "integer",
+        "description": "Leverage multiplier, required for new positions. Max 20x for BTC/ETH, max 5x for other coins",
+        "minimum": 1,
+        "maximum": 20,
+        "examples": [3, 5, 10, 20]
+      },
+      "position_size_usd": {
+        "type": "number",
+        "description": "Position size in USDT, required for new positions. Must be >= minimum opening amount (≥12 USDT for general coins, ≥60 USDT for BTC/ETH)",
+        "minimum": 12,
+        "examples": [100, 500, 1000, 5000]
+      },
+      "stop_loss": {
+        "type": "number",
+        "description": "Stop-loss price (required numeric value, not formula or expression). Strongly recommended for new positions. Format requirements: 1) Must be positive (>0); 2) Must be actual price value, not expression like '3000*0.01'; 3) Price precision: Dynamically determined based on actual market price (<0.0001 use 8 decimals, <0.001 use 6 decimals, <0.01 use 6 decimals, <1.0 use 4 decimals, <100 use 4 decimals, ≥100 use 2 decimals). Direction requirements: For LONG (open_long) stop loss below (stop_loss < take_profit), for SHORT (open_short) stop loss above (stop_loss > take_profit). Fee consideration: For LONG, set SL ~0.1% higher (closer to entry); for SHORT, set SL ~0.1% lower (closer to entry), ensuring actual loss after fees does not exceed -5%. Risk-reward ratio: Stop loss space to take profit space ratio should be ≥1:3 (i.e., take profit space must be at least 3x stop loss space)",
+        "minimum": 0.0001,
+        "exclusiveMinimum": true,
+        "examples": [42000, 42000.5, 0.1560, 0.15605, 0.00002070]
+      },
+      "take_profit": {
+        "type": "number",
+        "description": "Take-profit price (required numeric value, not formula or expression). Strongly recommended for new positions. Format requirements: 1) Must be positive (>0); 2) Must be actual price value, not expression like '3000*0.01'; 3) Price precision: Dynamically determined based on actual market price (<0.0001 use 8 decimals, <0.001 use 6 decimals, <0.01 use 6 decimals, <1.0 use 4 decimals, <100 use 4 decimals, ≥100 use 2 decimals). Direction requirements: For LONG (open_long) take profit above (take_profit > stop_loss), for SHORT (open_short) take profit below (take_profit < stop_loss). Fee consideration: For LONG, set TP ~0.1% lower (closer to entry); for SHORT, set TP ~0.1% higher (closer to entry), ensuring actual profit after fees meets target. Risk-reward ratio: Take profit space to stop loss space ratio should be ≥3:1 (i.e., take profit space must be at least 3x stop loss space)",
+        "minimum": 0.0001,
+        "exclusiveMinimum": true,
+        "examples": [48000, 48000.5, 0.1720, 0.17205, 0.00002070]
+      },
+      "confidence": {
+        "type": "integer",
+        "description": "Confidence level (0-100), indicating certainty of this decision",
+        "minimum": 0,
+        "maximum": 100,
+        "examples": [75, 85, 90]
+      },
+      "reasoning": {
+        "type": "string",
+        "description": "Detailed reasoning process, must explain decision basis in detail. This is a required field and cannot be empty",
+        "minLength": 10,
+        "examples": [
+          "Current PnL +2.96%, near historical peak +2.99% (only 0.03% pullback). Suggest partial close to lock profits because: 1) Only 11 minutes holding time with 3% gain; 2) 5M chart shows price approaching short-term resistance; 3) Volume declining, upward momentum weakening."
+        ]
+      },
+      "risk_usd": {
+        "type": "number",
+        "description": "Maximum risk amount in USDT, optional field",
+        "minimum": 0,
+        "examples": [20, 50, 100]
+      },
+      "price": {
+        "type": "number",
+        "description": "Limit order price (for grid trading)",
+        "minimum": 0
+      },
+      "quantity": {
+        "type": "number",
+        "description": "Order quantity (for grid trading)",
+        "minimum": 0
+      },
+      "level_index": {
+        "type": "integer",
+        "description": "Grid level index (for grid trading)",
+        "minimum": 0
+      },
+      "order_id": {
+        "type": "string",
+        "description": "Order ID (for canceling orders)"
+      }
+    },
+    "allOf": [
+      {
+        "if": {
+          "properties": {
+            "action": {
+              "enum": ["open_long", "open_short"]
+            }
+          }
+        },
+        "then": {
+          "required": ["leverage", "position_size_usd", "stop_loss", "take_profit"],
+          "properties": {
+            "stop_loss": {
+              "description": "Required for new positions. For LONG: stop_loss must < take_profit (SL below, TP above). For SHORT: stop_loss must > take_profit (SL above, TP below). Must consider fees and risk-reward ratio ≥1:3. Price precision dynamically determined based on actual market price."
+            },
+            "take_profit": {
+              "description": "Required for new positions. For LONG: take_profit must > stop_loss (TP above, SL below). For SHORT: take_profit must < stop_loss (TP below, SL above). Must consider fees and risk-reward ratio ≥3:1. Price precision dynamically determined based on actual market price."
+            }
+          }
+        }
+      },
+      {
+        "if": {
+          "properties": {
+            "action": {
+              "const": "open_long"
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "stop_loss": {
+              "description": "For LONG: stop_loss must < take_profit (SL below, TP above). Example: Entry 45000, SL 42000, TP 54000 (risk-reward ratio=9000/3000=3:1). Price precision dynamically determined based on actual market price."
+            },
+            "take_profit": {
+              "description": "For LONG: take_profit must > stop_loss (TP above, SL below). Example: Entry 45000, SL 42000, TP 54000 (risk-reward ratio=9000/3000=3:1). Price precision dynamically determined based on actual market price."
+            }
+          }
+        }
+      },
+      {
+        "if": {
+          "properties": {
+            "action": {
+              "const": "open_short"
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "stop_loss": {
+              "description": "For SHORT: stop_loss must > take_profit (SL above, TP below). Example: Entry 45000, SL 48000, TP 36000 (risk-reward ratio=9000/3000=3:1). Price precision dynamically determined based on actual market price."
+            },
+            "take_profit": {
+              "description": "For SHORT: take_profit must < stop_loss (TP below, SL above). Example: Entry 45000, SL 48000, TP 36000 (risk-reward ratio=9000/3000=3:1). Price precision dynamically determined based on actual market price."
+            }
+          }
+        }
+      }
+    ],
+    "minItems": 0,
+    "maxItems": 10
+    }
+  }
+}`
+}
+
+// GetDecisionJSONSchemaCompact 获取紧凑版的JSON Schema（用于AI提示词）
+// 返回压缩后的JSON字符串，移除不必要的空白字符以节省token
+func GetDecisionJSONSchemaCompact(lang Language) string {
+	schema := GetDecisionJSONSchema(lang)
+	return compactJSONSchema(schema)
+}
+
+// compactJSONSchema 压缩JSON Schema，移除不必要的空白字符
+// 优先使用标准JSON序列化，确保JSON有效性
+func compactJSONSchema(schema string) string {
+	// 首先尝试解析为JSON对象并重新序列化为紧凑格式
+	// 这是最可靠的方法，可以确保JSON有效性
+	var jsonObj interface{}
+	if err := json.Unmarshal([]byte(schema), &jsonObj); err == nil {
+		// 成功解析，使用紧凑格式序列化（无缩进，无多余空格）
+		compact, err := json.Marshal(jsonObj)
+		if err == nil {
+			return string(compact)
+		}
+	}
+
+	// 如果JSON解析失败（理论上不应该发生，因为schema是有效的JSON）
+	// 使用正则表达式进行备用压缩，但这种方法可能不够精确
+	compacted := schema
+
+	// 移除行尾空格和制表符
+	compacted = regexp.MustCompile(`[ \t]+(\n|\r\n?)`).ReplaceAllString(compacted, "$1")
+
+	// 移除JSON结构符号周围的空格（但要小心不要破坏字符串内容）
+	// 这些正则表达式只匹配结构符号，不匹配字符串内的内容
+	compacted = regexp.MustCompile(`:\s+`).ReplaceAllString(compacted, ":")
+	compacted = regexp.MustCompile(`,\s+`).ReplaceAllString(compacted, ",")
+	compacted = regexp.MustCompile(`\{\s+`).ReplaceAllString(compacted, "{")
+	compacted = regexp.MustCompile(`\s+\}`).ReplaceAllString(compacted, "}")
+	compacted = regexp.MustCompile(`\[\s+`).ReplaceAllString(compacted, "[")
+	compacted = regexp.MustCompile(`\s+\]`).ReplaceAllString(compacted, "]")
+
+	// 移除连续的空白行
+	compacted = regexp.MustCompile(`\n\s*\n\s*\n+`).ReplaceAllString(compacted, "")
+
+	// 移除所有换行和行首空格，生成单行JSON
+	lines := strings.Split(compacted, "\n")
+	var result strings.Builder
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			result.WriteString(trimmed)
+		}
+	}
+
+	return result.String()
 }
