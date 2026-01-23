@@ -977,8 +977,12 @@ func fetchBinanceCommissionRate(symbol, apiKey, apiSecret string) (float64, floa
 	query := url.Values{}
 	query.Set("symbol", symbol)
 	query.Set("timestamp", strconv.FormatInt(timestamp, 10))
+	// Add recvWindow to handle time drift (5000ms = 5 seconds tolerance)
+	query.Set("recvWindow", "5000")
 
-	signature := signQuery(query.Encode(), apiSecret)
+	// Sign the query string BEFORE adding signature
+	queryString := query.Encode()
+	signature := signQuery(queryString, apiSecret)
 	query.Set("signature", signature)
 
 	endpoint := fmt.Sprintf("https://fapi.binance.com/fapi/v1/commissionRate?%s", query.Encode())
@@ -1000,6 +1004,15 @@ func fetchBinanceCommissionRate(symbol, apiKey, apiSecret string) (float64, floa
 		return 0, 0, err
 	}
 	if resp.StatusCode != http.StatusOK {
+		// Log detailed error for debugging signature issues
+		var binanceError struct {
+			Code int    `json:"code"`
+			Msg  string `json:"msg"`
+		}
+		if json.Unmarshal(body, &binanceError) == nil {
+			logger.Warnf("Binance commission rate API error: code=%d, msg=%s, symbol=%s, timestamp=%d",
+				binanceError.Code, binanceError.Msg, symbol, timestamp)
+		}
 		return 0, 0, fmt.Errorf("commission rate api status %d: %s", resp.StatusCode, string(body))
 	}
 
