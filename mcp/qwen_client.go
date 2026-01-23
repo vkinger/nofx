@@ -25,15 +25,16 @@ func NewQwenClient() AIClient {
 // NewQwenClientWithOptions creates Qwen client (supports options pattern)
 //
 // Usage examples:
-//   // Basic usage
-//   client := mcp.NewQwenClientWithOptions()
 //
-//   // Custom configuration
-//   client := mcp.NewQwenClientWithOptions(
-//       mcp.WithAPIKey("sk-xxx"),
-//       mcp.WithLogger(customLogger),
-//       mcp.WithTimeout(60*time.Second),
-//   )
+//	// Basic usage
+//	client := mcp.NewQwenClientWithOptions()
+//
+//	// Custom configuration
+//	client := mcp.NewQwenClientWithOptions(
+//	    mcp.WithAPIKey("sk-xxx"),
+//	    mcp.WithLogger(customLogger),
+//	    mcp.WithTimeout(60*time.Second),
+//	)
 func NewQwenClientWithOptions(opts ...ClientOption) AIClient {
 	// 1. Create Qwen preset options
 	qwenOpts := []ClientOption{
@@ -96,16 +97,16 @@ func (c *QwenClient) buildMCPRequestBody(systemPrompt, userPrompt string) map[st
 			// Validate that schemaMap is not empty
 			if len(schemaMap) > 0 {
 				// Qwen uses OpenAI-compatible format: response_format with json_schema
+				// Note: Qwen only supports basic JSON Schema, so we don't include "strict" parameter
 				requestBody["response_format"] = map[string]interface{}{
 					"type": "json_schema",
 					"json_schema": map[string]interface{}{
 						"name":        "trading_decision",
 						"schema":      schemaMap,
-						"strict":      true, // Enable strict mode for guaranteed schema compliance
 						"description": "Trading decision output format",
 					},
 				}
-				c.logger.Infof("🔧 [MCP Qwen] JSON Schema enabled for structured output")
+				c.logger.Infof("🔧 [MCP Qwen] JSON Schema enabled for structured output (basic mode, no strict)")
 			} else {
 				c.logger.Warnf("⚠️ [MCP Qwen] JSON Schema is empty after parsing, skipping response_format")
 			}

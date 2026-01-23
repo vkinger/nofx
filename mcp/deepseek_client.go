@@ -96,16 +96,16 @@ func (c *DeepSeekClient) buildMCPRequestBody(systemPrompt, userPrompt string) ma
 			// Validate that schemaMap is not empty
 			if len(schemaMap) > 0 {
 				// DeepSeek uses OpenAI-compatible format: response_format with json_schema
+				// Note: DeepSeek only supports basic JSON Schema, so we don't include "strict" parameter
 				requestBody["response_format"] = map[string]interface{}{
 					"type": "json_schema",
 					"json_schema": map[string]interface{}{
 						"name":        "trading_decision",
 						"schema":      schemaMap,
-						"strict":      true, // Enable strict mode for guaranteed schema compliance
 						"description": "Trading decision output format",
 					},
 				}
-				c.logger.Infof("🔧 [MCP DeepSeek] JSON Schema enabled for structured output")
+				c.logger.Infof("🔧 [MCP DeepSeek] JSON Schema enabled for structured output (basic mode, no strict)")
 			} else {
 				c.logger.Warnf("⚠️ [MCP DeepSeek] JSON Schema is empty after parsing, skipping response_format")
 			}

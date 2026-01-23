@@ -84,16 +84,16 @@ func (c *KimiClient) buildMCPRequestBody(systemPrompt, userPrompt string) map[st
 			// Validate that schemaMap is not empty
 			if len(schemaMap) > 0 {
 				// Kimi uses OpenAI-compatible format: response_format with json_schema
+				// Note: Kimi only supports basic JSON Schema, so we don't include "strict" parameter
 				requestBody["response_format"] = map[string]interface{}{
 					"type": "json_schema",
 					"json_schema": map[string]interface{}{
 						"name":        "trading_decision",
 						"schema":      schemaMap,
-						"strict":      true, // Enable strict mode for guaranteed schema compliance
 						"description": "Trading decision output format",
 					},
 				}
-				c.logger.Infof("🔧 [MCP Kimi] JSON Schema enabled for structured output")
+				c.logger.Infof("🔧 [MCP Kimi] JSON Schema enabled for structured output (basic mode, no strict)")
 			} else {
 				c.logger.Warnf("⚠️ [MCP Kimi] JSON Schema is empty after parsing, skipping response_format")
 			}
