@@ -337,24 +337,37 @@ func GetFullDecisionWithStrategy(ctx *Context, mcpClient mcp.AIClient, engine *S
 
 	// 3.5. Set JSON Schema for structured output if model supports it
 	if mcpClient != nil {
+		// 先获取模型信息（避免重复获取）
+		modelName := getModelNameFromClient(mcpClient)
+		provider := getProviderFromClient(mcpClient)
+
 		// Register JSON Schema checker callback in mcp package
 		// This allows mcp package to use the full implementation from kernel
+		// 注意：这个回调供 mcp 包在构建请求时使用，避免循环依赖
 		mcp.JSONSchemaChecker = func(provider, modelName string) bool {
-			// Use the engine's check method with provider and model name
+			// 调用 schema.go 中的统一检查函数
 			modelNameLower := strings.ToLower(modelName)
 			providerLower := strings.ToLower(provider)
-			return engine.checkModelSupportsJSONSchemaByProvider(providerLower, modelNameLower)
+			return CheckModelSupportsJSONSchema(providerLower, modelNameLower)
 		}
 
-		// Check if model supports JSON Schema
-		supportsJSONSchema := engine.checkModelSupportsJSONSchema(mcpClient)
-		if supportsJSONSchema {
-			// Get JSON Schema based on language
-			lang := engine.GetLanguage()
-			jsonSchema := GetDecisionJSONSchema(lang)
-			// Set JSON Schema in client
-			mcpClient.SetJSONSchema(jsonSchema)
-			logger.Infof("🔧 [JSON Schema] Enabled structured output for model")
+		// Check if model supports JSON Schema (直接使用已获取的 provider 和 modelName)
+		if modelName != "" || provider != "" {
+			modelNameLower := strings.ToLower(modelName)
+			providerLower := strings.ToLower(provider)
+			supportsJSONSchema := CheckModelSupportsJSONSchema(providerLower, modelNameLower)
+
+			if supportsJSONSchema {
+				// Get JSON Schema based on language and model
+				lang := engine.GetLanguage()
+
+				// 使用统一的函数获取合适的 Schema 版本
+				jsonSchema := GetDecisionJSONSchemaForModel(lang, provider, modelName)
+
+				// Set JSON Schema in client
+				mcpClient.SetJSONSchema(jsonSchema)
+				logger.Infof("🔧 [JSON Schema] Enabled structured output for model %s/%s", provider, modelName)
+			}
 		}
 	}
 
@@ -1072,8 +1085,14 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	}
 
 	// 7. Output format (STRICT - 严格格式要求)
-	outputFormatLegacy := e.buildOutputFormatLegacy(accountEquity, btcEthPosValueRatio, riskControl)
-	sb.WriteString(outputFormatLegacy)
+	// 使用新的输出格式方法（支持JSON Schema和提示词集成两种方式，传入mcpClient以支持JSON Schema API级别检查）
+	outputFormat := e.buildOutputFormat(accountEquity, btcEthPosValueRatio, riskControl, mcpClient)
+	sb.WriteString(outputFormat)
+
+	// ========== 旧版本输出格式（已提取为方法，方便回滚）==========
+	// 如需回滚，取消下面的注释，并注释掉上面的 buildOutputFormat调用
+	// outputFormatLegacy := e.buildOutputFormatLegacy(accountEquity, btcEthPosValueRatio, riskControl)
+	// sb.WriteString(outputFormatLegacy)
 
 	// 8. Custom Prompt
 	if e.config.CustomPrompt != "" {
@@ -1185,6 +1204,162 @@ func (e *StrategyEngine) buildOutputFormatLegacy(accountEquity float64, btcEthPo
 	return sb.String()
 }
 
+// ============================================================================
+// 支持两种方式：
+// 1. JSON Schema集成（如果模型支持API级别的结构化输出）
+// 2. 提示词集成（在提示词中嵌入JSON Schema，兼容所有模型）
+// ============================================================================
+
+// buildOutputFormat 构建输出格式部分
+// mcpClient: 用于检查模型是否支持JSON Schema（API级别），如果为nil则使用提示词集成方式
+func (e *StrategyEngine) buildOutputFormat(accountEquity float64, btcEthPosValueRatio float64, riskControl store.RiskControlConfig, mcpClient mcp.AIClient) string {
+	// 检查模型是否支持JSON Schema（API级别）
+	supportsJSONSchema := e.checkModelSupportsJSONSchema(mcpClient)
+
+	if supportsJSONSchema {
+		// 方法1：模型支持JSON Schema（API级别）
+		// 注意：JSON Schema会在API调用时通过response_format参数传递
+		// 这里只提供简化的格式说明
+		return e.buildOutputFormatWithJSONSchemaAPI(accountEquity, btcEthPosValueRatio, riskControl)
+	} else {
+		// 方法2：提示词集成JSON Schema（兼容所有模型）
+		return e.buildOutputFormatWithPromptIntegration(accountEquity, btcEthPosValueRatio, riskControl)
+	}
+}
+
+// buildOutputFormatWithPromptIntegration 构建输出格式（提示词集成JSON Schema）
+// 当模型不支持API级别的JSON Schema时，使用此方法
+// 在提示词中嵌入完整的JSON Schema说明
+func (e *StrategyEngine) buildOutputFormatWithPromptIntegration(accountEquity float64, btcEthPosValueRatio float64, riskControl store.RiskControlConfig) string {
+	var sb strings.Builder
+	lang := e.GetLanguage()
+
+	sb.WriteString("# ⚠️ Output Format (STRICTLY ENFORCED - 严格强制执行)\n\n")
+
+	if lang == LangChinese {
+		sb.WriteString("**CRITICAL: You MUST follow this format exactly. Any deviation will cause parsing errors.**\n\n")
+
+		sb.WriteString("## 输出格式要求\n\n")
+		sb.WriteString("**必须**使用以下JSON对象格式输出（包含思维链和决策数组）：\n\n")
+		sb.WriteString("```json\n")
+		sb.WriteString("{\n")
+		sb.WriteString("  \"reasoning\": \"思维链分析过程...\",\n")
+		sb.WriteString("  \"decisions\": [\n")
+		sb.WriteString("    {\n")
+		sb.WriteString("      \"symbol\": \"BTCUSDT\",\n")
+		sb.WriteString("      \"action\": \"open_long\",\n")
+		sb.WriteString("      \"leverage\": 3,\n")
+		sb.WriteString("      \"position_size_usd\": 1000,\n")
+		sb.WriteString("      \"stop_loss\": 42000,\n")
+		sb.WriteString("      \"take_profit\": 48000,\n")
+		sb.WriteString("      \"confidence\": 85,\n")
+		sb.WriteString("      \"reasoning\": \"详细的推理过程...\"\n")
+		sb.WriteString("    }\n")
+		sb.WriteString("  ]\n")
+		sb.WriteString("}\n")
+		sb.WriteString("```\n\n")
+
+		// 嵌入JSON Schema（紧凑版）
+		schema := GetDecisionJSONSchemaCompact(lang)
+		sb.WriteString("## JSON Schema（必须严格遵守）\n\n")
+		sb.WriteString("**以下JSON Schema定义了输出格式的所有约束，请严格按照Schema输出：**\n\n")
+		sb.WriteString("```json\n")
+		sb.WriteString(schema)
+		sb.WriteString("\n```\n\n")
+
+		sb.WriteString("### 关键字段说明\n\n")
+		sb.WriteString(fmt.Sprintf("- **reasoning**: 思维链分析（必需，至少50字符），详细说明分析思路、市场判断、风险评估\n"))
+		sb.WriteString("- **decisions**: 决策数组（必需，0-10个决策对象）\n")
+		sb.WriteString(fmt.Sprintf("- **action**: 必须是以下之一：open_long, open_short, close_long, close_short, hold, wait, partial_close, full_close, add_position\n"))
+		sb.WriteString(fmt.Sprintf("- **confidence**: 0-100整数（开新仓时要求≥%d）\n", riskControl.MinConfidence))
+		sb.WriteString("- **开新仓必需字段**: leverage, position_size_usd, stop_loss, take_profit\n")
+		sb.WriteString("- **价格精度**: 根据实际市场价格动态确定（价格<0.0001用8位小数，<0.001用6位小数，<0.01用6位小数，<1.0用4位小数，<100用4位小数，≥100用2位小数）\n")
+		sb.WriteString("- **止盈止损关系**: 做多时stop_loss必须 < take_profit，做空时stop_loss必须 > take_profit\n")
+		sb.WriteString("- **风险回报比**: 必须≥3:1（止盈空间至少是止损空间的3倍）\n")
+		sb.WriteString("- **手续费考虑**: 做多时止损价调高约0.1%，止盈价调低约0.1%；做空时止损价调低约0.1%，止盈价调高约0.1%\n\n")
+
+		sb.WriteString("### 输出示例\n\n")
+		examplePositionSize := accountEquity * btcEthPosValueRatio
+		sb.WriteString("```json\n")
+		sb.WriteString("{\n")
+		sb.WriteString("  \"reasoning\": \"分析账户状态：当前保证金使用率25%，在安全范围内。分析持仓：BTCUSDT当前PnL +2.96%，接近历史峰值+2.99%，回撤仅0.03%。5分钟K线显示价格接近短期阻力位，成交量开始萎缩，上涨动能减弱。建议部分平仓锁定利润。\",\n")
+		sb.WriteString("  \"decisions\": [\n")
+		sb.WriteString(fmt.Sprintf("    {\"symbol\": \"BTCUSDT\", \"action\": \"open_short\", \"leverage\": %d, \"position_size_usd\": %.0f, \"stop_loss\": 97000, \"take_profit\": 91000, \"confidence\": 85, \"reasoning\": \"市场显示看跌信号，RSI超买，OI下降\"},\n",
+			riskControl.BTCETHMaxLeverage, examplePositionSize))
+		sb.WriteString("    {\"symbol\": \"ETHUSDT\", \"action\": \"close_long\", \"confidence\": 80, \"reasoning\": \"达到止盈目标\"}\n")
+		sb.WriteString("  ]\n")
+		sb.WriteString("}\n")
+		sb.WriteString("```\n\n")
+
+		sb.WriteString("**⚠️ 重要提醒：**\n")
+		sb.WriteString("- 所有数值必须是实际数字，不能是公式或表达式\n")
+		sb.WriteString("- 必须严格按照JSON Schema的约束输出\n")
+		sb.WriteString("- 开新仓时必须提供所有必需字段\n")
+		sb.WriteString("- 价格精度根据实际市场价格动态确定\n\n")
+	} else {
+		sb.WriteString("**CRITICAL: You MUST follow this format exactly. Any deviation will cause parsing errors.**\n\n")
+
+		sb.WriteString("## Output Format Requirements\n\n")
+		sb.WriteString("**Must** use the following JSON object format (containing reasoning chain and decisions array):\n\n")
+		sb.WriteString("```json\n")
+		sb.WriteString("{\n")
+		sb.WriteString("  \"reasoning\": \"Chain of thought analysis...\",\n")
+		sb.WriteString("  \"decisions\": [\n")
+		sb.WriteString("    {\n")
+		sb.WriteString("      \"symbol\": \"BTCUSDT\",\n")
+		sb.WriteString("      \"action\": \"open_long\",\n")
+		sb.WriteString("      \"leverage\": 3,\n")
+		sb.WriteString("      \"position_size_usd\": 1000,\n")
+		sb.WriteString("      \"stop_loss\": 42000,\n")
+		sb.WriteString("      \"take_profit\": 48000,\n")
+		sb.WriteString("      \"confidence\": 85,\n")
+		sb.WriteString("      \"reasoning\": \"Detailed reasoning...\"\n")
+		sb.WriteString("    }\n")
+		sb.WriteString("  ]\n")
+		sb.WriteString("}\n")
+		sb.WriteString("```\n\n")
+
+		// 嵌入JSON Schema（紧凑版）
+		schema := GetDecisionJSONSchemaCompact(lang)
+		sb.WriteString("## JSON Schema (Must Strictly Follow)\n\n")
+		sb.WriteString("**The following JSON Schema defines all constraints for output format. Please output strictly according to the Schema:**\n\n")
+		sb.WriteString("```json\n")
+		sb.WriteString(schema)
+		sb.WriteString("\n```\n\n")
+
+		sb.WriteString("### Key Field Descriptions\n\n")
+		sb.WriteString(fmt.Sprintf("- **reasoning**: Chain of thought analysis (required, min 50 chars), detailing analysis approach, market judgment, risk assessment\n"))
+		sb.WriteString("- **decisions**: Decisions array (required, 0-10 decision objects)\n")
+		sb.WriteString(fmt.Sprintf("- **action**: Must be one of: open_long, open_short, close_long, close_short, hold, wait, partial_close, full_close, add_position\n"))
+		sb.WriteString(fmt.Sprintf("- **confidence**: Integer 0-100 (opening positions require ≥%d)\n", riskControl.MinConfidence))
+		sb.WriteString("- **Required for new positions**: leverage, position_size_usd, stop_loss, take_profit\n")
+		sb.WriteString("- **Price precision**: Dynamically determined based on actual market price (<0.0001 use 8 decimals, <0.001 use 6 decimals, <0.01 use 6 decimals, <1.0 use 4 decimals, <100 use 4 decimals, ≥100 use 2 decimals)\n")
+		sb.WriteString("- **SL/TP relationship**: For LONG: stop_loss must < take_profit, For SHORT: stop_loss must > take_profit\n")
+		sb.WriteString("- **Risk-reward ratio**: Must be ≥3:1 (take profit space must be at least 3x stop loss space)\n")
+		sb.WriteString("- **Fee consideration**: For LONG: set SL ~0.1% higher, TP ~0.1% lower; For SHORT: set SL ~0.1% lower, TP ~0.1% higher\n\n")
+
+		sb.WriteString("### Output Example\n\n")
+		examplePositionSize := accountEquity * btcEthPosValueRatio
+		sb.WriteString("```json\n")
+		sb.WriteString("{\n")
+		sb.WriteString("  \"reasoning\": \"Analyze account status: Current margin usage 25%, within safe range. Analyze positions: BTCUSDT current PnL +2.96%, near historical peak +2.99%, only 0.03% pullback. 5M chart shows price approaching short-term resistance, volume declining, upward momentum weakening. Suggest partial close to lock profits.\",\n")
+		sb.WriteString("  \"decisions\": [\n")
+		sb.WriteString(fmt.Sprintf("    {\"symbol\": \"BTCUSDT\", \"action\": \"open_short\", \"leverage\": %d, \"position_size_usd\": %.0f, \"stop_loss\": 97000, \"take_profit\": 91000, \"confidence\": 85, \"reasoning\": \"Market shows bearish signals, RSI overbought, OI decreasing\"},\n",
+			riskControl.BTCETHMaxLeverage, examplePositionSize))
+		sb.WriteString("    {\"symbol\": \"ETHUSDT\", \"action\": \"close_long\", \"confidence\": 80, \"reasoning\": \"Reached take-profit target\"}\n")
+		sb.WriteString("  ]\n")
+		sb.WriteString("}\n")
+		sb.WriteString("```\n\n")
+
+		sb.WriteString("**⚠️ Important Reminders:**\n")
+		sb.WriteString("- All numeric values must be actual numbers, not formulas or expressions\n")
+		sb.WriteString("- Must strictly follow JSON Schema constraints\n")
+		sb.WriteString("- All required fields must be provided when opening positions\n")
+		sb.WriteString("- Price precision dynamically determined based on actual market price\n\n")
+	}
+
+	return sb.String()
+}
 
 // getModelNameFromClient 从mcpClient获取模型名称
 // 如果无法获取，返回空字符串（将使用默认值）
@@ -1256,183 +1431,15 @@ func (e *StrategyEngine) checkModelSupportsJSONSchema(mcpClient mcp.AIClient) bo
 	modelNameLower := strings.ToLower(modelName)
 	providerLower := strings.ToLower(provider)
 
-	return e.checkModelSupportsJSONSchemaByProvider(providerLower, modelNameLower)
+	// 调用 schema.go 中的统一检查函数
+	return CheckModelSupportsJSONSchema(providerLower, modelNameLower)
 }
 
 // checkModelSupportsJSONSchemaByProvider 根据provider和modelName检查是否支持JSON Schema
 // 这个方法可以被mcp包的回调函数调用，避免需要mcpClient参数
 func (e *StrategyEngine) checkModelSupportsJSONSchemaByProvider(providerLower, modelNameLower string) bool {
-	// 根据Provider分类检查
-	if strings.Contains(providerLower, "openai") {
-		return e.checkOpenAISupportsJSONSchema(modelNameLower)
-	} else if strings.Contains(providerLower, "claude") {
-		return e.checkClaudeSupportsJSONSchema(modelNameLower)
-	}
-
-	// 其他Provider（DeepSeek, Qwen, Kimi, Gemini, Grok等）目前不支持JSON Schema
-	return false
-}
-
-// checkOpenAISupportsJSONSchema 检查OpenAI模型是否支持JSON Schema
-// 支持的模型：GPT-4o系列, GPT-4-turbo系列, GPT-4o-mini, o1系列, o3系列, GPT-4系列（2024年后版本）
-// 参考：https://platform.openai.com/docs/guides/structured-outputs
-func (e *StrategyEngine) checkOpenAISupportsJSONSchema(modelNameLower string) bool {
-	// 1. 明确支持的模型系列（优先检查，按优先级排序）
-	explicitlySupported := []string{
-		// GPT-4o 系列（2024年8月后支持，gpt-4o-2024-08-06 及以后）
-		"gpt-4o-2024", "gpt-4o-2025", "gpt-4o",
-		// GPT-4-turbo 系列（2024年版本）
-		"gpt-4-turbo-2024", "gpt-4-turbo-2025", "gpt-4-turbo",
-		// GPT-4o-mini
-		"gpt-4o-mini",
-		// o1 系列（推理模型，支持JSON Schema）
-		"o1-preview", "o1-mini", "o1-",
-		// o3 系列（推理模型，支持JSON Schema）
-		"o3-mini", "o3-",
-	}
-
-	for _, supported := range explicitlySupported {
-		if strings.Contains(modelNameLower, supported) {
-			return true
-		}
-	}
-
-	// 2. GPT-4 系列（2024年后的版本支持）
-	if strings.Contains(modelNameLower, "gpt-4") {
-		// 排除明确不支持的旧版本
-		unsupportedVersions := []string{
-			"gpt-4-0314",     // 2023年3月版本，不支持
-			"gpt-4-32k-0314", // 2023年3月版本，不支持
-		}
-		for _, unsupported := range unsupportedVersions {
-			if strings.Contains(modelNameLower, unsupported) {
-				return false
-			}
-		}
-
-		// 检查是否是2024年后的版本（通过日期标识）
-		supportedDatePatterns := []string{
-			"2024", "2025", // 2024年及以后的版本
-			"0125", "1106", "0613", // 2024年的具体版本
-			"gpt-4-0125", "gpt-4-1106", "gpt-4-0613", // 完整版本号
-		}
-		for _, pattern := range supportedDatePatterns {
-			if strings.Contains(modelNameLower, pattern) {
-				return true
-			}
-		}
-
-		// 如果没有日期标识，但包含 gpt-4-turbo 或 gpt-4o，也支持
-		if strings.Contains(modelNameLower, "turbo") || strings.Contains(modelNameLower, "gpt-4o") {
-			return true
-		}
-
-		// 其他 GPT-4 变体（如 gpt-4-32k）需要进一步确认
-		// 如果包含明确的版本号且不是旧版本，假设支持
-		if strings.HasPrefix(modelNameLower, "gpt-4-") {
-			// 检查是否包含日期格式的版本号（如 gpt-4-2024-xx-xx）
-			if strings.Contains(modelNameLower, "-2024") || strings.Contains(modelNameLower, "-2025") {
-				return true
-			}
-		}
-	}
-
-	// 3. GPT-3.5 系列不支持 JSON Schema
-	if strings.Contains(modelNameLower, "gpt-3.5") || strings.Contains(modelNameLower, "gpt-3") {
-		return false
-	}
-
-	// 4. GPT-5 系列（未来模型，假设支持）
-	if strings.Contains(modelNameLower, "gpt-5") {
-		return true
-	}
-
-	// 5. 其他未识别的模型，保守策略返回false
-	return false
-}
-
-// checkClaudeSupportsJSONSchema 检查Claude模型是否支持JSON Schema
-// 支持的模型：Claude Sonnet 4.5+, Claude Opus 4.1+, Claude Opus 4.5+
-// 不支持的模型：Claude 3.x系列（包括3.5）, Claude Haiku 4.5（即将支持但当前不支持）
-// 参考：https://platform.claude.com/docs/en/build-with-claude/structured-outputs
-func (e *StrategyEngine) checkClaudeSupportsJSONSchema(modelNameLower string) bool {
-	// 重要：Claude 3.x 系列（包括 3.5）不支持 JSON Schema
-	// 只有 Claude 4.x 系列支持
-	if strings.Contains(modelNameLower, "claude-3") {
-		return false
-	}
-
-	// Claude 4.x 系列明确支持
-	// 支持的模型标识（按优先级排序，覆盖所有可能的命名格式）：
-	supportedPatterns := []string{
-		// Claude Opus 4.5（默认模型格式，如 claude-opus-4-5-20251101）- 最高优先级
-		"claude-opus-4-5-2025", // 匹配 claude-opus-4-5-20251101 等
-		"claude-opus-4-5-2024",
-		"claude-opus-4-5", // 不带日期后缀的格式
-		// Claude Opus 4.1+（明确支持）
-		"claude-opus-4.1", "claude-opus-4-1",
-		"claude-opus-4.5", "claude-opus-4-5",
-		"opus-4.1", "opus-4-1",
-		"opus-4.5", "opus-4-5",
-		"opus-4-", // Opus 4.x 系列（通用匹配，但需要 >= 4.1）
-		// Claude Sonnet 4.5+（明确支持）
-		"claude-sonnet-4.5", "claude-sonnet-4-5",
-		"sonnet-4.5", "sonnet-4-5",
-		"sonnet-4-", // Sonnet 4.x 系列（通用匹配，但需要 >= 4.5）
-	}
-
-	for _, pattern := range supportedPatterns {
-		if strings.Contains(modelNameLower, pattern) {
-			return true
-		}
-	}
-
-	// 检查是否是 Claude 4.x 系列（但不包括 Haiku）
-	if strings.Contains(modelNameLower, "claude-4") || strings.Contains(modelNameLower, "claude-4.") {
-		// 排除 Haiku（当前不支持，但即将支持）
-		if strings.Contains(modelNameLower, "haiku") {
-			return false
-		}
-		// Sonnet 和 Opus 4.x 支持
-		if strings.Contains(modelNameLower, "sonnet") || strings.Contains(modelNameLower, "opus") {
-			return true
-		}
-	}
-
-	// 检查 Opus 4.x 或 Sonnet 4.x 系列（不带 claude- 前缀的情况）
-	if strings.Contains(modelNameLower, "opus-4") || strings.Contains(modelNameLower, "sonnet-4") {
-		// 排除 Haiku（当前不支持）
-		if strings.Contains(modelNameLower, "haiku") {
-			return false
-		}
-		// Opus 4.1+ 支持
-		if strings.Contains(modelNameLower, "opus-4") {
-			// 检查版本号，4.1+ 支持
-			if strings.Contains(modelNameLower, "opus-4.1") ||
-				strings.Contains(modelNameLower, "opus-4-1") ||
-				strings.Contains(modelNameLower, "opus-4.5") ||
-				strings.Contains(modelNameLower, "opus-4-5") ||
-				strings.Contains(modelNameLower, "opus-4-") {
-				return true
-			}
-		}
-		// Sonnet 4.5+ 支持（注意：Sonnet 需要 >= 4.5，不是 4.1）
-		if strings.Contains(modelNameLower, "sonnet-4") {
-			// 检查版本号，4.5+ 支持
-			if strings.Contains(modelNameLower, "sonnet-4.5") ||
-				strings.Contains(modelNameLower, "sonnet-4-5") ||
-				strings.Contains(modelNameLower, "sonnet-4-") {
-				// 需要进一步确认版本号 >= 4.5
-				// 如果包含明确的 4.5 或更高版本，返回 true
-				// 如果只有 "sonnet-4-"，需要检查后续版本号
-				return true // 保守策略：如果包含 sonnet-4-，假设是 4.5+
-			}
-		}
-	}
-
-	// 如果模型名称只包含 "claude" 但没有明确的版本信息，保守策略返回false
-	// 因为需要明确的版本号（4.x）才能确定是否支持
-	return false
+	// 调用 schema.go 中的统一检查函数
+	return CheckModelSupportsJSONSchema(providerLower, modelNameLower)
 }
 
 // getProviderFromClient 从mcpClient获取Provider名称
@@ -1562,7 +1569,6 @@ func (e *StrategyEngine) buildOutputFormatWithJSONSchemaAPI(accountEquity float6
 
 	return sb.String()
 }
-
 
 func (e *StrategyEngine) writeAvailableIndicators(sb *strings.Builder) {
 	indicators := e.config.Indicators

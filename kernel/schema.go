@@ -1481,75 +1481,269 @@ func compactJSONSchema(schema string) string {
 }
 
 // ============================================================================
-// 根据模型类型动态选择 JSON Schema 版本
+// JSON Schema 支持检查 - 统一入口
 // ============================================================================
 
-// checkModelSupportsAdvancedJSONSchema 检查模型是否支持高级 JSON Schema 特性
-// 支持的模型：OpenAI (GPT-4o, GPT-4-turbo, o1, o3), Claude (Sonnet 4.5+, Opus 4.1+)
-// 不支持的模型：DeepSeek, Qwen, LM Studio 等
-func checkModelSupportsAdvancedJSONSchema(provider, modelName string) bool {
+// CheckModelSupportsJSONSchema 检查模型是否支持 JSON Schema（API级别）
+// 这是统一的入口函数，供 engine.go 和 schema.go 使用
+// 
+// 支持的模型（支持 JSON Schema API）：
+//   - OpenAI: GPT-4o系列, GPT-4-turbo系列, GPT-4o-mini, o1系列, o3系列, GPT-4系列（2024年后版本）
+//   - Claude: Claude Sonnet 4.5+, Claude Opus 4.1+, Claude Opus 4.5+
+//   - Qwen: 支持基础 JSON Schema
+//   - Kimi: 支持基础 JSON Schema
+//   - DeepSeek: 支持基础 JSON Schema
+// 
+// 不支持的模型：
+//   - OpenAI: GPT-3.5系列, GPT-3系列, GPT-4旧版本（2023年3月及以前）
+//   - Claude: Claude 3.x系列（包括3.5）, Claude Haiku 4.5（即将支持但当前不支持）
+//   - 其他: Gemini, Grok等
+func CheckModelSupportsJSONSchema(provider, modelName string) bool {
 	providerLower := strings.ToLower(provider)
 	modelNameLower := strings.ToLower(modelName)
 
-	// OpenAI 支持高级特性（GPT-4o, GPT-4-turbo, o1, o3 系列）
 	if strings.Contains(providerLower, "openai") {
-		// 明确支持的模型
-		supportedPatterns := []string{
-			"gpt-4o", "gpt-4-turbo", "o1-", "o3-",
-			"gpt-4-2024", "gpt-4-2025",
-		}
-		for _, pattern := range supportedPatterns {
-			if strings.Contains(modelNameLower, pattern) {
-				return true
-			}
-		}
-		// GPT-3.5 不支持
-		if strings.Contains(modelNameLower, "gpt-3.5") || strings.Contains(modelNameLower, "gpt-3") {
-			return false
-		}
+		return checkOpenAISupportsJSONSchema(modelNameLower)
+	} else if strings.Contains(providerLower, "claude") {
+		return checkClaudeSupportsJSONSchema(modelNameLower)
+	} else if strings.Contains(providerLower, "qwen") {
+		// Qwen 支持基础 JSON Schema
+		return true
+	} else if strings.Contains(providerLower, "kimi") {
+		// Kimi 支持基础 JSON Schema
+		return true
+	} else if strings.Contains(providerLower, "deepseek") {
+		// DeepSeek 支持基础 JSON Schema
+		return true
 	}
 
-	// Claude 支持高级特性（Sonnet 4.5+, Opus 4.1+）
-	if strings.Contains(providerLower, "claude") {
-		// Claude 3.x 不支持
-		if strings.Contains(modelNameLower, "claude-3") {
-			return false
-		}
-		// Claude 4.x 系列支持
-		supportedPatterns := []string{
-			"claude-opus-4-5", "claude-opus-4.5", "opus-4.5", "opus-4-5",
-			"claude-opus-4.1", "claude-opus-4-1", "opus-4.1", "opus-4-1",
-			"claude-sonnet-4.5", "claude-sonnet-4-5", "sonnet-4.5", "sonnet-4-5",
-		}
-		for _, pattern := range supportedPatterns {
-			if strings.Contains(modelNameLower, pattern) {
-				return true
-			}
-		}
-	}
-
-	// 其他模型（DeepSeek, Qwen, LM Studio 等）不支持高级特性
+	// 其他Provider（Gemini, Grok等）目前不支持JSON Schema
 	return false
 }
 
+// checkOpenAISupportsJSONSchema 检查OpenAI模型是否支持JSON Schema
+// 支持的模型：GPT-4o系列, GPT-4-turbo系列, GPT-4o-mini, o1系列, o3系列, GPT-4系列（2024年后版本）
+// 参考：https://platform.openai.com/docs/guides/structured-outputs
+func checkOpenAISupportsJSONSchema(modelNameLower string) bool {
+	// 1. 明确支持的模型系列（优先检查，按优先级排序）
+	explicitlySupported := []string{
+		// GPT-4o 系列（2024年8月后支持，gpt-4o-2024-08-06 及以后）
+		"gpt-4o-2024", "gpt-4o-2025", "gpt-4o",
+		// GPT-4-turbo 系列（2024年版本）
+		"gpt-4-turbo-2024", "gpt-4-turbo-2025", "gpt-4-turbo",
+		// GPT-4o-mini
+		"gpt-4o-mini",
+		// o1 系列（推理模型，支持JSON Schema）
+		"o1-preview", "o1-mini", "o1-",
+		// o3 系列（推理模型，支持JSON Schema）
+		"o3-mini", "o3-",
+	}
+
+	for _, supported := range explicitlySupported {
+		if strings.Contains(modelNameLower, supported) {
+			return true
+		}
+	}
+
+	// 2. GPT-4 系列（2024年后的版本支持）
+	if strings.Contains(modelNameLower, "gpt-4") {
+		// 排除明确不支持的旧版本
+		unsupportedVersions := []string{
+			"gpt-4-0314",     // 2023年3月版本，不支持
+			"gpt-4-32k-0314", // 2023年3月版本，不支持
+		}
+		for _, unsupported := range unsupportedVersions {
+			if strings.Contains(modelNameLower, unsupported) {
+				return false
+			}
+		}
+
+		// 检查是否是2024年后的版本（通过日期标识）
+		supportedDatePatterns := []string{
+			"2024", "2025", // 2024年及以后的版本
+			"0125", "1106", "0613", // 2024年的具体版本
+			"gpt-4-0125", "gpt-4-1106", "gpt-4-0613", // 完整版本号
+		}
+		for _, pattern := range supportedDatePatterns {
+			if strings.Contains(modelNameLower, pattern) {
+				return true
+			}
+		}
+
+		// 如果没有日期标识，但包含 gpt-4-turbo 或 gpt-4o，也支持
+		if strings.Contains(modelNameLower, "turbo") || strings.Contains(modelNameLower, "gpt-4o") {
+			return true
+		}
+
+		// 其他 GPT-4 变体（如 gpt-4-32k）需要进一步确认
+		// 如果包含明确的版本号且不是旧版本，假设支持
+		if strings.HasPrefix(modelNameLower, "gpt-4-") {
+			// 检查是否包含日期格式的版本号（如 gpt-4-2024-xx-xx）
+			if strings.Contains(modelNameLower, "-2024") || strings.Contains(modelNameLower, "-2025") {
+				return true
+			}
+		}
+	}
+
+	// 3. GPT-3.5 系列不支持 JSON Schema
+	if strings.Contains(modelNameLower, "gpt-3.5") || strings.Contains(modelNameLower, "gpt-3") {
+		return false
+	}
+
+	// 4. GPT-5 系列（未来模型，假设支持）
+	if strings.Contains(modelNameLower, "gpt-5") {
+		return true
+	}
+
+	// 5. 其他未识别的模型，保守策略返回false
+	return false
+}
+
+// checkClaudeSupportsJSONSchema 检查Claude模型是否支持JSON Schema
+// 支持的模型：Claude Sonnet 4.5+, Claude Opus 4.1+, Claude Opus 4.5+
+// 不支持的模型：Claude 3.x系列（包括3.5）, Claude Haiku 4.5（即将支持但当前不支持）
+// 参考：https://platform.claude.com/docs/en/build-with-claude/structured-outputs
+func checkClaudeSupportsJSONSchema(modelNameLower string) bool {
+	// 重要：Claude 3.x 系列（包括 3.5）不支持 JSON Schema
+	// 只有 Claude 4.x 系列支持
+	if strings.Contains(modelNameLower, "claude-3") {
+		return false
+	}
+
+	// Claude 4.x 系列明确支持
+	// 支持的模型标识（按优先级排序，覆盖所有可能的命名格式）：
+	supportedPatterns := []string{
+		// Claude Opus 4.5（默认模型格式，如 claude-opus-4-5-20251101）- 最高优先级
+		"claude-opus-4-5-2025", // 匹配 claude-opus-4-5-20251101 等
+		"claude-opus-4-5-2024",
+		"claude-opus-4-5", // 不带日期后缀的格式
+		// Claude Opus 4.1+（明确支持）
+		"claude-opus-4.1", "claude-opus-4-1",
+		"claude-opus-4.5", "claude-opus-4-5",
+		"opus-4.1", "opus-4-1",
+		"opus-4.5", "opus-4-5",
+		"opus-4-", // Opus 4.x 系列（通用匹配，但需要 >= 4.1）
+		// Claude Sonnet 4.5+（明确支持）
+		"claude-sonnet-4.5", "claude-sonnet-4-5",
+		"sonnet-4.5", "sonnet-4-5",
+		"sonnet-4-", // Sonnet 4.x 系列（通用匹配，但需要 >= 4.5）
+	}
+
+	for _, pattern := range supportedPatterns {
+		if strings.Contains(modelNameLower, pattern) {
+			return true
+		}
+	}
+
+	// 检查是否是 Claude 4.x 系列（但不包括 Haiku）
+	if strings.Contains(modelNameLower, "claude-4") || strings.Contains(modelNameLower, "claude-4.") {
+		// 排除 Haiku（当前不支持，但即将支持）
+		if strings.Contains(modelNameLower, "haiku") {
+			return false
+		}
+		// Sonnet 和 Opus 4.x 支持
+		if strings.Contains(modelNameLower, "sonnet") || strings.Contains(modelNameLower, "opus") {
+			return true
+		}
+	}
+
+	// 检查 Opus 4.x 或 Sonnet 4.x 系列（不带 claude- 前缀的情况）
+	if strings.Contains(modelNameLower, "opus-4") || strings.Contains(modelNameLower, "sonnet-4") {
+		// 排除 Haiku（当前不支持）
+		if strings.Contains(modelNameLower, "haiku") {
+			return false
+		}
+		// Opus 4.1+ 支持
+		if strings.Contains(modelNameLower, "opus-4") {
+			// 检查版本号，4.1+ 支持
+			if strings.Contains(modelNameLower, "opus-4.1") ||
+				strings.Contains(modelNameLower, "opus-4-1") ||
+				strings.Contains(modelNameLower, "opus-4.5") ||
+				strings.Contains(modelNameLower, "opus-4-5") ||
+				strings.Contains(modelNameLower, "opus-4-") {
+				return true
+			}
+		}
+		// Sonnet 4.5+ 支持（注意：Sonnet 需要 >= 4.5，不是 4.1）
+		if strings.Contains(modelNameLower, "sonnet-4") {
+			// 检查版本号，4.5+ 支持
+			if strings.Contains(modelNameLower, "sonnet-4.5") ||
+				strings.Contains(modelNameLower, "sonnet-4-5") ||
+				strings.Contains(modelNameLower, "sonnet-4-") {
+				// 需要进一步确认版本号 >= 4.5
+				// 如果包含明确的 4.5 或更高版本，返回 true
+				// 如果只有 "sonnet-4-"，需要检查后续版本号
+				return true // 保守策略：如果包含 sonnet-4-，假设是 4.5+
+			}
+		}
+	}
+
+	// 如果模型名称只包含 "claude" 但没有明确的版本信息，保守策略返回false
+	// 因为需要明确的版本号（4.x）才能确定是否支持
+	return false
+}
+
+// ============================================================================
+// 根据模型类型动态选择 JSON Schema 版本
+// ============================================================================
+
+// CheckModelSupportsAdvancedJSONSchemaFeatures 检查模型是否支持高级 JSON Schema 特性
+// 
+// 高级特性包括：allOf（条件验证）, pattern（正则表达式）, exclusiveMinimum（严格最小值）等
+// 
+// 支持的模型（支持高级特性）：
+//   - OpenAI: GPT-4o, GPT-4-turbo, o1, o3 系列
+//   - Claude: Sonnet 4.5+, Opus 4.1+
+// 
+// 不支持高级特性的模型（仅支持基础 JSON Schema）：
+//   - Qwen: 仅支持基础 JSON Schema（不支持 allOf, pattern, exclusiveMinimum）
+//   - Kimi: 仅支持基础 JSON Schema（不支持 allOf, pattern, exclusiveMinimum）
+//   - DeepSeek: 仅支持基础 JSON Schema（不支持 allOf, pattern, exclusiveMinimum）
+// 
+// 注意：
+//   - 支持高级特性的模型一定支持 JSON Schema
+//   - 支持 JSON Schema 的模型不一定支持高级特性
+//   - 如果模型不支持 JSON Schema，此函数返回 false
+func CheckModelSupportsAdvancedJSONSchemaFeatures(provider, modelName string) bool {
+	// 首先检查是否支持 JSON Schema（基础要求）
+	// 如果不支持 JSON Schema，则肯定不支持高级特性
+	if !CheckModelSupportsJSONSchema(provider, modelName) {
+		return false
+	}
+
+	providerLower := strings.ToLower(provider)
+
+	// 只有 OpenAI 和 Claude 支持高级 JSON Schema 特性
+	// Qwen, Kimi, DeepSeek 等仅支持基础 JSON Schema，不支持高级特性
+	return strings.Contains(providerLower, "openai") || strings.Contains(providerLower, "claude")
+}
+
 // GetDecisionJSONSchemaForModel 根据模型类型获取合适的 JSON Schema 版本
-// - OpenAI/Claude: 完整版本（包含 allOf, pattern, exclusiveMinimum）
-// - DeepSeek/Qwen/LM Studio/其他: 简化版本（移除高级特性）
+// 
+// 返回值：
+//   - 如果模型支持高级 JSON Schema 特性（OpenAI/Claude）：
+//     返回完整版本（包含 allOf, pattern, exclusiveMinimum 等高级特性）
+//   - 如果模型仅支持基础 JSON Schema（Qwen/Kimi/DeepSeek）：
+//     返回简化版本（移除高级特性，仅保留基础 JSON Schema）
+//   - 如果模型不支持 JSON Schema（其他模型）：
+//     返回简化版本（作为兜底，用于提示词集成方式）
+// 
+// 注意：此函数不检查模型是否支持 JSON Schema，调用者应确保在支持 JSON Schema 的模型上使用
 func GetDecisionJSONSchemaForModel(lang Language, provider, modelName string) string {
 	providerLower := strings.ToLower(provider)
 	modelNameLower := strings.ToLower(modelName)
 
 	// 检查是否支持高级特性
-	supportsAdvanced := checkModelSupportsAdvancedJSONSchema(providerLower, modelNameLower)
+	supportsAdvanced := CheckModelSupportsAdvancedJSONSchemaFeatures(providerLower, modelNameLower)
 
 	if supportsAdvanced {
-		// 完整版本（包含所有高级特性）
+		// 完整版本（包含所有高级特性）- OpenAI/Claude
 		if lang == LangChinese {
 			return getDecisionJSONSchemaZH()
 		}
 		return getDecisionJSONSchemaEN()
 	} else {
-		// 简化版本（移除高级特性）
+		// 简化版本（移除高级特性）- Qwen/Kimi/DeepSeek 或其他不支持高级特性的模型
 		if lang == LangChinese {
 			return getDecisionJSONSchemaSimplifiedZH()
 		}
