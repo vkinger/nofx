@@ -1217,6 +1217,216 @@ func getDecisionJSONSchemaEN() string {
 }`
 }
 
+// getDecisionJSONSchemaSimplifiedEN 生成简化版英文 JSON Schema
+// 移除：enumDescriptions, examples, exclusiveMinimum, pattern, allOf
+// 保留：基础字段和描述
+func getDecisionJSONSchemaSimplifiedEN() string {
+	return `{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "description": "Trading decision output object, containing reasoning chain and decisions array",
+  "required": ["reasoning", "decisions"],
+  "properties": {
+    "reasoning": {
+      "type": "string",
+      "description": "Chain of thought analysis process, detailing analysis approach, market judgment, risk assessment, and other thinking processes. This is a required field and must explain decision basis and reasoning in detail",
+      "minLength": 50
+    },
+    "decisions": {
+      "type": "array",
+      "description": "Array of trading decisions, each element represents one trading decision",
+      "minItems": 0,
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "required": ["symbol", "action", "reasoning"],
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "Trading pair symbol, e.g., BTCUSDT, ETHUSDT"
+          },
+          "action": {
+            "type": "string",
+            "description": "Trading action type",
+            "enum": [
+              "open_long",
+              "open_short",
+              "close_long",
+              "close_short",
+              "hold",
+              "wait",
+              "partial_close",
+              "full_close",
+              "add_position"
+            ]
+          },
+          "leverage": {
+            "type": "integer",
+            "description": "Leverage multiplier, required for new positions. Max 20x for BTC/ETH, max 5x for other coins",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "position_size_usd": {
+            "type": "number",
+            "description": "Position size in USDT, required for new positions. Must be >= minimum opening amount (≥12 USDT for general coins, ≥60 USDT for BTC/ETH)",
+            "minimum": 12
+          },
+          "stop_loss": {
+            "type": "number",
+            "description": "Stop-loss price (required numeric value, not formula or expression). Strongly recommended for new positions. Format requirements: 1) Must be positive (>0); 2) Must be actual price value, not expression like '3000*0.01'; 3) Price precision: Dynamically determined based on actual market price (<0.0001 use 8 decimals, <0.001 use 6 decimals, <0.01 use 6 decimals, <1.0 use 4 decimals, <100 use 4 decimals, ≥100 use 2 decimals). Direction requirements: For LONG (open_long) stop loss below (stop_loss < take_profit), for SHORT (open_short) stop loss above (stop_loss > take_profit). Fee consideration: For LONG, set SL ~0.1% higher (closer to entry); for SHORT, set SL ~0.1% lower (closer to entry), ensuring actual loss after fees does not exceed -5%. Risk-reward ratio: Stop loss space to take profit space ratio should be ≥1:3 (i.e., take profit space must be at least 3x stop loss space)",
+            "minimum": 0.0001
+          },
+          "take_profit": {
+            "type": "number",
+            "description": "Take-profit price (required numeric value, not formula or expression). Strongly recommended for new positions. Format requirements: 1) Must be positive (>0); 2) Must be actual price value, not expression like '3000*0.01'; 3) Price precision: Dynamically determined based on actual market price (<0.0001 use 8 decimals, <0.001 use 6 decimals, <0.01 use 6 decimals, <1.0 use 4 decimals, <100 use 4 decimals, ≥100 use 2 decimals). Direction requirements: For LONG (open_long) take profit above (take_profit > stop_loss), for SHORT (open_short) take profit below (take_profit < stop_loss). Fee consideration: For LONG, set TP ~0.1% lower (closer to entry); for SHORT, set TP ~0.1% higher (closer to entry), ensuring actual profit after fees meets target. Risk-reward ratio: Take profit space to stop loss space ratio should be ≥3:1 (i.e., take profit space must be at least 3x stop loss space)",
+            "minimum": 0.0001
+          },
+          "confidence": {
+            "type": "integer",
+            "description": "Confidence level (0-100), indicating certainty of this decision",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "reasoning": {
+            "type": "string",
+            "description": "Detailed reasoning process, must explain decision basis in detail. This is a required field and cannot be empty",
+            "minLength": 10
+          },
+          "risk_usd": {
+            "type": "number",
+            "description": "Maximum risk amount in USDT, optional field",
+            "minimum": 0
+          },
+          "price": {
+            "type": "number",
+            "description": "Limit order price (for grid trading)",
+            "minimum": 0
+          },
+          "quantity": {
+            "type": "number",
+            "description": "Order quantity (for grid trading)",
+            "minimum": 0
+          },
+          "level_index": {
+            "type": "integer",
+            "description": "Grid level index (for grid trading)",
+            "minimum": 0
+          },
+          "order_id": {
+            "type": "string",
+            "description": "Order ID (for canceling orders)"
+          }
+        }
+      }
+    }
+  }
+}`
+}
+
+// getDecisionJSONSchemaSimplifiedZH 生成简化版中文 JSON Schema
+func getDecisionJSONSchemaSimplifiedZH() string {
+	return `{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "description": "交易决策输出对象，包含思维链分析和决策数组",
+  "required": ["reasoning", "decisions"],
+  "properties": {
+    "reasoning": {
+      "type": "string",
+      "description": "思维链分析过程，详细说明分析思路、市场判断、风险评估等思考过程。这是必需字段，必须详细说明决策依据和推理过程",
+      "minLength": 50
+    },
+    "decisions": {
+      "type": "array",
+      "description": "交易决策数组，每个元素代表一个交易决策",
+      "minItems": 0,
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "required": ["symbol", "action", "reasoning"],
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "交易对符号，例如：BTCUSDT、ETHUSDT"
+          },
+          "action": {
+            "type": "string",
+            "description": "交易动作类型",
+            "enum": [
+              "open_long",
+              "open_short",
+              "close_long",
+              "close_short",
+              "hold",
+              "wait",
+              "partial_close",
+              "full_close",
+              "add_position"
+            ]
+          },
+          "leverage": {
+            "type": "integer",
+            "description": "杠杆倍数，开新仓时必需。BTC/ETH最大20倍，其他币种最大5倍",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "position_size_usd": {
+            "type": "number",
+            "description": "仓位大小（USDT），开新仓时必需。必须大于等于最小开仓金额（一般币种≥12 USDT，BTC/ETH≥60 USDT）",
+            "minimum": 12
+          },
+          "stop_loss": {
+            "type": "number",
+            "description": "止损价格（必需数值，不能是公式或表达式）。开新仓时强烈建议提供。格式要求：1) 必须是正数(>0)；2) 必须是实际价格数值，不能是表达式如'3000*0.01'；3) 价格精度：根据实际市场价格动态确定（价格<0.0001用8位小数，<0.001用6位小数，<0.01用6位小数，<1.0用4位小数，<100用4位小数，≥100用2位小数）。方向要求：做多(open_long)时止损在下方(stop_loss < take_profit)，做空(open_short)时止损在上方(stop_loss > take_profit)。手续费考虑：做多时止损价应调高约0.1%（更接近入场价），做空时止损价应调低约0.1%（更接近入场价），确保扣除手续费后实际亏损不超过-5%。风险回报比：止损空间与止盈空间的比例应≥1:3（即止盈空间至少是止损空间的3倍）",
+            "minimum": 0.0001
+          },
+          "take_profit": {
+            "type": "number",
+            "description": "止盈价格（必需数值，不能是公式或表达式）。开新仓时强烈建议提供。格式要求：1) 必须是正数(>0)；2) 必须是实际价格数值，不能是表达式如'3000*0.01'；3) 价格精度：根据实际市场价格动态确定（价格<0.0001用8位小数，<0.001用6位小数，<0.01用6位小数，<1.0用4位小数，<100用4位小数，≥100用2位小数）。方向要求：做多(open_long)时止盈在上方(take_profit > stop_loss)，做空(open_short)时止盈在下方(take_profit < stop_loss)。手续费考虑：做多时止盈价应调低约0.1%（更接近入场价），做空时止盈价应调高约0.1%（更接近入场价），确保扣除手续费后实际盈利达到目标。风险回报比：止盈空间与止损空间的比例应≥3:1（即止盈空间至少是止损空间的3倍）",
+            "minimum": 0.0001
+          },
+          "confidence": {
+            "type": "integer",
+            "description": "信心度（0-100），表示对该决策的把握程度",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "reasoning": {
+            "type": "string",
+            "description": "详细的推理过程，必须详细说明决策依据。这是必需字段，不能为空",
+            "minLength": 10
+          },
+          "risk_usd": {
+            "type": "number",
+            "description": "最大风险金额（USDT），可选字段",
+            "minimum": 0
+          },
+          "price": {
+            "type": "number",
+            "description": "限价单价格（用于网格交易）",
+            "minimum": 0
+          },
+          "quantity": {
+            "type": "number",
+            "description": "订单数量（用于网格交易）",
+            "minimum": 0
+          },
+          "level_index": {
+            "type": "integer",
+            "description": "网格层级索引（用于网格交易）",
+            "minimum": 0
+          },
+          "order_id": {
+            "type": "string",
+            "description": "订单ID（用于取消订单）"
+          }
+        }
+      }
+    }
+  }
+}`
+}
+
 // GetDecisionJSONSchemaCompact 获取紧凑版的JSON Schema（用于AI提示词）
 // 返回压缩后的JSON字符串，移除不必要的空白字符以节省token
 func GetDecisionJSONSchemaCompact(lang Language) string {
@@ -1268,4 +1478,81 @@ func compactJSONSchema(schema string) string {
 	}
 
 	return result.String()
+}
+
+// ============================================================================
+// 根据模型类型动态选择 JSON Schema 版本
+// ============================================================================
+
+// checkModelSupportsAdvancedJSONSchema 检查模型是否支持高级 JSON Schema 特性
+// 支持的模型：OpenAI (GPT-4o, GPT-4-turbo, o1, o3), Claude (Sonnet 4.5+, Opus 4.1+)
+// 不支持的模型：DeepSeek, Qwen, LM Studio 等
+func checkModelSupportsAdvancedJSONSchema(provider, modelName string) bool {
+	providerLower := strings.ToLower(provider)
+	modelNameLower := strings.ToLower(modelName)
+
+	// OpenAI 支持高级特性（GPT-4o, GPT-4-turbo, o1, o3 系列）
+	if strings.Contains(providerLower, "openai") {
+		// 明确支持的模型
+		supportedPatterns := []string{
+			"gpt-4o", "gpt-4-turbo", "o1-", "o3-",
+			"gpt-4-2024", "gpt-4-2025",
+		}
+		for _, pattern := range supportedPatterns {
+			if strings.Contains(modelNameLower, pattern) {
+				return true
+			}
+		}
+		// GPT-3.5 不支持
+		if strings.Contains(modelNameLower, "gpt-3.5") || strings.Contains(modelNameLower, "gpt-3") {
+			return false
+		}
+	}
+
+	// Claude 支持高级特性（Sonnet 4.5+, Opus 4.1+）
+	if strings.Contains(providerLower, "claude") {
+		// Claude 3.x 不支持
+		if strings.Contains(modelNameLower, "claude-3") {
+			return false
+		}
+		// Claude 4.x 系列支持
+		supportedPatterns := []string{
+			"claude-opus-4-5", "claude-opus-4.5", "opus-4.5", "opus-4-5",
+			"claude-opus-4.1", "claude-opus-4-1", "opus-4.1", "opus-4-1",
+			"claude-sonnet-4.5", "claude-sonnet-4-5", "sonnet-4.5", "sonnet-4-5",
+		}
+		for _, pattern := range supportedPatterns {
+			if strings.Contains(modelNameLower, pattern) {
+				return true
+			}
+		}
+	}
+
+	// 其他模型（DeepSeek, Qwen, LM Studio 等）不支持高级特性
+	return false
+}
+
+// GetDecisionJSONSchemaForModel 根据模型类型获取合适的 JSON Schema 版本
+// - OpenAI/Claude: 完整版本（包含 allOf, pattern, exclusiveMinimum）
+// - DeepSeek/Qwen/LM Studio/其他: 简化版本（移除高级特性）
+func GetDecisionJSONSchemaForModel(lang Language, provider, modelName string) string {
+	providerLower := strings.ToLower(provider)
+	modelNameLower := strings.ToLower(modelName)
+
+	// 检查是否支持高级特性
+	supportsAdvanced := checkModelSupportsAdvancedJSONSchema(providerLower, modelNameLower)
+
+	if supportsAdvanced {
+		// 完整版本（包含所有高级特性）
+		if lang == LangChinese {
+			return getDecisionJSONSchemaZH()
+		}
+		return getDecisionJSONSchemaEN()
+	} else {
+		// 简化版本（移除高级特性）
+		if lang == LangChinese {
+			return getDecisionJSONSchemaSimplifiedZH()
+		}
+		return getDecisionJSONSchemaSimplifiedEN()
+	}
 }
