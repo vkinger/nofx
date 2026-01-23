@@ -361,13 +361,24 @@ func GetFullDecisionWithStrategy(ctx *Context, mcpClient mcp.AIClient, engine *S
 				// Get JSON Schema based on language and model
 				lang := engine.GetLanguage()
 
+				// 检查是否支持高级特性，用于日志记录
+				supportsAdvanced := CheckModelSupportsAdvancedJSONSchemaFeatures(providerLower, modelNameLower)
+				schemaType := "SIMPLIFIED"
+				if supportsAdvanced {
+					schemaType = "FULL (with advanced features)"
+				}
+
 				// 使用统一的函数获取合适的 Schema 版本
 				jsonSchema := GetDecisionJSONSchemaForModel(lang, provider, modelName)
 
 				// Set JSON Schema in client
 				mcpClient.SetJSONSchema(jsonSchema)
-				logger.Infof("🔧 [JSON Schema] Enabled structured output for model %s/%s", provider, modelName)
+				logger.Infof("🔧 [JSON Schema] Enabled structured output for model %s/%s, using %s schema version (language: %s)", provider, modelName, schemaType, lang)
+			} else {
+				logger.Infof("📝 [JSON Schema] Model %s/%s does not support JSON Schema API, will use prompt integration mode", provider, modelName)
 			}
+		} else {
+			logger.Warnf("⚠️  [JSON Schema] Cannot determine model info (provider=%s, modelName=%s), skipping JSON Schema setup", provider, modelName)
 		}
 	}
 
@@ -1416,6 +1427,7 @@ func getModelNameFromClient(mcpClient mcp.AIClient) string {
 //   - Claude: Claude Sonnet 4.5+, Claude Opus 4.1+, Claude Opus 4.5+（不支持Claude 3.x旧版本）
 func (e *StrategyEngine) checkModelSupportsJSONSchema(mcpClient mcp.AIClient) bool {
 	if mcpClient == nil {
+		logger.Infof("🔍 [JSON Schema Check] mcpClient is nil, returning false (no JSON Schema support)")
 		return false
 	}
 
@@ -1425,14 +1437,31 @@ func (e *StrategyEngine) checkModelSupportsJSONSchema(mcpClient mcp.AIClient) bo
 
 	// 如果无法获取模型信息，使用保守策略（不支持）
 	if modelName == "" && provider == "" {
+		logger.Warnf("⚠️  [JSON Schema Check] Cannot get model name and provider from mcpClient, returning false (no JSON Schema support)")
 		return false
 	}
 
 	modelNameLower := strings.ToLower(modelName)
 	providerLower := strings.ToLower(provider)
 
+	logger.Infof("🔍 [JSON Schema Check] Checking model: provider=%s, modelName=%s", provider, modelName)
+
 	// 调用 schema.go 中的统一检查函数
-	return CheckModelSupportsJSONSchema(providerLower, modelNameLower)
+	supportsJSONSchema := CheckModelSupportsJSONSchema(providerLower, modelNameLower)
+
+	if supportsJSONSchema {
+		// 进一步检查是否支持高级特性
+		supportsAdvanced := CheckModelSupportsAdvancedJSONSchemaFeatures(providerLower, modelNameLower)
+		if supportsAdvanced {
+			logger.Infof("✅ [JSON Schema Check] Model %s/%s supports JSON Schema with ADVANCED features (allOf, pattern, exclusiveMinimum) - will use FULL schema version", provider, modelName)
+		} else {
+			logger.Infof("✅ [JSON Schema Check] Model %s/%s supports JSON Schema with BASIC features only - will use SIMPLIFIED schema version", provider, modelName)
+		}
+	} else {
+		logger.Infof("❌ [JSON Schema Check] Model %s/%s does NOT support JSON Schema - will use prompt integration mode (legacy format)", provider, modelName)
+	}
+
+	return supportsJSONSchema
 }
 
 // checkModelSupportsJSONSchemaByProvider 根据provider和modelName检查是否支持JSON Schema
