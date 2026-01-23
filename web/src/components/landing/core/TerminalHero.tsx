@@ -126,7 +126,7 @@ export default function TerminalHero() {
 
                                 <div className="flex justify-between items-center">
                                     <span>UPTIME</span>
-                                    <span className="text-white">99.999%</span>
+                                    <span style={{ color: 'var(--text-primary)' }}>99.999%</span>
                                 </div>
                             </div>
                         </div>
@@ -201,7 +201,18 @@ export default function TerminalHero() {
                                     <div className="absolute -inset-0.5 bg-gradient-to-r from-nofx-gold/20 to-blue-600/20 rounded-lg blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
                                     <div className="relative flex items-center gap-3 px-6 py-3 rounded-lg bg-zinc-900/80 border border-zinc-700 hover:border-nofx-gold/50 transition-all duration-300 backdrop-blur-sm">
                                         <div className="w-1.5 h-1.5 rounded-full bg-nofx-success shadow-[0_0_8px_rgba(74,222,128,0.6)] animate-pulse"></div>
-                                        <span className="text-lg md:text-xl font-bold text-white tracking-wider group-hover:text-nofx-gold transition-colors">{market}</span>
+                                        <span 
+                                            className="text-lg md:text-xl font-bold tracking-wider transition-colors"
+                                            style={{ color: 'var(--text-primary)' }}
+                                            onMouseEnter={(e) => {
+                                                e.currentTarget.style.color = 'var(--nofx-gold)'
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                e.currentTarget.style.color = 'var(--text-primary)'
+                                            }}
+                                        >
+                                            {market}
+                                        </span>
                                     </div>
                                 </div>
                             ))}
@@ -386,7 +397,18 @@ function CommunityStats() {
                         <stat.icon className={`w-4 h-4 ${stat.color}`} />
                         <span className="text-[10px] font-mono text-zinc-500 tracking-wider">{stat.label}</span>
                     </div>
-                    <span className="text-xl font-bold font-mono text-white group-hover:text-nofx-gold transition-colors">{stat.value}</span>
+                    <span 
+                        className="text-xl font-bold font-mono transition-colors"
+                        style={{ color: 'var(--text-primary)' }}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.color = 'var(--nofx-gold)'
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.color = 'var(--text-primary)'
+                        }}
+                    >
+                        {stat.value}
+                    </span>
                 </a>
             ))}
         </div>

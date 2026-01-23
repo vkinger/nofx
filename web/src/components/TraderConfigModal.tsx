@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { AIModel, Exchange, CreateTraderRequest, Strategy } from '../types'
 import { useLanguage } from '../contexts/LanguageContext'
+import { useTheme } from '../contexts/ThemeContext'
 import { t } from '../i18n/translations'
 import { toast } from 'sonner'
 import { Pencil, Plus, X as IconX, Sparkles, ExternalLink, UserPlus } from 'lucide-react'
@@ -57,6 +58,8 @@ export function TraderConfigModal({
   onSave,
 }: TraderConfigModalProps) {
   const { language } = useLanguage()
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
   const [formData, setFormData] = useState<FormState>({
     trader_name: '',
     ai_model: '',
@@ -192,12 +195,26 @@ export function TraderConfigModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm p-4 overflow-y-auto">
       <div
-        className="bg-[#1E2329] border border-[#2B3139] rounded-xl shadow-2xl max-w-2xl w-full my-8"
-        style={{ maxHeight: 'calc(100vh - 4rem)' }}
+        className="rounded-xl shadow-2xl max-w-2xl w-full my-8 trader-config-modal"
+        style={{ 
+          maxHeight: 'calc(100vh - 4rem)',
+          background: isDark 
+            ? 'linear-gradient(135deg, rgba(30, 36, 42, 0.95) 0%, rgba(24, 28, 33, 0.95) 100%)'
+            : 'var(--panel-bg)',
+          border: '1px solid var(--panel-border)',
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-[#2B3139] bg-gradient-to-r from-[#1E2329] to-[#252B35] sticky top-0 z-10 rounded-t-xl">
+        <div 
+          className="flex items-center justify-between p-6 border-b sticky top-0 z-10 rounded-t-xl"
+          style={{ 
+            borderBottom: '1px solid var(--panel-border)',
+            background: isDark 
+              ? 'linear-gradient(135deg, rgba(30, 36, 42, 0.95) 0%, rgba(37, 43, 53, 0.95) 100%)'
+              : 'var(--panel-bg)',
+          }}
+        >
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#F0B90B] to-[#E1A706] flex items-center justify-center text-black">
               {isEditMode ? (
@@ -207,17 +224,28 @@ export function TraderConfigModal({
               )}
             </div>
             <div>
-              <h2 className="text-xl font-bold text-[#EAECEF]">
+              <h2 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
                 {isEditMode ? '修改交易员' : '创建交易员'}
               </h2>
-              <p className="text-sm text-[#848E9C] mt-1">
+              <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
                 {isEditMode ? '修改交易员配置' : '选择策略并配置基础参数'}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-lg text-[#848E9C] hover:text-[#EAECEF] hover:bg-[#2B3139] transition-colors flex items-center justify-center"
+            className="w-8 h-8 rounded-lg transition-colors flex items-center justify-center"
+            style={{ 
+              color: 'var(--text-secondary)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = 'var(--text-primary)'
+              e.currentTarget.style.background = 'var(--panel-bg-hover)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = 'var(--text-secondary)'
+              e.currentTarget.style.background = 'transparent'
+            }}
           >
             <IconX className="w-4 h-4" />
           </button>
@@ -228,14 +256,44 @@ export function TraderConfigModal({
           className="p-6 space-y-6 overflow-y-auto"
           style={{ maxHeight: 'calc(100vh - 16rem)' }}
         >
+          <style>{`
+            .trader-config-modal input::placeholder,
+            .trader-config-modal textarea::placeholder {
+              color: var(--text-secondary);
+              opacity: 0.7;
+            }
+            .trader-config-modal select option {
+              background: var(--panel-bg);
+              color: var(--text-primary);
+            }
+            .trader-config-modal select option:checked {
+              background: rgba(240, 185, 11, 0.2);
+              color: var(--nofx-gold);
+              font-weight: 600;
+            }
+            .trader-config-modal select:not([value=""]) {
+              border-color: var(--nofx-gold);
+              box-shadow: 0 0 0 1px rgba(240, 185, 11, 0.2);
+            }
+            .trader-config-modal select:not([value=""]) option:checked {
+              background: rgba(240, 185, 11, 0.3);
+              color: var(--nofx-gold);
+            }
+          `}</style>
           {/* Basic Info */}
-          <div className="bg-[#0B0E11] border border-[#2B3139] rounded-lg p-5">
-            <h3 className="text-lg font-semibold text-[#EAECEF] mb-5 flex items-center gap-2">
-              <span className="text-[#F0B90B]">1</span> 基础配置
+          <div 
+            className="border rounded-lg p-5"
+            style={{
+              background: isDark ? 'rgba(11, 14, 17, 0.6)' : 'var(--panel-bg)',
+              border: '1px solid var(--panel-border)',
+            }}
+          >
+            <h3 className="text-lg font-semibold mb-5 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+              <span style={{ color: 'var(--nofx-gold)' }}>1</span> 基础配置
             </h3>
             <div className="space-y-4">
               <div>
-                <label className="text-sm text-[#EAECEF] block mb-2">
+                <label className="text-sm block mb-2" style={{ color: 'var(--text-primary)' }}>
                   交易员名称 <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -244,13 +302,24 @@ export function TraderConfigModal({
                   onChange={(e) =>
                     handleInputChange('trader_name', e.target.value)
                   }
-                  className="w-full px-3 py-2 bg-[#0B0E11] border border-[#2B3139] rounded text-[#EAECEF] focus:border-[#F0B90B] focus:outline-none"
+                  className="w-full px-3 py-2 rounded transition-colors focus:outline-none"
+                  style={{
+                    background: 'var(--panel-bg)',
+                    border: '1px solid var(--panel-border)',
+                    color: 'var(--text-primary)',
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--panel-border)'
+                  }}
                   placeholder="请输入交易员名称"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-sm text-[#EAECEF] block mb-2">
+                  <label className="text-sm block mb-2" style={{ color: 'var(--text-primary)' }}>
                     AI模型 <span className="text-red-500">*</span>
                   </label>
                   <select
@@ -258,7 +327,30 @@ export function TraderConfigModal({
                     onChange={(e) =>
                       handleInputChange('ai_model', e.target.value)
                     }
-                    className="w-full px-3 py-2 bg-[#0B0E11] border border-[#2B3139] rounded text-[#EAECEF] focus:border-[#F0B90B] focus:outline-none"
+                    className="w-full px-3 py-2 rounded transition-all focus:outline-none"
+                    style={{
+                      background: formData.ai_model 
+                        ? (isDark ? 'rgba(240, 185, 11, 0.1)' : 'rgba(240, 185, 11, 0.08)')
+                        : 'var(--panel-bg)',
+                      border: formData.ai_model 
+                        ? '1px solid var(--nofx-gold)'
+                        : '1px solid var(--panel-border)',
+                      color: 'var(--text-primary)',
+                      boxShadow: formData.ai_model ? '0 0 0 1px rgba(240, 185, 11, 0.2)' : 'none',
+                    }}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                      e.currentTarget.style.boxShadow = '0 0 0 2px rgba(240, 185, 11, 0.3)'
+                    }}
+                    onBlur={(e) => {
+                      if (formData.ai_model) {
+                        e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                        e.currentTarget.style.boxShadow = '0 0 0 1px rgba(240, 185, 11, 0.2)'
+                      } else {
+                        e.currentTarget.style.borderColor = 'var(--panel-border)'
+                        e.currentTarget.style.boxShadow = 'none'
+                      }
+                    }}
                   >
                     {availableModels.map((model) => (
                       <option key={model.id} value={model.id}>
@@ -268,7 +360,7 @@ export function TraderConfigModal({
                   </select>
                 </div>
                 <div>
-                  <label className="text-sm text-[#EAECEF] block mb-2">
+                  <label className="text-sm block mb-2" style={{ color: 'var(--text-primary)' }}>
                     交易所 <span className="text-red-500">*</span>
                   </label>
                   <select
@@ -276,7 +368,30 @@ export function TraderConfigModal({
                     onChange={(e) =>
                       handleInputChange('exchange_id', e.target.value)
                     }
-                    className="w-full px-3 py-2 bg-[#0B0E11] border border-[#2B3139] rounded text-[#EAECEF] focus:border-[#F0B90B] focus:outline-none"
+                    className="w-full px-3 py-2 rounded transition-all focus:outline-none"
+                    style={{
+                      background: formData.exchange_id 
+                        ? (isDark ? 'rgba(240, 185, 11, 0.1)' : 'rgba(240, 185, 11, 0.08)')
+                        : 'var(--panel-bg)',
+                      border: formData.exchange_id 
+                        ? '1px solid var(--nofx-gold)'
+                        : '1px solid var(--panel-border)',
+                      color: 'var(--text-primary)',
+                      boxShadow: formData.exchange_id ? '0 0 0 1px rgba(240, 185, 11, 0.2)' : 'none',
+                    }}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                      e.currentTarget.style.boxShadow = '0 0 0 2px rgba(240, 185, 11, 0.3)'
+                    }}
+                    onBlur={(e) => {
+                      if (formData.exchange_id) {
+                        e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                        e.currentTarget.style.boxShadow = '0 0 0 1px rgba(240, 185, 11, 0.2)'
+                      } else {
+                        e.currentTarget.style.borderColor = 'var(--panel-border)'
+                        e.currentTarget.style.boxShadow = 'none'
+                      }
+                    }}
                   >
                     {availableExchanges.map((exchange) => (
                       <option key={exchange.id} value={exchange.id}>
@@ -297,12 +412,25 @@ export function TraderConfigModal({
                         href={regLink.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="mt-2 inline-flex items-center gap-1.5 text-xs text-[#848E9C] hover:text-[#F0B90B] transition-colors"
+                        className="mt-2 inline-flex items-center gap-1.5 text-xs transition-colors"
+                        style={{ color: 'var(--text-secondary)' }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.color = 'var(--nofx-gold)'
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.color = 'var(--text-secondary)'
+                        }}
                       >
                         <UserPlus className="w-3.5 h-3.5" />
                         <span>还没有交易所账号？点击注册</span>
                         {regLink.hasReferral && (
-                          <span className="px-1.5 py-0.5 bg-[#F0B90B]/10 text-[#F0B90B] rounded text-[10px]">
+                          <span 
+                            className="px-1.5 py-0.5 rounded text-[10px]"
+                            style={{
+                              background: 'rgba(240, 185, 11, 0.1)',
+                              color: 'var(--nofx-gold)',
+                            }}
+                          >
                             折扣优惠
                           </span>
                         )}
@@ -316,14 +444,20 @@ export function TraderConfigModal({
           </div>
 
           {/* Strategy Selection */}
-          <div className="bg-[#0B0E11] border border-[#2B3139] rounded-lg p-5">
-            <h3 className="text-lg font-semibold text-[#EAECEF] mb-5 flex items-center gap-2">
-              <span className="text-[#F0B90B]">2</span> 选择交易策略
-              <Sparkles className="w-4 h-4 text-[#F0B90B]" />
+          <div 
+            className="border rounded-lg p-5"
+            style={{
+              background: isDark ? 'rgba(11, 14, 17, 0.6)' : 'var(--panel-bg)',
+              border: '1px solid var(--panel-border)',
+            }}
+          >
+            <h3 className="text-lg font-semibold mb-5 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+              <span style={{ color: 'var(--nofx-gold)' }}>2</span> 选择交易策略
+              <Sparkles className="w-4 h-4" style={{ color: 'var(--nofx-gold)' }} />
             </h3>
             <div className="space-y-4">
               <div>
-                <label className="text-sm text-[#EAECEF] block mb-2">
+                <label className="text-sm block mb-2" style={{ color: 'var(--text-primary)' }}>
                   使用策略
                 </label>
                 <select
@@ -331,7 +465,30 @@ export function TraderConfigModal({
                   onChange={(e) =>
                     handleInputChange('strategy_id', e.target.value)
                   }
-                  className="w-full px-3 py-2 bg-[#0B0E11] border border-[#2B3139] rounded text-[#EAECEF] focus:border-[#F0B90B] focus:outline-none"
+                  className="w-full px-3 py-2 rounded transition-all focus:outline-none"
+                  style={{
+                    background: formData.strategy_id 
+                      ? (isDark ? 'rgba(240, 185, 11, 0.1)' : 'rgba(240, 185, 11, 0.08)')
+                      : 'var(--panel-bg)',
+                    border: formData.strategy_id 
+                      ? '1px solid var(--nofx-gold)'
+                      : '1px solid var(--panel-border)',
+                    color: 'var(--text-primary)',
+                    boxShadow: formData.strategy_id ? '0 0 0 1px rgba(240, 185, 11, 0.2)' : 'none',
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                    e.currentTarget.style.boxShadow = '0 0 0 2px rgba(240, 185, 11, 0.3)'
+                  }}
+                  onBlur={(e) => {
+                    if (formData.strategy_id) {
+                      e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                      e.currentTarget.style.boxShadow = '0 0 0 1px rgba(240, 185, 11, 0.2)'
+                    } else {
+                      e.currentTarget.style.borderColor = 'var(--panel-border)'
+                      e.currentTarget.style.boxShadow = 'none'
+                    }
+                  }}
                 >
                   <option value="">-- 不使用策略（手动配置）--</option>
                   {strategies.map((strategy) => (
@@ -343,7 +500,7 @@ export function TraderConfigModal({
                   ))}
                 </select>
                 {strategies.length === 0 && (
-                  <p className="text-xs text-[#848E9C] mt-2">
+                  <p className="text-xs mt-2" style={{ color: 'var(--text-secondary)' }}>
                     暂无策略，请先在策略工作室创建策略
                   </p>
                 )}
@@ -351,9 +508,15 @@ export function TraderConfigModal({
 
               {/* Strategy Preview */}
               {selectedStrategy && (
-                <div className="mt-3 p-4 bg-[#1E2329] border border-[#2B3139] rounded-lg">
+                <div 
+                  className="mt-3 p-4 rounded-lg"
+                  style={{
+                    background: isDark ? 'rgba(30, 35, 41, 0.6)' : 'var(--panel-bg-hover)',
+                    border: '1px solid var(--panel-border)',
+                  }}
+                >
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-[#F0B90B] text-sm font-medium">
+                    <span className="text-sm font-medium" style={{ color: 'var(--nofx-gold)' }}>
                       策略详情
                     </span>
                     {selectedStrategy.is_active && (
@@ -362,10 +525,10 @@ export function TraderConfigModal({
                       </span>
                     )}
                   </div>
-                  <p className="text-sm text-[#848E9C] mb-2">
+                  <p className="text-sm mb-2" style={{ color: 'var(--text-secondary)' }}>
                     {selectedStrategy.description || '无描述'}
                   </p>
-                  <div className="grid grid-cols-2 gap-2 text-xs text-[#848E9C]">
+                  <div className="grid grid-cols-2 gap-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
                     <div>
                       币种来源: {selectedStrategy.config.coin_source.source_type === 'static' ? '固定币种' :
                         selectedStrategy.config.coin_source.source_type === 'ai500' ? 'AI500' :
@@ -381,25 +544,39 @@ export function TraderConfigModal({
           </div>
 
           {/* Trading Parameters */}
-          <div className="bg-[#0B0E11] border border-[#2B3139] rounded-lg p-5">
-            <h3 className="text-lg font-semibold text-[#EAECEF] mb-5 flex items-center gap-2">
-              <span className="text-[#F0B90B]">3</span> 交易参数
+          <div 
+            className="border rounded-lg p-5"
+            style={{
+              background: isDark ? 'rgba(11, 14, 17, 0.6)' : 'var(--panel-bg)',
+              border: '1px solid var(--panel-border)',
+            }}
+          >
+            <h3 className="text-lg font-semibold mb-5 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+              <span style={{ color: 'var(--nofx-gold)' }}>3</span> 交易参数
             </h3>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-sm text-[#EAECEF] block mb-2">
+                  <label className="text-sm block mb-2" style={{ color: 'var(--text-primary)' }}>
                     保证金模式
                   </label>
                   <div className="flex gap-2">
                     <button
                       type="button"
                       onClick={() => handleInputChange('is_cross_margin', true)}
-                      className={`flex-1 px-3 py-2 rounded text-sm ${
-                        formData.is_cross_margin
-                          ? 'bg-[#F0B90B] text-black'
-                          : 'bg-[#0B0E11] text-[#848E9C] border border-[#2B3139]'
-                      }`}
+                      className="flex-1 px-3 py-2 rounded text-sm transition-all font-medium"
+                      style={{
+                        background: formData.is_cross_margin 
+                          ? 'var(--nofx-gold)' 
+                          : 'var(--panel-bg)',
+                        color: formData.is_cross_margin ? '#000' : 'var(--text-secondary)',
+                        border: formData.is_cross_margin 
+                          ? '2px solid var(--nofx-gold)'
+                          : '1px solid var(--panel-border)',
+                        boxShadow: formData.is_cross_margin 
+                          ? '0 0 0 2px rgba(240, 185, 11, 0.2), 0 0 8px rgba(240, 185, 11, 0.3)'
+                          : 'none',
+                      }}
                     >
                       全仓
                     </button>
@@ -408,18 +585,26 @@ export function TraderConfigModal({
                       onClick={() =>
                         handleInputChange('is_cross_margin', false)
                       }
-                      className={`flex-1 px-3 py-2 rounded text-sm ${
-                        !formData.is_cross_margin
-                          ? 'bg-[#F0B90B] text-black'
-                          : 'bg-[#0B0E11] text-[#848E9C] border border-[#2B3139]'
-                      }`}
+                      className="flex-1 px-3 py-2 rounded text-sm transition-all font-medium"
+                      style={{
+                        background: !formData.is_cross_margin 
+                          ? 'var(--nofx-gold)' 
+                          : 'var(--panel-bg)',
+                        color: !formData.is_cross_margin ? '#000' : 'var(--text-secondary)',
+                        border: !formData.is_cross_margin 
+                          ? '2px solid var(--nofx-gold)'
+                          : '1px solid var(--panel-border)',
+                        boxShadow: !formData.is_cross_margin 
+                          ? '0 0 0 2px rgba(240, 185, 11, 0.2), 0 0 8px rgba(240, 185, 11, 0.3)'
+                          : 'none',
+                      }}
                     >
                       逐仓
                     </button>
                   </div>
                 </div>
                 <div>
-                  <label className="text-sm text-[#EAECEF] block mb-2">
+                  <label className="text-sm block mb-2" style={{ color: 'var(--text-primary)' }}>
                     {t('aiScanInterval', language)}
                   </label>
                   <input
@@ -432,12 +617,23 @@ export function TraderConfigModal({
                         : 3
                       handleInputChange('scan_interval_minutes', safeValue)
                     }}
-                    className="w-full px-3 py-2 bg-[#0B0E11] border border-[#2B3139] rounded text-[#EAECEF] focus:border-[#F0B90B] focus:outline-none"
+                    className="w-full px-3 py-2 rounded transition-colors focus:outline-none"
+                    style={{
+                      background: 'var(--panel-bg)',
+                      border: '1px solid var(--panel-border)',
+                      color: 'var(--text-primary)',
+                    }}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--panel-border)'
+                    }}
                     min="3"
                     max="60"
                     step="1"
                   />
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
                     {t('scanIntervalRecommend', language)}
                   </p>
                 </div>
@@ -445,34 +641,50 @@ export function TraderConfigModal({
 
               {/* Competition visibility */}
               <div>
-                <label className="text-sm text-[#EAECEF] block mb-2">
+                <label className="text-sm block mb-2" style={{ color: 'var(--text-primary)' }}>
                   竞技场显示
                 </label>
                 <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={() => handleInputChange('show_in_competition', true)}
-                    className={`flex-1 px-3 py-2 rounded text-sm ${
-                      formData.show_in_competition
-                        ? 'bg-[#F0B90B] text-black'
-                        : 'bg-[#0B0E11] text-[#848E9C] border border-[#2B3139]'
-                    }`}
+                    className="flex-1 px-3 py-2 rounded text-sm transition-all font-medium"
+                    style={{
+                      background: formData.show_in_competition 
+                        ? 'var(--nofx-gold)' 
+                        : 'var(--panel-bg)',
+                      color: formData.show_in_competition ? '#000' : 'var(--text-secondary)',
+                      border: formData.show_in_competition 
+                        ? '2px solid var(--nofx-gold)'
+                        : '1px solid var(--panel-border)',
+                      boxShadow: formData.show_in_competition 
+                        ? '0 0 0 2px rgba(240, 185, 11, 0.2), 0 0 8px rgba(240, 185, 11, 0.3)'
+                        : 'none',
+                    }}
                   >
                     显示
                   </button>
                   <button
                     type="button"
                     onClick={() => handleInputChange('show_in_competition', false)}
-                    className={`flex-1 px-3 py-2 rounded text-sm ${
-                      !formData.show_in_competition
-                        ? 'bg-[#F0B90B] text-black'
-                        : 'bg-[#0B0E11] text-[#848E9C] border border-[#2B3139]'
-                    }`}
+                    className="flex-1 px-3 py-2 rounded text-sm transition-all font-medium"
+                    style={{
+                      background: !formData.show_in_competition 
+                        ? 'var(--nofx-gold)' 
+                        : 'var(--panel-bg)',
+                      color: !formData.show_in_competition ? '#000' : 'var(--text-secondary)',
+                      border: !formData.show_in_competition 
+                        ? '2px solid var(--nofx-gold)'
+                        : '1px solid var(--panel-border)',
+                      boxShadow: !formData.show_in_competition 
+                        ? '0 0 0 2px rgba(240, 185, 11, 0.2), 0 0 8px rgba(240, 185, 11, 0.3)'
+                        : 'none',
+                    }}
                   >
                     隐藏
                   </button>
                 </div>
-                <p className="text-xs text-[#848E9C] mt-1">
+                <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
                   隐藏后将不在竞技场页面显示此交易员
                 </p>
               </div>
@@ -481,14 +693,28 @@ export function TraderConfigModal({
               {isEditMode && (
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="text-sm text-[#EAECEF]">
+                    <label className="text-sm" style={{ color: 'var(--text-primary)' }}>
                       初始余额 ($)
                     </label>
                     <button
                       type="button"
                       onClick={handleFetchCurrentBalance}
                       disabled={isFetchingBalance}
-                      className="px-3 py-1 text-xs bg-[#F0B90B] text-black rounded hover:bg-[#E1A706] transition-colors disabled:bg-[#848E9C] disabled:cursor-not-allowed"
+                      className="px-3 py-1 text-xs rounded transition-colors disabled:cursor-not-allowed"
+                      style={{
+                        background: isFetchingBalance ? 'var(--text-disabled)' : 'var(--nofx-gold)',
+                        color: isFetchingBalance ? 'var(--text-secondary)' : '#000',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isFetchingBalance) {
+                          e.currentTarget.style.background = '#E1A706'
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isFetchingBalance) {
+                          e.currentTarget.style.background = 'var(--nofx-gold)'
+                        }
+                      }}
                     >
                       {isFetchingBalance ? '获取中...' : '获取当前余额'}
                     </button>
@@ -502,11 +728,22 @@ export function TraderConfigModal({
                         Number(e.target.value)
                       )
                     }
-                    className="w-full px-3 py-2 bg-[#0B0E11] border border-[#2B3139] rounded text-[#EAECEF] focus:border-[#F0B90B] focus:outline-none"
+                    className="w-full px-3 py-2 rounded transition-colors focus:outline-none"
+                    style={{
+                      background: 'var(--panel-bg)',
+                      border: '1px solid var(--panel-border)',
+                      color: 'var(--text-primary)',
+                    }}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--panel-border)'
+                    }}
                     min="100"
                     step="0.01"
                   />
-                  <p className="text-xs text-[#848E9C] mt-1">
+                  <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
                     用于手动更新初始余额基准（例如充值/提现后）
                   </p>
                   {balanceFetchError && (
@@ -519,10 +756,17 @@ export function TraderConfigModal({
 
               {/* Create mode info */}
               {!isEditMode && (
-                <div className="p-3 bg-[#1E2329] border border-[#2B3139] rounded flex items-center gap-2">
+                <div 
+                  className="p-3 rounded flex items-center gap-2"
+                  style={{
+                    background: isDark ? 'rgba(30, 35, 41, 0.6)' : 'var(--panel-bg-hover)',
+                    border: '1px solid var(--panel-border)',
+                  }}
+                >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    className="w-4 h-4 text-[#F0B90B]"
+                    className="w-4 h-4"
+                    style={{ color: 'var(--nofx-gold)' }}
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
@@ -534,7 +778,7 @@ export function TraderConfigModal({
                     <line x1="12" x2="12" y1="8" y2="12" />
                     <line x1="12" x2="12.01" y1="16" y2="16" />
                   </svg>
-                  <span className="text-sm text-[#848E9C]">
+                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
                     系统将自动获取您的账户净值作为初始余额
                   </span>
                 </div>
@@ -545,10 +789,29 @@ export function TraderConfigModal({
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-3 p-6 border-t border-[#2B3139] bg-gradient-to-r from-[#1E2329] to-[#252B35] sticky bottom-0 z-10 rounded-b-xl">
+        <div 
+          className="flex justify-end gap-3 p-6 border-t sticky bottom-0 z-10 rounded-b-xl"
+          style={{
+            borderTop: '1px solid var(--panel-border)',
+            background: isDark 
+              ? 'linear-gradient(135deg, rgba(30, 36, 42, 0.95) 0%, rgba(37, 43, 53, 0.95) 100%)'
+              : 'var(--panel-bg)',
+          }}
+        >
           <button
             onClick={onClose}
-            className="px-6 py-3 bg-[#2B3139] text-[#EAECEF] rounded-lg hover:bg-[#404750] transition-all duration-200 border border-[#404750]"
+            className="px-6 py-3 rounded-lg transition-all duration-200"
+            style={{
+              background: 'var(--panel-bg-hover)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--panel-border)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--panel-bg)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'var(--panel-bg-hover)'
+            }}
           >
             取消
           </button>
@@ -561,7 +824,23 @@ export function TraderConfigModal({
                 !formData.ai_model ||
                 !formData.exchange_id
               }
-              className="px-8 py-3 bg-gradient-to-r from-[#F0B90B] to-[#E1A706] text-black rounded-lg hover:from-[#E1A706] hover:to-[#D4951E] transition-all duration-200 disabled:bg-[#848E9C] disabled:cursor-not-allowed font-medium shadow-lg"
+              className="px-8 py-3 rounded-lg transition-all duration-200 disabled:cursor-not-allowed font-medium shadow-lg"
+              style={{
+                background: (isSaving || !formData.trader_name || !formData.ai_model || !formData.exchange_id)
+                  ? 'var(--text-disabled)'
+                  : 'linear-gradient(to right, var(--nofx-gold), #E1A706)',
+                color: '#000',
+              }}
+              onMouseEnter={(e) => {
+                if (!isSaving && formData.trader_name && formData.ai_model && formData.exchange_id) {
+                  e.currentTarget.style.background = 'linear-gradient(to right, #E1A706, #D4951E)'
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isSaving && formData.trader_name && formData.ai_model && formData.exchange_id) {
+                  e.currentTarget.style.background = 'linear-gradient(to right, var(--nofx-gold), #E1A706)'
+                }
+              }}
             >
               {isSaving ? '保存中...' : isEditMode ? '保存修改' : '创建交易员'}
             </button>

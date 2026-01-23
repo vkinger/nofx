@@ -11,6 +11,7 @@ import {
   createSeriesMarkers,
 } from 'lightweight-charts'
 import { useLanguage } from '../contexts/LanguageContext'
+import { useTheme } from '../contexts/ThemeContext'
 import { httpClient } from '../lib/httpClient'
 import {
   calculateSMA,
@@ -44,6 +45,8 @@ interface OpenOrder {
   status: string
 }
 
+import { Position } from '../types'
+
 interface AdvancedChartProps {
   symbol: string
   interval?: string
@@ -51,6 +54,7 @@ interface AdvancedChartProps {
   height?: number
   exchange?: string // 交易所类型：binance, bybit, okx, bitget, hyperliquid, aster, lighter
   onSymbolChange?: (symbol: string) => void // 币种切换回调
+  positions?: Position[] // 持仓数据，用于显示止盈止损价格线
 }
 
 // 指标配置
@@ -94,6 +98,38 @@ const formatVolume = (value: number): string => {
   return value.toFixed(2)
 }
 
+// Format price with dynamic precision based on price range
+// Matches backend FormatPriceWithDynamicPrecision logic
+const formatPriceWithDynamicPrecision = (price: number): string => {
+  if (!price || price === 0) return '0'
+  
+  if (price < 0.0001) {
+    // Ultra-low price meme coins: 1000SATS, 1000WHY, DOGS
+    // 0.00002070 → "0.00002070" (8 decimal places)
+    return price.toFixed(8)
+  } else if (price < 0.001) {
+    // Low price meme coins: NEIRO, HMSTR, HOT, NOT
+    // 0.00015060 → "0.000151" (6 decimal places)
+    return price.toFixed(6)
+  } else if (price < 0.01) {
+    // Mid-low price coins: PEPE, SHIB, MEME
+    // 0.00556800 → "0.005568" (6 decimal places)
+    return price.toFixed(6)
+  } else if (price < 1.0) {
+    // Low price coins: ASTER, DOGE, ADA, TRX
+    // 0.9954 → "0.9954" (4 decimal places)
+    return price.toFixed(4)
+  } else if (price < 100) {
+    // Mid price coins: SOL, AVAX, LINK, MATIC
+    // 23.4567 → "23.4567" (4 decimal places)
+    return price.toFixed(4)
+  } else {
+    // High price coins: BTC, ETH (save tokens)
+    // 45678.9123 → "45678.91" (2 decimal places)
+    return price.toFixed(2)
+  }
+}
+
 export function AdvancedChart({
   symbol = 'BTCUSDT',
   interval = '5m',
@@ -101,10 +137,26 @@ export function AdvancedChart({
   height = 550,
   exchange = 'binance', // 默认使用 binance
   onSymbolChange: _onSymbolChange, // Available for future use
+  positions, // 持仓数据
 }: AdvancedChartProps) {
   void _onSymbolChange // Prevent unused warning
   const { language } = useLanguage()
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
   const quoteUnit = getQuoteUnit(exchange)
+  
+  // 根据主题获取图表颜色
+  const getChartColors = () => {
+    return {
+      background: isDark ? '#0B0E11' : '#FFFFFF',
+      textColor: isDark ? '#B7BDC6' : '#111827',
+      gridColor: isDark ? 'rgba(43, 49, 57, 0.2)' : 'rgba(0, 0, 0, 0.1)',
+      borderColor: isDark ? '#2B3139' : 'rgba(0, 0, 0, 0.15)',
+      crosshairColor: isDark ? 'rgba(240, 185, 11, 0.5)' : 'rgba(240, 185, 11, 0.7)',
+    }
+  }
+  
+  const chartColors = getChartColors()
   const baseUnit = getBaseUnit(exchange, symbol)
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -334,12 +386,40 @@ export function AdvancedChart({
         return []
       }
 
+      // 后端直接返回 OpenOrder[] 数组，httpClient 会包装为 {success: true, data: OpenOrder[]}
       return result.data as OpenOrder[]
     } catch (err) {
       console.error('[AdvancedChart] Error fetching open orders:', err)
       return []
     }
   }
+
+  // 当主题变化时更新图表颜色
+  useEffect(() => {
+    if (chartRef.current) {
+      const colors = getChartColors()
+      chartRef.current.applyOptions({
+        layout: {
+          background: { color: colors.background },
+          textColor: colors.textColor,
+        },
+        grid: {
+          vertLines: { color: colors.gridColor },
+          horzLines: { color: colors.gridColor },
+        },
+        crosshair: {
+          vertLine: { color: colors.crosshairColor },
+          horzLine: { color: colors.crosshairColor },
+        },
+        rightPriceScale: {
+          borderColor: colors.borderColor,
+        },
+        timeScale: {
+          borderColor: colors.borderColor,
+        },
+      })
+    }
+  }, [theme])
 
   // 初始化图表
   useEffect(() => {
@@ -349,18 +429,18 @@ export function AdvancedChart({
       width: chartContainerRef.current.clientWidth || 800,
       height: chartContainerRef.current.clientHeight || height,
       layout: {
-        background: { color: '#0B0E11' },
-        textColor: '#B7BDC6',
+        background: { color: chartColors.background },
+        textColor: chartColors.textColor,
         fontSize: 12,
       },
       grid: {
         vertLines: {
-          color: 'rgba(43, 49, 57, 0.2)',
+          color: chartColors.gridColor,
           style: 1,
           visible: true,
         },
         horzLines: {
-          color: 'rgba(43, 49, 57, 0.2)',
+          color: chartColors.gridColor,
           style: 1,
           visible: true,
         },
@@ -368,20 +448,20 @@ export function AdvancedChart({
       crosshair: {
         mode: 1,
         vertLine: {
-          color: 'rgba(240, 185, 11, 0.5)',
+          color: chartColors.crosshairColor,
           width: 1,
           style: 2,
           labelBackgroundColor: '#F0B90B',
         },
         horzLine: {
-          color: 'rgba(240, 185, 11, 0.5)',
+          color: chartColors.crosshairColor,
           width: 1,
           style: 2,
           labelBackgroundColor: '#F0B90B',
         },
       },
       rightPriceScale: {
-        borderColor: '#2B3139',
+        borderColor: chartColors.borderColor,
         scaleMargins: {
           top: 0.1,
           bottom: 0.25,
@@ -390,7 +470,7 @@ export function AdvancedChart({
         entireTextOnly: false,
       },
       timeScale: {
-        borderColor: '#2B3139',
+        borderColor: chartColors.borderColor,
         timeVisible: true,
         secondsVisible: false,
         borderVisible: true,
@@ -742,6 +822,7 @@ export function AdvancedChart({
   }, [symbol, interval, traderID, exchange])
 
   // 单独刷新挂单价格线 (60秒刷新一次，避免频繁调用交易所API)
+  // 同时从持仓数据中获取止盈止损价格
   useEffect(() => {
     if (!traderID || !candlestickSeriesRef.current) return
 
@@ -758,6 +839,45 @@ export function AdvancedChart({
         })
         priceLinesRef.current = []
 
+        // 1. 从持仓数据中获取当前币种的止盈止损价格
+        if (positions && positions.length > 0) {
+          const currentPosition = positions.find(p => p.symbol === symbol)
+          if (currentPosition) {
+            // 添加止损价格线（持仓）
+            if (currentPosition.stop_loss && currentPosition.stop_loss > 0) {
+              const formattedPrice = formatPriceWithDynamicPrecision(currentPosition.stop_loss)
+              const stopLossLine = candlestickSeriesRef.current?.createPriceLine({
+                price: currentPosition.stop_loss,
+                color: '#F6465D', // 红色 - 止损
+                lineWidth: 3, // 持仓线更粗，便于区分
+                lineStyle: 0, // 实线 - 持仓使用实线
+                axisLabelVisible: true,
+                title: `SL ${formattedPrice} [持仓]`, // 使用中文标签，更清晰
+              })
+              if (stopLossLine) {
+                priceLinesRef.current.push(stopLossLine)
+              }
+            }
+
+            // 添加止盈价格线（持仓）
+            if (currentPosition.take_profit && currentPosition.take_profit > 0) {
+              const formattedPrice = formatPriceWithDynamicPrecision(currentPosition.take_profit)
+              const takeProfitLine = candlestickSeriesRef.current?.createPriceLine({
+                price: currentPosition.take_profit,
+                color: '#0ECB81', // 绿色 - 止盈
+                lineWidth: 3, // 持仓线更粗，便于区分
+                lineStyle: 0, // 实线 - 持仓使用实线
+                axisLabelVisible: true,
+                title: `TP ${formattedPrice} [持仓]`, // 使用中文标签，更清晰
+              })
+              if (takeProfitLine) {
+                priceLinesRef.current.push(takeProfitLine)
+              }
+            }
+          }
+        }
+
+        // 2. 从交易所挂单API获取止盈止损订单
         const openOrders = await fetchOpenOrders(traderID, symbol)
         console.log('[AdvancedChart] Open orders for price lines:', openOrders)
 
@@ -772,29 +892,31 @@ export function AdvancedChart({
             const isTakeProfit = order.type.includes('TAKE_PROFIT') || order.type.includes('TP')
             const isLimit = order.type === 'LIMIT'
 
+            // 格式化价格用于标题显示
+            const formattedPrice = formatPriceWithDynamicPrecision(linePrice)
+
             // 设置价格线样式
             let lineColor = '#F0B90B' // 默认黄色
-            const lineStyle = 2 // 虚线
             let title = ''
 
             if (isStopLoss) {
-              lineColor = '#F6465D' // 红色 - 止损
-              title = `SL ${order.quantity}`
+              lineColor = '#FF6B6B' // 稍浅的红色 - 挂单止损（与持仓区分）
+              title = `SL ${formattedPrice} [挂单 ${order.quantity}]` // 使用中文标签，更清晰
             } else if (isTakeProfit) {
-              lineColor = '#0ECB81' // 绿色 - 止盈
-              title = `TP ${order.quantity}`
+              lineColor = '#51CF66' // 稍浅的绿色 - 挂单止盈（与持仓区分）
+              title = `TP ${formattedPrice} [挂单 ${order.quantity}]` // 使用中文标签，更清晰
             } else if (isLimit) {
               lineColor = '#F0B90B' // 黄色 - 限价单
-              title = `Limit ${order.side} ${order.quantity}`
+              title = `Limit ${order.side} ${formattedPrice} [挂单 ${order.quantity}]`
             } else {
-              title = `${order.type} ${order.quantity}`
+              title = `${order.type} ${formattedPrice} [挂单 ${order.quantity}]`
             }
 
             const priceLine = candlestickSeriesRef.current?.createPriceLine({
               price: linePrice,
               color: lineColor,
-              lineWidth: 1,
-              lineStyle: lineStyle,
+              lineWidth: 1, // 挂单线较细
+              lineStyle: 2, // 虚线 - 挂单使用虚线
               axisLabelVisible: true,
               title: title,
             })
@@ -820,7 +942,7 @@ export function AdvancedChart({
       clearTimeout(initialTimeout)
       clearInterval(openOrdersInterval)
     }
-  }, [symbol, traderID])
+  }, [symbol, traderID, positions])
 
   // 单独处理订单标记的显示/隐藏，避免重新加载数据
   useEffect(() => {
@@ -922,20 +1044,25 @@ export function AdvancedChart({
     >
       {/* Compact Professional Header */}
       <div
-        className="flex items-center justify-between px-4 py-2"
-        style={{ borderBottom: '1px solid rgba(43, 49, 57, 0.6)', background: '#0D1117', flexShrink: 0 }}
+        className="flex items-center justify-between px-3 py-2"
+        style={{ 
+          borderBottom: `1px solid var(--panel-border)`, 
+          background: isDark ? '#0D1117' : 'var(--panel-bg)', 
+          flexShrink: 0 
+        }}
       >
         {/* Left: Symbol Info + Price */}
         <div className="flex items-center gap-4">
           {/* Symbol & Interval */}
           <div className="flex items-center gap-2">
-            <span className="text-sm font-bold text-white">{symbol}</span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#1F2937] text-gray-400">{interval}</span>
+            <span className="text-sm sm:text-base font-bold" style={{ color: 'var(--text-primary)' }}>{symbol}</span>
+            <span className="text-[10px] sm:text-xs px-1.5 py-0.5 rounded font-medium" style={{ background: 'var(--panel-bg-hover)', color: 'var(--text-secondary)', border: `1px solid var(--panel-border)` }}>{interval}</span>
             <span
-              className="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase"
+              className="text-[10px] sm:text-xs px-1.5 py-0.5 rounded font-medium uppercase"
               style={{
                 background: exchange === 'hyperliquid' ? 'rgba(80, 227, 194, 0.1)' : 'rgba(243, 186, 47, 0.1)',
                 color: exchange === 'hyperliquid' ? '#50E3C2' : '#F3BA2F',
+                border: `1px solid var(--panel-border)`,
               }}
             >
               {exchange?.toUpperCase()}
@@ -944,18 +1071,15 @@ export function AdvancedChart({
 
           {/* Price Display */}
           {marketStats && (
-            <div className="flex items-center gap-3 pl-3 border-l border-[#2B3139]">
+            <div className="flex items-center gap-2 sm:gap-3 pl-3 border-l" style={{ borderColor: 'var(--panel-border)' }}>
               <span
-                className="text-base font-bold tabular-nums"
+                className="text-sm sm:text-base font-bold tabular-nums"
                 style={{ color: marketStats.priceChange >= 0 ? '#10B981' : '#EF4444' }}
               >
-                {marketStats.price.toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: exchange === 'forex' || exchange === 'metals' ? 4 : 2
-                })}
+                {formatPriceWithDynamicPrecision(marketStats.price)}
               </span>
               <span
-                className="text-xs font-medium px-1.5 py-0.5 rounded tabular-nums"
+                className="text-xs sm:text-sm font-medium px-1.5 py-0.5 rounded tabular-nums"
                 style={{
                   background: marketStats.priceChange >= 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
                   color: marketStats.priceChange >= 0 ? '#10B981' : '#EF4444',
@@ -965,11 +1089,11 @@ export function AdvancedChart({
               </span>
 
               {/* Compact H/L */}
-              <div className="flex items-center gap-2 text-[11px] text-gray-500">
-                <span>H <span className="text-gray-300">{marketStats.high.toFixed(2)}</span></span>
-                <span>L <span className="text-gray-300">{marketStats.low.toFixed(2)}</span></span>
+              <div className="flex items-center gap-2 text-[10px] sm:text-xs" style={{ color: 'var(--text-secondary)' }}>
+                <span>H <span style={{ color: 'var(--text-primary)' }}>{formatPriceWithDynamicPrecision(marketStats.high)}</span></span>
+                <span>L <span style={{ color: 'var(--text-primary)' }}>{formatPriceWithDynamicPrecision(marketStats.low)}</span></span>
                 {marketStats.volume > 0 && baseUnit && (
-                  <span>Vol <span className="text-gray-300">{formatVolume(marketStats.volume)}</span></span>
+                  <span>Vol <span style={{ color: 'var(--text-primary)' }}>{formatVolume(marketStats.volume)}</span></span>
                 )}
               </div>
             </div>
@@ -979,30 +1103,56 @@ export function AdvancedChart({
         {/* Right: Controls */}
         <div className="flex items-center gap-1.5">
           {loading && (
-            <span className="text-[10px] text-yellow-400 animate-pulse mr-2">
+            <span className="text-[10px] sm:text-xs text-yellow-400 animate-pulse mr-1">
               {language === 'zh' ? '更新中...' : 'Updating...'}
             </span>
           )}
           <button
             onClick={() => setShowIndicatorPanel(!showIndicatorPanel)}
-            className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-all"
+            className="flex items-center gap-1 px-2 py-1 rounded text-xs sm:text-sm font-medium transition-all"
             style={{
               background: showIndicatorPanel ? 'rgba(96, 165, 250, 0.15)' : 'transparent',
-              color: showIndicatorPanel ? '#60A5FA' : '#6B7280',
+              color: showIndicatorPanel ? '#60A5FA' : 'var(--text-secondary)',
+              border: `1px solid ${showIndicatorPanel ? 'rgba(96, 165, 250, 0.3)' : 'transparent'}`,
+            }}
+            onMouseEnter={(e) => {
+              if (!showIndicatorPanel) {
+                e.currentTarget.style.color = 'var(--text-primary)'
+                e.currentTarget.style.background = 'var(--panel-bg-hover)'
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!showIndicatorPanel) {
+                e.currentTarget.style.color = 'var(--text-secondary)'
+                e.currentTarget.style.background = 'transparent'
+              }
             }}
           >
-            <Settings className="w-3 h-3" />
+            <Settings className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             <span>{language === 'zh' ? '指标' : 'Indicators'}</span>
           </button>
 
           <button
             onClick={() => setShowOrderMarkers(!showOrderMarkers)}
-            className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-all"
+            className="flex items-center gap-1 px-2 py-1 rounded text-xs sm:text-sm font-medium transition-all"
             style={{
               background: showOrderMarkers ? 'rgba(16, 185, 129, 0.15)' : 'transparent',
-              color: showOrderMarkers ? '#10B981' : '#6B7280',
+              color: showOrderMarkers ? '#10B981' : 'var(--text-secondary)',
+              border: `1px solid ${showOrderMarkers ? 'rgba(16, 185, 129, 0.3)' : 'transparent'}`,
             }}
             title={language === 'zh' ? '订单标记' : 'Order Markers'}
+            onMouseEnter={(e) => {
+              if (!showOrderMarkers) {
+                e.currentTarget.style.color = 'var(--text-primary)'
+                e.currentTarget.style.background = 'var(--panel-bg-hover)'
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!showOrderMarkers) {
+                e.currentTarget.style.color = 'var(--text-secondary)'
+                e.currentTarget.style.background = 'transparent'
+              }
+            }}
           >
             <span>B/S</span>
           </button>
@@ -1012,58 +1162,86 @@ export function AdvancedChart({
       {/* 指标面板 - 专业化设计 */}
       {showIndicatorPanel && (
         <div
-          className="absolute top-16 right-4 z-10 rounded-lg shadow-2xl backdrop-blur-sm"
+          className="absolute top-14 right-3 z-10 rounded-lg shadow-2xl backdrop-blur-sm"
           style={{
-            background: 'linear-gradient(135deg, #1A1E23 0%, #0F1215 100%)',
-            border: '1px solid rgba(240, 185, 11, 0.2)',
-            maxHeight: '500px',
-            minWidth: '280px',
+            background: isDark ? 'linear-gradient(135deg, #1A1E23 0%, #0F1215 100%)' : 'var(--panel-bg)',
+            border: `1px solid var(--panel-border)`,
+            maxHeight: '400px',
+            minWidth: '240px',
+            maxWidth: '280px',
             overflowY: 'auto',
           }}
         >
           {/* 标题栏 */}
           <div
-            className="flex items-center justify-between px-4 py-3 border-b"
-            style={{ borderColor: 'rgba(43, 49, 57, 0.5)' }}
+            className="flex items-center justify-between px-3 py-2 border-b"
+            style={{ borderColor: 'var(--panel-border)' }}
           >
-            <div className="flex items-center gap-2">
-              <BarChart2 className="w-4 h-4 text-yellow-400" />
-              <h4 className="text-sm font-bold text-white">
-                {language === 'zh' ? '技术指标' : 'Technical Indicators'}
+            <div className="flex items-center gap-1.5">
+              <BarChart2 className="w-4 h-4" style={{ color: 'var(--nofx-gold)' }} />
+              <h4 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                {language === 'zh' ? '技术指标' : 'Indicators'}
               </h4>
             </div>
             <button
               onClick={() => setShowIndicatorPanel(false)}
-              className="text-gray-400 hover:text-white transition-colors"
+              className="transition-colors"
+              style={{ color: 'var(--text-secondary)' }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = 'var(--text-primary)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'var(--text-secondary)'
+              }}
             >
               <span className="text-lg">×</span>
             </button>
           </div>
 
           {/* 指标列表 */}
-          <div className="p-3 space-y-1">
+          <div className="p-2 space-y-1">
             {indicators.map(indicator => (
               <label
                 key={indicator.id}
-                className="flex items-center gap-3 p-2.5 rounded-md hover:bg-white/5 cursor-pointer transition-all group"
+                className="flex items-center gap-2.5 p-2 rounded-md cursor-pointer transition-all group"
+                style={{
+                  background: indicator.enabled ? 'rgba(240, 185, 11, 0.1)' : 'transparent',
+                  border: `1px solid ${indicator.enabled ? 'rgba(240, 185, 11, 0.2)' : 'transparent'}`,
+                }}
+                onMouseEnter={(e) => {
+                  if (!indicator.enabled) {
+                    e.currentTarget.style.background = 'var(--panel-bg-hover)'
+                    e.currentTarget.style.borderColor = 'var(--panel-border)'
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!indicator.enabled) {
+                    e.currentTarget.style.background = 'transparent'
+                    e.currentTarget.style.borderColor = 'transparent'
+                  }
+                }}
               >
                 <div className="relative">
                   <input
                     type="checkbox"
                     checked={indicator.enabled}
                     onChange={() => toggleIndicator(indicator.id)}
-                    className="w-4 h-4 rounded border-gray-600 text-yellow-500 focus:ring-2 focus:ring-yellow-500/50"
+                    className="w-4 h-4 rounded border text-yellow-500 focus:ring-2 focus:ring-yellow-500/50"
+                    style={{ borderColor: 'var(--panel-border)' }}
                   />
                 </div>
                 <div
-                  className="w-8 h-3 rounded-sm border border-white/10"
-                  style={{ backgroundColor: indicator.color }}
+                  className="w-8 h-3 rounded-sm border"
+                  style={{ 
+                    backgroundColor: indicator.color,
+                    borderColor: 'var(--panel-border)',
+                  }}
                 ></div>
-                <span className="text-sm text-gray-300 group-hover:text-white transition-colors flex-1">
+                <span className="text-xs sm:text-sm group-hover:text-white transition-colors flex-1" style={{ color: 'var(--text-primary)' }}>
                   {indicator.name}
                 </span>
                 {indicator.enabled && (
-                  <span className="text-xs text-yellow-400">●</span>
+                  <span className="text-xs" style={{ color: 'var(--nofx-gold)' }}>●</span>
                 )}
               </label>
             ))}
@@ -1071,10 +1249,13 @@ export function AdvancedChart({
 
           {/* 底部提示 */}
           <div
-            className="px-4 py-2 text-xs text-gray-500 border-t"
-            style={{ borderColor: 'rgba(43, 49, 57, 0.5)' }}
+            className="px-3 py-2 text-xs border-t"
+            style={{ 
+              borderColor: 'var(--panel-border)',
+              color: 'var(--text-secondary)',
+            }}
           >
-            {language === 'zh' ? '点击选择需要显示的指标' : 'Click to toggle indicators'}
+            {language === 'zh' ? '点击切换指标' : 'Click to toggle'}
           </div>
         </div>
       )}
@@ -1114,20 +1295,20 @@ export function AdvancedChart({
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 12px', fontSize: '11px' }}>
               <span style={{ color: '#848E9C' }}>O:</span>
-              <span style={{ color: '#EAECEF', fontWeight: '500' }}>{tooltipData.open?.toFixed(2)}</span>
+              <span style={{ color: '#EAECEF', fontWeight: '500' }}>{tooltipData.open ? formatPriceWithDynamicPrecision(tooltipData.open) : '-'}</span>
 
               <span style={{ color: '#848E9C' }}>H:</span>
-              <span style={{ color: '#0ECB81', fontWeight: '500' }}>{tooltipData.high?.toFixed(2)}</span>
+              <span style={{ color: '#0ECB81', fontWeight: '500' }}>{tooltipData.high ? formatPriceWithDynamicPrecision(tooltipData.high) : '-'}</span>
 
               <span style={{ color: '#848E9C' }}>L:</span>
-              <span style={{ color: '#F6465D', fontWeight: '500' }}>{tooltipData.low?.toFixed(2)}</span>
+              <span style={{ color: '#F6465D', fontWeight: '500' }}>{tooltipData.low ? formatPriceWithDynamicPrecision(tooltipData.low) : '-'}</span>
 
               <span style={{ color: '#848E9C' }}>C:</span>
               <span style={{
                 color: tooltipData.close >= tooltipData.open ? '#0ECB81' : '#F6465D',
                 fontWeight: 'bold'
               }}>
-                {tooltipData.close?.toFixed(2)}
+                {tooltipData.close ? formatPriceWithDynamicPrecision(tooltipData.close) : '-'}
               </span>
 
               {tooltipData.volume > 0 && baseUnit && (

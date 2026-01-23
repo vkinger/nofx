@@ -11,6 +11,38 @@ import {
 import { useLanguage } from '../contexts/LanguageContext'
 import { httpClient } from '../lib/httpClient'
 
+// Format price with dynamic precision based on price range
+// Matches backend FormatPriceWithDynamicPrecision logic
+const formatPriceWithDynamicPrecision = (price: number): string => {
+  if (!price || price === 0) return '0'
+  
+  if (price < 0.0001) {
+    // Ultra-low price meme coins: 1000SATS, 1000WHY, DOGS
+    // 0.00002070 → "0.00002070" (8 decimal places)
+    return price.toFixed(8)
+  } else if (price < 0.001) {
+    // Low price meme coins: NEIRO, HMSTR, HOT, NOT
+    // 0.00015060 → "0.000151" (6 decimal places)
+    return price.toFixed(6)
+  } else if (price < 0.01) {
+    // Mid-low price coins: PEPE, SHIB, MEME
+    // 0.00556800 → "0.005568" (6 decimal places)
+    return price.toFixed(6)
+  } else if (price < 1.0) {
+    // Low price coins: ASTER, DOGE, ADA, TRX
+    // 0.9954 → "0.9954" (4 decimal places)
+    return price.toFixed(4)
+  } else if (price < 100) {
+    // Mid price coins: SOL, AVAX, LINK, MATIC
+    // 23.4567 → "23.4567" (4 decimal places)
+    return price.toFixed(4)
+  } else {
+    // High price coins: BTC, ETH (save tokens)
+    // 45678.9123 → "45678.91" (2 decimal places)
+    return price.toFixed(2)
+  }
+}
+
 // 订单接口定义
 interface OrderMarker {
   time: number // Unix timestamp (seconds)
@@ -478,20 +510,20 @@ export function ChartWithOrders({
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 12px', fontSize: '11px' }}>
               <span style={{ color: '#848E9C' }}>O:</span>
-              <span style={{ color: '#EAECEF', fontWeight: '500' }}>{tooltipData.open?.toFixed(2)}</span>
+              <span style={{ color: '#EAECEF', fontWeight: '500' }}>{tooltipData.open ? formatPriceWithDynamicPrecision(tooltipData.open) : '-'}</span>
 
               <span style={{ color: '#848E9C' }}>H:</span>
-              <span style={{ color: '#0ECB81', fontWeight: '500' }}>{tooltipData.high?.toFixed(2)}</span>
+              <span style={{ color: '#0ECB81', fontWeight: '500' }}>{tooltipData.high ? formatPriceWithDynamicPrecision(tooltipData.high) : '-'}</span>
 
               <span style={{ color: '#848E9C' }}>L:</span>
-              <span style={{ color: '#F6465D', fontWeight: '500' }}>{tooltipData.low?.toFixed(2)}</span>
+              <span style={{ color: '#F6465D', fontWeight: '500' }}>{tooltipData.low ? formatPriceWithDynamicPrecision(tooltipData.low) : '-'}</span>
 
               <span style={{ color: '#848E9C' }}>C:</span>
               <span style={{
                 color: tooltipData.close >= tooltipData.open ? '#0ECB81' : '#F6465D',
                 fontWeight: 'bold'
               }}>
-                {tooltipData.close?.toFixed(2)}
+                {tooltipData.close ? formatPriceWithDynamicPrecision(tooltipData.close) : '-'}
               </span>
             </div>
           </div>

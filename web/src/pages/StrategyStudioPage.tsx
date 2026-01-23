@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useLanguage } from '../contexts/LanguageContext'
+import { useTheme } from '../contexts/ThemeContext'
 import {
   Plus,
   Copy,
@@ -45,6 +46,8 @@ const API_BASE = import.meta.env.VITE_API_BASE || ''
 export function StrategyStudioPage() {
   const { token } = useAuth()
   const { language } = useLanguage()
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
 
   const [strategies, setStrategies] = useState<Strategy[]>([])
   const [selectedStrategy, setSelectedStrategy] = useState<Strategy | null>(null)
@@ -659,7 +662,7 @@ export function StrategyStudioPage() {
       forStrategyType: 'ai_trading' as const,
       content: editingConfig && (
         <div>
-          <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
+          <p className="text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
             {language === 'zh' ? '附加在 System Prompt 末尾的额外提示，用于补充个性化交易风格' : 'Extra prompt appended to System Prompt for personalized trading style'}
           </p>
           <textarea
@@ -668,7 +671,7 @@ export function StrategyStudioPage() {
             disabled={selectedStrategy?.is_default}
             placeholder={language === 'zh' ? '输入自定义提示词...' : 'Enter custom prompt...'}
             className="w-full h-32 px-3 py-2 rounded-lg resize-none font-mono text-xs"
-            style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
+            style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', color: 'var(--text-primary)' }}
           />
         </div>
       ),
@@ -734,7 +737,7 @@ export function StrategyStudioPage() {
               <span className="text-xs font-medium text-nofx-text-muted">{t('strategies')}</span>
               <div className="flex items-center gap-1">
                 {/* Import button with hidden file input */}
-                <label className="p-1 rounded hover:bg-white/10 transition-colors cursor-pointer text-nofx-text-muted hover:text-white" title={language === 'zh' ? '导入策略' : 'Import Strategy'}>
+                <label className="p-1 rounded transition-colors cursor-pointer" style={{ color: 'var(--text-secondary)' }} onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--panel-bg-hover)'; e.currentTarget.style.color = 'var(--text-primary)' }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)' }} title={language === 'zh' ? '导入策略' : 'Import Strategy'}>
                   <Upload className="w-4 h-4" />
                   <input
                     type="file"
@@ -753,27 +756,48 @@ export function StrategyStudioPage() {
               </div>
             </div>
             <div className="space-y-1">
-              {strategies.map((strategy) => (
-                <div
-                  key={strategy.id}
-                  onClick={() => {
-                    setSelectedStrategy(strategy)
-                    setEditingConfig(strategy.config)
-                    setHasChanges(false)
-                    setPromptPreview(null)
-                    setAiTestResult(null)
-                  }}
-                  className={`group px-2 py-2 rounded-lg cursor-pointer transition-all ${selectedStrategy?.id === strategy.id
-                    ? 'ring-1 ring-nofx-gold/50 bg-nofx-gold/10 shadow-[0_0_15px_rgba(240,185,11,0.1)]'
-                    : 'hover:bg-nofx-bg-lighter/60 hover:ring-1 hover:ring-nofx-gold/20 bg-transparent'
+              {strategies.map((strategy) => {
+                const isSelected = selectedStrategy?.id === strategy.id
+                const isEditing = isSelected && hasChanges
+                return (
+                  <div
+                    key={strategy.id}
+                    onClick={() => {
+                      setSelectedStrategy(strategy)
+                      setEditingConfig(strategy.config)
+                      setHasChanges(false)
+                      setPromptPreview(null)
+                      setAiTestResult(null)
+                    }}
+                    className={`group px-2 py-2 rounded-lg cursor-pointer transition-all relative ${
+                      isEditing
+                        ? 'ring-2 ring-orange-500/60 bg-orange-500/15 shadow-[0_0_15px_rgba(249,115,22,0.2)]'
+                        : isSelected
+                        ? 'ring-1 ring-nofx-gold/50 bg-nofx-gold/10 shadow-[0_0_15px_rgba(240,185,11,0.1)]'
+                        : 'hover:bg-nofx-bg-lighter/60 hover:ring-1 hover:ring-nofx-gold/20 bg-transparent'
                     }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm truncate text-nofx-text">{strategy.name}</span>
-                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  >
+                    {isEditing && (
+                      <span
+                        className="absolute top-1 right-1 w-2 h-2 rounded-full animate-pulse"
+                        style={{
+                          background: '#f97316',
+                          boxShadow: '0 0 6px rgba(249, 115, 22, 0.8)',
+                        }}
+                        title={language === 'zh' ? '编辑中' : 'Editing'}
+                      />
+                    )}
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm truncate" style={{ color: isEditing ? '#f97316' : isSelected ? 'var(--nofx-gold)' : 'var(--text-primary)' }}>
+                        {strategy.name}
+                      </span>
+                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
                         onClick={(e) => { e.stopPropagation(); handleExportStrategy(strategy) }}
-                        className="p-1 rounded hover:bg-white/10 text-nofx-text-muted hover:text-white"
+                        className="p-1 rounded transition-colors"
+                        style={{ color: 'var(--text-secondary)' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--panel-bg-hover)'; e.currentTarget.style.color = 'var(--text-primary)' }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)' }}
                         title={language === 'zh' ? '导出' : 'Export'}
                       >
                         <Download className="w-3 h-3" />
@@ -782,7 +806,10 @@ export function StrategyStudioPage() {
                         <>
                           <button
                             onClick={(e) => { e.stopPropagation(); handleDuplicateStrategy(strategy.id) }}
-                            className="p-1 rounded hover:bg-white/10 text-nofx-text-muted hover:text-white"
+                            className="p-1 rounded transition-colors"
+                        style={{ color: 'var(--text-secondary)' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--panel-bg-hover)'; e.currentTarget.style.color = 'var(--text-primary)' }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)' }}
                             title={language === 'zh' ? '复制' : 'Duplicate'}
                           >
                             <Copy className="w-3 h-3" />
@@ -796,9 +823,9 @@ export function StrategyStudioPage() {
                           </button>
                         </>
                       )}
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-1 mt-1 flex-wrap">
+                    <div className="flex items-center gap-1 mt-1 flex-wrap">
                     {strategy.is_active && (
                       <span className="px-1.5 py-0.5 text-[10px] rounded bg-nofx-success/15 text-nofx-success">
                         {t('active')}
@@ -815,9 +842,10 @@ export function StrategyStudioPage() {
                         {language === 'zh' ? '公开' : 'Public'}
                       </span>
                     )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         </div>
@@ -1017,7 +1045,21 @@ export function StrategyStudioPage() {
                   <button
                     onClick={fetchPromptPreview}
                     disabled={isLoadingPrompt || !editingConfig}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors disabled:opacity-50 bg-purple-600 hover:bg-purple-700 text-white"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors disabled:opacity-50"
+                    style={{
+                      background: 'rgb(147, 51, 234)',
+                      color: '#fff',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isLoadingPrompt && editingConfig) {
+                        e.currentTarget.style.background = 'rgb(126, 34, 206)'
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isLoadingPrompt && editingConfig) {
+                        e.currentTarget.style.background = 'rgb(147, 51, 234)'
+                      }
+                    }}
                   >
                     {isLoadingPrompt ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
                     {promptPreview ? t('refreshPrompt') : t('loadPrompt')}
@@ -1047,15 +1089,26 @@ export function StrategyStudioPage() {
                       <div className="flex items-center justify-between mb-1.5">
                         <div className="flex items-center gap-1.5">
                           <FileText className="w-3 h-3 text-purple-500" />
-                          <span className="text-xs font-medium text-nofx-text">{t('systemPrompt')}</span>
+                          <span className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>{t('systemPrompt')}</span>
                         </div>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-nofx-bg-lighter text-nofx-text-muted">
+                        <span 
+                          className="text-[10px] px-1.5 py-0.5 rounded"
+                          style={{
+                            background: isDark ? 'rgba(11, 14, 17, 0.6)' : 'var(--panel-bg-hover)',
+                            color: 'var(--text-secondary)',
+                          }}
+                        >
                           {promptPreview.system_prompt.length.toLocaleString()} chars
                         </span>
                       </div>
                       <pre
-                        className="p-2 rounded-lg text-[11px] font-mono overflow-auto bg-nofx-bg border border-nofx-gold/20 text-nofx-text"
-                        style={{ maxHeight: '400px' }}
+                        className="p-2 rounded-lg text-[11px] font-mono overflow-auto transition-colors"
+                        style={{ 
+                          maxHeight: '400px',
+                          background: isDark ? 'rgba(11, 14, 17, 0.6)' : 'var(--panel-bg)',
+                          border: '1px solid var(--panel-border)',
+                          color: 'var(--text-primary)',
+                        }}
                       >
                         {promptPreview.system_prompt}
                       </pre>
@@ -1108,7 +1161,8 @@ export function StrategyStudioPage() {
                     <button
                       onClick={runAiTest}
                       disabled={isRunningAiTest || !editingConfig || !selectedModelId}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-50 text-white shadow-lg shadow-green-500/20 bg-gradient-to-br from-green-500 to-green-600"
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-50 shadow-lg shadow-green-500/20 bg-gradient-to-br from-green-500 to-green-600"
+                      style={{ color: '#fff' }}
                     >
                       {isRunningAiTest ? (
                         <>

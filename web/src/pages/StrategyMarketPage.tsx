@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { useLanguage } from '../contexts/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
+import { useTheme } from '../contexts/ThemeContext'
 import { toast } from 'sonner'
 import { DeepVoidBackground } from '../components/DeepVoidBackground'
 
@@ -102,6 +103,8 @@ function getStrategyStyle(name: string) {
 export function StrategyMarketPage() {
   const { language } = useLanguage()
   const { token, user } = useAuth()
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -226,7 +229,7 @@ export function StrategyMarketPage() {
   }
 
   return (
-    <DeepVoidBackground className="min-h-screen text-white font-mono py-12">
+    <DeepVoidBackground className="min-h-screen font-mono py-12" style={{ color: 'var(--text-primary)' }}>
       <div className="w-full px-4 md:px-8 space-y-8">
 
         <div className="w-full relative z-10">
@@ -245,7 +248,7 @@ export function StrategyMarketPage() {
                 <Database className="w-8 h-8 text-nofx-gold relative z-10" />
               </div>
               <div>
-                <h1 className="text-4xl font-bold tracking-tighter text-white uppercase glitch-text" data-text={t.title}>
+                <h1 className="text-4xl font-bold tracking-tighter uppercase glitch-text" style={{ color: 'var(--text-primary)' }} data-text={t.title}>
                   {t.title}
                 </h1>
                 <p className="text-xs text-nofx-gold tracking-[0.3em] font-bold mt-1">
@@ -287,9 +290,22 @@ export function StrategyMarketPage() {
                   key={cat}
                   onClick={() => setSelectedCategory(cat)}
                   className={`px-4 py-2 text-xs font-mono uppercase tracking-wider transition-all relative overflow-hidden ${selectedCategory === cat
-                    ? 'text-black font-bold'
-                    : 'text-zinc-500 hover:text-white'
+                    ? 'font-bold'
+                    : ''
                     }`}
+                  style={{
+                    color: selectedCategory === cat ? 'var(--nofx-gold)' : 'var(--text-secondary)',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (selectedCategory !== cat) {
+                      e.currentTarget.style.color = 'var(--text-primary)'
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (selectedCategory !== cat) {
+                      e.currentTarget.style.color = 'var(--text-secondary)'
+                    }
+                  }}
                 >
                   {selectedCategory === cat && (
                     <motion.div
@@ -395,19 +411,25 @@ export function StrategyMarketPage() {
                         </p>
 
                         {/* Meta Data */}
-                        <div className="grid grid-cols-2 gap-y-2 mb-6 text-[10px] font-mono text-zinc-600">
+                        <div className="grid grid-cols-2 gap-y-2 mb-6 text-[10px] font-mono" style={{ color: 'var(--text-secondary)' }}>
                           <div className="flex flex-col">
-                            <span className="text-zinc-700 uppercase">{t.author}</span>
-                            <span className="text-zinc-400 group-hover:text-white transition-colors">@{strategy.author_email?.split('@')[0] || 'UNKNOWN'}</span>
+                            <span className="uppercase" style={{ color: 'var(--text-secondary)' }}>{t.author}</span>
+                            <span className="transition-colors" style={{ color: 'var(--text-secondary)' }} onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-primary)' }} onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-secondary)' }}>@{strategy.author_email?.split('@')[0] || 'UNKNOWN'}</span>
                           </div>
                           <div className="flex flex-col text-right">
-                            <span className="text-zinc-700 uppercase">{t.createdAt}</span>
-                            <span className="text-zinc-400">{formatDate(strategy.created_at)}</span>
+                            <span className="uppercase" style={{ color: 'var(--text-secondary)' }}>{t.createdAt}</span>
+                            <span style={{ color: 'var(--text-secondary)' }}>{formatDate(strategy.created_at)}</span>
                           </div>
                         </div>
 
                         {/* Config / Indicators */}
-                        <div className="bg-zinc-900/30 border border-zinc-800/50 p-3 mb-4 backdrop-blur-sm min-h-[90px]">
+                        <div 
+                          className="border p-3 mb-4 backdrop-blur-sm min-h-[90px]"
+                          style={{
+                            background: isDark ? 'rgba(39, 39, 42, 0.3)' : 'var(--panel-bg)',
+                            borderColor: 'var(--panel-border)',
+                          }}
+                        >
                           {strategy.config_visible && strategy.config ? (
                             <div className="space-y-3">
                               {/* Indicators */}
@@ -415,11 +437,16 @@ export function StrategyMarketPage() {
                                 {indicators.length > 0 ? indicators.map((ind) => (
                                   <span
                                     key={ind}
-                                    className="px-1.5 py-0.5 border border-zinc-700 bg-zinc-800 text-[9px] text-zinc-300 font-mono whitespace-nowrap"
+                                    className="px-1.5 py-0.5 border font-mono whitespace-nowrap text-[9px]"
+                                    style={{
+                                      borderColor: 'var(--panel-border)',
+                                      background: isDark ? 'rgba(63, 63, 70, 0.5)' : 'var(--panel-bg-hover)',
+                                      color: 'var(--text-primary)',
+                                    }}
                                   >
                                     {ind}
                                   </span>
-                                )) : <span className="text-[9px] text-zinc-600">NO_INDICATORS</span>}
+                                )) : <span className="text-[9px]" style={{ color: 'var(--text-secondary)' }}>NO_INDICATORS</span>}
                               </div>
 
                               {/* Risk Control */}
@@ -427,20 +454,20 @@ export function StrategyMarketPage() {
                                 <div className="flex justify-between items-center text-[10px]">
                                   <div className="flex gap-3">
                                     <div className="flex flex-col">
-                                      <span className="text-zinc-600 scale-90 origin-left">LEV</span>
-                                      <span className="text-zinc-300 font-bold">{strategy.config.risk_control.btc_eth_max_leverage || '-'}x</span>
+                                      <span className="scale-90 origin-left" style={{ color: 'var(--text-secondary)' }}>LEV</span>
+                                      <span className="font-bold" style={{ color: 'var(--text-primary)' }}>{strategy.config.risk_control.btc_eth_max_leverage || '-'}x</span>
                                     </div>
                                     <div className="flex flex-col">
-                                      <span className="text-zinc-600 scale-90 origin-left">POS</span>
-                                      <span className="text-zinc-300 font-bold">{strategy.config.risk_control.max_positions || '-'}</span>
+                                      <span className="scale-90 origin-left" style={{ color: 'var(--text-secondary)' }}>POS</span>
+                                      <span className="font-bold" style={{ color: 'var(--text-primary)' }}>{strategy.config.risk_control.max_positions || '-'}</span>
                                     </div>
                                   </div>
-                                  <Activity size={12} className="text-zinc-700" />
+                                  <Activity size={12} style={{ color: 'var(--text-secondary)' }} />
                                 </div>
                               )}
                             </div>
                           ) : (
-                            <div className="flex flex-col items-center justify-center h-full text-zinc-600">
+                            <div className="flex flex-col items-center justify-center h-full" style={{ color: 'var(--text-secondary)' }}>
                               <EyeOff size={16} className="mb-1 opacity-50" />
                               <span className="text-[9px] uppercase tracking-widest">{t.configHiddenDesc}</span>
                             </div>
@@ -495,7 +522,7 @@ export function StrategyMarketPage() {
                 <div className="relative px-8 py-4 bg-black border border-zinc-800 hover:border-nofx-gold/50 flex items-center gap-4 transition-all">
                   <Hexagon className="text-nofx-gold animate-spin-slow" size={24} />
                   <div className="text-left">
-                    <div className="text-sm font-bold text-white uppercase tracking-wider group-hover:text-nofx-gold transition-colors">{t.shareYours}</div>
+                    <div className="text-sm font-bold uppercase tracking-wider transition-colors" style={{ color: 'var(--text-primary)' }} onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--nofx-gold)' }} onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-primary)' }}>{t.shareYours}</div>
                     <div className="text-[10px] text-zinc-500 font-mono">CONTRIBUTE TO THE GLOBAL DATABASE</div>
                   </div>
                   <div className="w-[1px] h-8 bg-zinc-800 mx-2"></div>

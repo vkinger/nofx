@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Menu, X, ChevronDown } from 'lucide-react'
+import { Menu, X, ChevronDown, Sun, Moon, Palette, Sparkles } from 'lucide-react'
 import { t, type Language } from '../i18n/translations'
 import { useSystemConfig } from '../hooks/useSystemConfig'
 import { OFFICIAL_LINKS } from '../constants/branding'
+import { useTheme } from '../contexts/ThemeContext'
 
 type Page =
   | 'competition'
@@ -49,8 +50,11 @@ export default function HeaderBar({
   const [userDropdownOpen, setUserDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const userDropdownRef = useRef<HTMLDivElement>(null)
+  const themeDropdownRef = useRef<HTMLDivElement>(null)
   const { config: systemConfig } = useSystemConfig()
   const registrationEnabled = systemConfig?.registration_enabled !== false
+  const { theme, setTheme } = useTheme()
+  const [themeDropdownOpen, setThemeDropdownOpen] = useState(false)
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -66,6 +70,12 @@ export default function HeaderBar({
         !userDropdownRef.current.contains(event.target as Node)
       ) {
         setUserDropdownOpen(false)
+      }
+      if (
+        themeDropdownRef.current &&
+        !themeDropdownRef.current.contains(event.target as Node)
+      ) {
+        setThemeDropdownOpen(false)
       }
     }
 
@@ -123,21 +133,40 @@ export default function HeaderBar({
                 navigate(tab.path)
               }
 
-              return navTabs.map((tab) => (
-                <button
-                  key={tab.page}
-                  onClick={() => handleNavClick(tab)}
-                  className={`text-sm font-bold transition-all duration-300 relative focus:outline-2 focus:outline-yellow-500 px-3 py-2 rounded-lg
-                    ${currentPage === tab.page ? 'text-nofx-gold' : 'text-nofx-text-muted hover:text-nofx-gold'}`}
-                >
-                  {currentPage === tab.page && (
-                    <span
-                      className="absolute inset-0 rounded-lg bg-nofx-gold/15 -z-10"
-                    />
-                  )}
-                  {tab.label}
-                </button>
-              ))
+              return navTabs.map((tab) => {
+                const isActive = currentPage === tab.page
+                return (
+                  <button
+                    key={tab.page}
+                    onClick={() => handleNavClick(tab)}
+                    className={`text-sm font-bold transition-all duration-300 relative focus:outline-2 focus:outline-yellow-500 px-3 py-2 rounded-lg
+                      ${isActive ? 'text-nofx-gold' : 'text-nofx-text-muted hover:text-nofx-gold'}`}
+                    style={{
+                      position: 'relative',
+                    }}
+                  >
+                    {isActive && (
+                      <>
+                        <span
+                          className="absolute inset-0 rounded-lg -z-10"
+                          style={{
+                            background: 'rgba(240, 185, 11, 0.15)',
+                            boxShadow: '0 0 10px rgba(240, 185, 11, 0.2)',
+                          }}
+                        />
+                        <span
+                          className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-1/2 h-0.5 rounded-full"
+                          style={{
+                            background: 'var(--nofx-gold)',
+                            boxShadow: '0 0 8px rgba(240, 185, 11, 0.6)',
+                          }}
+                        />
+                      </>
+                    )}
+                    {tab.label}
+                  </button>
+                )
+              })
             })()}
           </div>
 
@@ -251,6 +280,132 @@ export default function HeaderBar({
                 </div>
               )
             )}
+
+            {/* Theme Selector */}
+            <div className="relative" ref={themeDropdownRef}>
+              <button
+                onClick={() => setThemeDropdownOpen(!themeDropdownOpen)}
+                className="flex items-center justify-center w-9 h-9 rounded transition-colors text-nofx-text-muted hover:bg-white/5 hover:text-nofx-gold"
+                title={t('selectTheme', language)}
+              >
+                {theme === 'dark' ? (
+                  <Moon className="w-5 h-5" />
+                ) : theme === 'light' ? (
+                  <Sun className="w-5 h-5" />
+                ) : theme === 'fresh' ? (
+                  <Palette className="w-5 h-5" />
+                ) : (
+                  <Sparkles className="w-5 h-5" />
+                )}
+              </button>
+
+              {themeDropdownOpen && (
+                <div 
+                  className="absolute right-0 top-full mt-2 w-44 rounded-lg shadow-lg overflow-hidden z-50 border"
+                  style={{
+                    background: 'var(--panel-bg)',
+                    borderColor: 'var(--panel-border)',
+                  }}
+                >
+                  <button
+                    onClick={() => {
+                      setTheme('dark')
+                      setThemeDropdownOpen(false)
+                    }}
+                    className="w-full flex items-center gap-2 px-4 py-2.5 transition-colors"
+                    style={{
+                      background: theme === 'dark' ? 'rgba(240, 185, 11, 0.15)' : 'transparent',
+                      color: theme === 'dark' ? 'var(--nofx-gold)' : 'var(--text-primary)',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (theme !== 'dark') {
+                        e.currentTarget.style.background = 'var(--panel-bg-hover)'
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (theme !== 'dark') {
+                        e.currentTarget.style.background = 'transparent'
+                      }
+                    }}
+                  >
+                    <Moon className="w-4 h-4" />
+                    <span className="text-sm font-medium">{t('themeDark', language)}</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setTheme('light')
+                      setThemeDropdownOpen(false)
+                    }}
+                    className="w-full flex items-center gap-2 px-4 py-2.5 transition-colors"
+                    style={{
+                      background: theme === 'light' ? 'rgba(240, 185, 11, 0.15)' : 'transparent',
+                      color: theme === 'light' ? 'var(--nofx-gold)' : 'var(--text-primary)',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (theme !== 'light') {
+                        e.currentTarget.style.background = 'var(--panel-bg-hover)'
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (theme !== 'light') {
+                        e.currentTarget.style.background = 'transparent'
+                      }
+                    }}
+                  >
+                    <Sun className="w-4 h-4" />
+                    <span className="text-sm font-medium">{t('themeLight', language)}</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setTheme('fresh')
+                      setThemeDropdownOpen(false)
+                    }}
+                    className="w-full flex items-center gap-2 px-4 py-2.5 transition-colors"
+                    style={{
+                      background: theme === 'fresh' ? 'rgba(240, 185, 11, 0.15)' : 'transparent',
+                      color: theme === 'fresh' ? 'var(--nofx-gold)' : 'var(--text-primary)',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (theme !== 'fresh') {
+                        e.currentTarget.style.background = 'var(--panel-bg-hover)'
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (theme !== 'fresh') {
+                        e.currentTarget.style.background = 'transparent'
+                      }
+                    }}
+                  >
+                    <Palette className="w-4 h-4" />
+                    <span className="text-sm font-medium">{t('themeFresh', language)}</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setTheme('cartoon')
+                      setThemeDropdownOpen(false)
+                    }}
+                    className="w-full flex items-center gap-2 px-4 py-2.5 transition-colors"
+                    style={{
+                      background: theme === 'cartoon' ? 'rgba(240, 185, 11, 0.15)' : 'transparent',
+                      color: theme === 'cartoon' ? 'var(--nofx-gold)' : 'var(--text-primary)',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (theme !== 'cartoon') {
+                        e.currentTarget.style.background = 'var(--panel-bg-hover)'
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (theme !== 'cartoon') {
+                        e.currentTarget.style.background = 'transparent'
+                      }
+                    }}
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <span className="text-sm font-medium">{t('themeCartoon', language)}</span>
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Language Toggle - Always at the rightmost */}
             <div className="relative" ref={dropdownRef}>

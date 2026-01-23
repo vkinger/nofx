@@ -40,6 +40,8 @@ export interface Position {
   unrealized_pnl_pct: number
   liquidation_price: number
   margin_used: number
+  stop_loss?: number      // Stop loss price
+  take_profit?: number    // Take profit price
   trailing?: TrailingStatus
 }
 

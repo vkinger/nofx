@@ -10122,3 +10122,5 @@ pkg/mod/github.com/goccy/go-yaml@v1.18.0/testdata/yaml-test-suite/non-specific-t
 pkg/mod/github.com/goccy/go-yaml@v1.18.0/testdata/yaml-test-suite/non-specific-tags-on-scalars/in.yaml
 pkg/mod/github.com/goccy/go-yaml@v1.18.0/testdata/yaml-test-suite/plain-dashes-in-flow-sequence/error
 pkg/mod/github.com/goccy/go-yaml@v1.18.0/testdata/yaml-test-suite/plain-dashes-in-flow-sequence/in.yaml
+/data/
+/data/postgres/

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { api } from '../lib/api'
 import { useLanguage } from '../contexts/LanguageContext'
+import { useTheme } from '../contexts/ThemeContext'
 import { t } from '../i18n/translations'
 import { MetricTooltip } from './MetricTooltip'
 import type {
@@ -74,18 +75,22 @@ function StatCard({
   metricKey?: string
   language?: string
 }) {
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
   return (
     <div
       className="rounded-lg p-4 transition-all duration-200 hover:scale-[1.02]"
       style={{
-        background: 'linear-gradient(135deg, #1E2329 0%, #181C21 100%)',
-        border: '1px solid #2B3139',
+        background: isDark 
+          ? 'linear-gradient(135deg, rgba(30, 36, 42, 0.95) 0%, rgba(24, 28, 33, 0.95) 100%)'
+          : 'var(--panel-bg)',
+        border: `1px solid var(--panel-border)`,
         boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
       }}
     >
       <div className="flex items-center gap-2 mb-2">
         <span className="text-lg">{icon}</span>
-        <span className="text-xs" style={{ color: '#848E9C' }}>
+        <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
           {title}
         </span>
         {metricKey && (
@@ -95,18 +100,18 @@ function StatCard({
       <div className="flex items-baseline gap-1">
         <span
           className="text-xl font-bold font-mono"
-          style={{ color: color || '#EAECEF' }}
+          style={{ color: color || 'var(--text-primary)' }}
         >
           {value}
         </span>
         {suffix && (
-          <span className="text-sm" style={{ color: '#848E9C' }}>
+          <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
             {suffix}
           </span>
         )}
       </div>
       {subtitle && (
-        <div className="text-xs mt-1" style={{ color: '#848E9C' }}>
+        <div className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
           {subtitle}
         </div>
       )}
@@ -124,20 +129,23 @@ function SymbolStatsRow({ stat }: { stat: SymbolStats }) {
 
   return (
     <div
-      className="flex items-center justify-between p-3 rounded-lg transition-all duration-200 hover:bg-white/5"
-      style={{ borderBottom: '1px solid #2B3139' }}
+      className="flex items-center justify-between p-3 rounded-lg transition-all duration-200"
+      style={{ 
+        borderBottom: `1px solid var(--panel-border)`,
+        backgroundColor: 'transparent',
+      }}
     >
       <div className="flex items-center gap-3">
-        <span className="font-mono font-semibold" style={{ color: '#EAECEF' }}>
+        <span className="font-mono font-semibold" style={{ color: 'var(--text-primary)' }}>
           {(stat.symbol || '').replace('USDT', '')}
         </span>
-        <span className="text-xs" style={{ color: '#848E9C' }}>
+        <span className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
           {stat.total_trades || 0} trades
         </span>
       </div>
       <div className="flex items-center gap-6">
         <div className="text-right">
-          <div className="text-xs" style={{ color: '#848E9C' }}>
+          <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
             Win Rate
           </div>
           <div className="font-mono font-semibold" style={{ color: winRateColor }}>
@@ -145,7 +153,7 @@ function SymbolStatsRow({ stat }: { stat: SymbolStats }) {
           </div>
         </div>
         <div className="text-right min-w-[80px]">
-          <div className="text-xs" style={{ color: '#848E9C' }}>
+          <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
             P&L
           </div>
           <div className="font-mono font-semibold" style={{ color: pnlColor }}>
@@ -160,6 +168,8 @@ function SymbolStatsRow({ stat }: { stat: SymbolStats }) {
 
 // Direction Stats Card
 function DirectionStatsCard({ stat, language }: { stat: DirectionStats; language: 'en' | 'zh' }) {
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
   const isLong = (stat.side || '').toLowerCase() === 'long'
   const iconColor = isLong ? '#0ECB81' : '#F6465D'
   const totalPnl = stat.total_pnl || 0
@@ -172,7 +182,9 @@ function DirectionStatsCard({ stat, language }: { stat: DirectionStats; language
     <div
       className="rounded-lg p-4"
       style={{
-        background: 'linear-gradient(135deg, #1E2329 0%, #181C21 100%)',
+        background: isDark 
+          ? 'linear-gradient(135deg, rgba(30, 36, 42, 0.95) 0%, rgba(24, 28, 33, 0.95) 100%)'
+          : 'var(--panel-bg)',
         border: `1px solid ${iconColor}33`,
       }}
     >
@@ -187,15 +199,15 @@ function DirectionStatsCard({ stat, language }: { stat: DirectionStats; language
       </div>
       <div className="grid grid-cols-4 gap-4">
         <div>
-          <div className="text-xs mb-1" style={{ color: '#848E9C' }}>
+          <div className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
             {t('positionHistory.trades', language)}
           </div>
-          <div className="font-mono font-semibold" style={{ color: '#EAECEF' }}>
+          <div className="font-mono font-semibold" style={{ color: 'var(--text-primary)' }}>
             {tradeCount}
           </div>
         </div>
         <div>
-          <div className="text-xs mb-1" style={{ color: '#848E9C' }}>
+          <div className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
             {t('positionHistory.winRate', language)}
           </div>
           <div
@@ -213,7 +225,7 @@ function DirectionStatsCard({ stat, language }: { stat: DirectionStats; language
           </div>
         </div>
         <div>
-          <div className="text-xs mb-1" style={{ color: '#848E9C' }}>
+          <div className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
             {t('positionHistory.totalPnL', language)}
           </div>
           <div className="font-mono font-semibold" style={{ color: pnlColor }}>
@@ -222,7 +234,7 @@ function DirectionStatsCard({ stat, language }: { stat: DirectionStats; language
           </div>
         </div>
         <div>
-          <div className="text-xs mb-1" style={{ color: '#848E9C' }}>
+          <div className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
             {t('positionHistory.avgPnL', language)}
           </div>
           <div className="font-mono font-semibold" style={{ color: avgPnl >= 0 ? '#0ECB81' : '#F6465D' }}>
@@ -266,13 +278,21 @@ function PositionRow({ position }: { position: HistoricalPosition }) {
 
   return (
     <tr
-      className="transition-all duration-200 hover:bg-white/5"
-      style={{ borderBottom: '1px solid #2B3139' }}
+      className="transition-all duration-200"
+      style={{ 
+        borderBottom: `1px solid var(--panel-border)`,
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = 'var(--panel-bg-hover)'
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = 'transparent'
+      }}
     >
       {/* Symbol */}
       <td className="py-3 px-4">
         <div className="flex items-center gap-2">
-          <span className="font-mono font-semibold" style={{ color: '#EAECEF' }}>
+          <span className="font-mono font-semibold" style={{ color: 'var(--text-primary)' }}>
             {(position.symbol || '').replace('USDT', '')}
           </span>
           <span
@@ -289,22 +309,22 @@ function PositionRow({ position }: { position: HistoricalPosition }) {
       </td>
 
       {/* Entry Price */}
-      <td className="py-3 px-4 text-right font-mono" style={{ color: '#EAECEF' }}>
+      <td className="py-3 px-4 text-right font-mono" style={{ color: 'var(--text-primary)' }}>
         {formatPrice(entryPrice)}
       </td>
 
       {/* Exit Price */}
-      <td className="py-3 px-4 text-right font-mono" style={{ color: '#EAECEF' }}>
+      <td className="py-3 px-4 text-right font-mono" style={{ color: 'var(--text-primary)' }}>
         {formatPrice(exitPrice)}
       </td>
 
       {/* Quantity */}
-      <td className="py-3 px-4 text-right font-mono" style={{ color: '#848E9C' }}>
+      <td className="py-3 px-4 text-right font-mono" style={{ color: 'var(--text-secondary)' }}>
         {displayQty.toFixed(4)}
       </td>
 
       {/* Position Value (Entry Price * Quantity) */}
-      <td className="py-3 px-4 text-right font-mono" style={{ color: '#EAECEF' }}>
+      <td className="py-3 px-4 text-right font-mono" style={{ color: 'var(--text-primary)' }}>
         {formatNumber(entryPrice * displayQty)}
       </td>
 
@@ -321,19 +341,19 @@ function PositionRow({ position }: { position: HistoricalPosition }) {
       </td>
 
       {/* Fee - show more precision for small fees */}
-      <td className="py-3 px-4 text-right font-mono text-xs" style={{ color: '#848E9C' }}>
+      <td className="py-3 px-4 text-right font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
         -{((position.fee || 0) < 0.01 && (position.fee || 0) > 0)
           ? (position.fee || 0).toFixed(4)
           : (position.fee || 0).toFixed(2)}
       </td>
 
       {/* Duration */}
-      <td className="py-3 px-4 text-center text-sm" style={{ color: '#848E9C' }}>
+      <td className="py-3 px-4 text-center text-sm" style={{ color: 'var(--text-secondary)' }}>
         {formatDuration(holdingMinutes)}
       </td>
 
       {/* Exit Time */}
-      <td className="py-3 px-4 text-right text-xs" style={{ color: '#848E9C' }}>
+      <td className="py-3 px-4 text-right text-xs" style={{ color: 'var(--text-secondary)' }}>
         {formatDate(position.exit_time)}
       </td>
     </tr>
@@ -342,6 +362,8 @@ function PositionRow({ position }: { position: HistoricalPosition }) {
 
 export function PositionHistory({ traderId }: PositionHistoryProps) {
   const { language } = useLanguage()
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [positions, setPositions] = useState<HistoricalPosition[]>([])
@@ -636,13 +658,15 @@ export function PositionHistory({ traderId }: PositionHistoryProps) {
         <div
           className="rounded-lg p-4"
           style={{
-            background: 'linear-gradient(135deg, #1E2329 0%, #181C21 100%)',
-            border: '1px solid #2B3139',
+            background: isDark 
+              ? 'linear-gradient(135deg, rgba(30, 36, 42, 0.95) 0%, rgba(24, 28, 33, 0.95) 100%)'
+              : 'var(--panel-bg)',
+            border: `1px solid var(--panel-border)`,
           }}
         >
           <div className="flex items-center gap-2 mb-4">
             <span className="text-lg">🏅</span>
-            <span className="font-semibold" style={{ color: '#EAECEF' }}>
+            <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>
               {t('positionHistory.symbolPerformance', language)}
             </span>
           </div>
@@ -658,27 +682,29 @@ export function PositionHistory({ traderId }: PositionHistoryProps) {
       <div
         className="rounded-lg overflow-hidden"
         style={{
-          background: 'linear-gradient(135deg, #1E2329 0%, #181C21 100%)',
-          border: '1px solid #2B3139',
+          background: isDark 
+            ? 'linear-gradient(135deg, rgba(30, 36, 42, 0.95) 0%, rgba(24, 28, 33, 0.95) 100%)'
+            : 'var(--panel-bg)',
+          border: `1px solid var(--panel-border)`,
         }}
       >
         {/* Filters */}
         <div
           className="flex flex-wrap items-center gap-4 p-4"
-          style={{ borderBottom: '1px solid #2B3139' }}
+          style={{ borderBottom: `1px solid var(--panel-border)` }}
         >
           <div className="flex items-center gap-2">
-            <span className="text-sm" style={{ color: '#848E9C' }}>
+            <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
               {t('positionHistory.symbol', language)}:
             </span>
             <select
               value={filterSymbol}
               onChange={(e) => setFilterSymbol(e.target.value)}
-              className="rounded px-3 py-1.5 text-sm"
+              className="rounded px-3 py-1.5 text-sm transition-colors"
               style={{
-                background: '#0B0E11',
-                border: '1px solid #2B3139',
-                color: '#EAECEF',
+                background: 'var(--panel-bg)',
+                border: `1px solid var(--panel-border)`,
+                color: 'var(--text-primary)',
               }}
             >
               <option value="all">{t('positionHistory.allSymbols', language)}</option>
@@ -691,18 +717,31 @@ export function PositionHistory({ traderId }: PositionHistoryProps) {
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-sm" style={{ color: '#848E9C' }}>
+            <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
               {t('positionHistory.side', language)}:
             </span>
-            <div className="flex rounded overflow-hidden" style={{ border: '1px solid #2B3139' }}>
+            <div className="flex rounded overflow-hidden" style={{ border: `1px solid var(--panel-border)` }}>
               {['all', 'LONG', 'SHORT'].map((side) => (
                 <button
                   key={side}
                   onClick={() => setFilterSide(side)}
                   className="px-3 py-1.5 text-sm capitalize transition-colors"
                   style={{
-                    background: filterSide === side ? '#2B3139' : 'transparent',
-                    color: filterSide === side ? '#EAECEF' : '#848E9C',
+                    background: filterSide === side ? 'rgba(240, 185, 11, 0.15)' : 'transparent',
+                    color: filterSide === side ? 'var(--nofx-gold)' : 'var(--text-secondary)',
+                    borderRight: side !== 'SHORT' ? `1px solid var(--panel-border)` : 'none',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (filterSide !== side) {
+                      e.currentTarget.style.background = 'var(--panel-bg-hover)'
+                      e.currentTarget.style.color = 'var(--text-primary)'
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (filterSide !== side) {
+                      e.currentTarget.style.background = 'transparent'
+                      e.currentTarget.style.color = 'var(--text-secondary)'
+                    }
                   }}
                 >
                   {side === 'all' ? t('positionHistory.all', language) : side}
@@ -727,9 +766,9 @@ export function PositionHistory({ traderId }: PositionHistoryProps) {
               }}
               className="rounded px-3 py-1.5 text-sm"
               style={{
-                background: '#0B0E11',
-                border: '1px solid #2B3139',
-                color: '#EAECEF',
+                background: 'var(--panel-bg)',
+                border: `1px solid var(--panel-border)`,
+                color: 'var(--text-primary)',
               }}
             >
               <option value="time-desc">{t('positionHistory.latestFirst', language)}</option>
@@ -744,58 +783,58 @@ export function PositionHistory({ traderId }: PositionHistoryProps) {
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr style={{ background: '#0B0E11' }}>
+              <tr style={{ background: 'var(--panel-bg)' }}>
                 <th
                   className="py-3 px-4 text-left text-xs font-semibold uppercase tracking-wider"
-                  style={{ color: '#848E9C' }}
+                  style={{ color: 'var(--text-secondary)' }}
                 >
                   {t('positionHistory.symbol', language)}
                 </th>
                 <th
                   className="py-3 px-4 text-right text-xs font-semibold uppercase tracking-wider"
-                  style={{ color: '#848E9C' }}
+                  style={{ color: 'var(--text-secondary)' }}
                 >
                   {t('positionHistory.entry', language)}
                 </th>
                 <th
                   className="py-3 px-4 text-right text-xs font-semibold uppercase tracking-wider"
-                  style={{ color: '#848E9C' }}
+                  style={{ color: 'var(--text-secondary)' }}
                 >
                   {t('positionHistory.exit', language)}
                 </th>
                 <th
                   className="py-3 px-4 text-right text-xs font-semibold uppercase tracking-wider"
-                  style={{ color: '#848E9C' }}
+                  style={{ color: 'var(--text-secondary)' }}
                 >
                   {t('positionHistory.qty', language)}
                 </th>
                 <th
                   className="py-3 px-4 text-right text-xs font-semibold uppercase tracking-wider"
-                  style={{ color: '#848E9C' }}
+                  style={{ color: 'var(--text-secondary)' }}
                 >
                   {t('positionHistory.value', language)}
                 </th>
                 <th
                   className="py-3 px-4 text-right text-xs font-semibold uppercase tracking-wider"
-                  style={{ color: '#848E9C' }}
+                  style={{ color: 'var(--text-secondary)' }}
                 >
                   {t('positionHistory.pnl', language)}
                 </th>
                 <th
                   className="py-3 px-4 text-right text-xs font-semibold uppercase tracking-wider"
-                  style={{ color: '#848E9C' }}
+                  style={{ color: 'var(--text-secondary)' }}
                 >
                   {t('positionHistory.fee', language)}
                 </th>
                 <th
                   className="py-3 px-4 text-center text-xs font-semibold uppercase tracking-wider"
-                  style={{ color: '#848E9C' }}
+                  style={{ color: 'var(--text-secondary)' }}
                 >
                   {t('positionHistory.duration', language)}
                 </th>
                 <th
                   className="py-3 px-4 text-right text-xs font-semibold uppercase tracking-wider"
-                  style={{ color: '#848E9C' }}
+                  style={{ color: 'var(--text-secondary)' }}
                 >
                   {t('positionHistory.closedAt', language)}
                 </th>
@@ -812,7 +851,7 @@ export function PositionHistory({ traderId }: PositionHistoryProps) {
         {/* Footer with Pagination */}
         <div
           className="flex flex-wrap items-center justify-between gap-4 p-4 text-sm"
-          style={{ borderTop: '1px solid #2B3139', color: '#848E9C' }}
+          style={{ borderTop: `1px solid var(--panel-border)`, color: 'var(--text-secondary)' }}
         >
           {/* Left: Count info */}
           <div className="flex items-center gap-4">
@@ -845,17 +884,17 @@ export function PositionHistory({ traderId }: PositionHistoryProps) {
           <div className="flex items-center gap-3">
             {/* Page size selector */}
             <div className="flex items-center gap-2">
-              <span className="text-xs" style={{ color: '#848E9C' }}>
+              <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                 {language === 'zh' ? '每页' : 'Per page'}:
               </span>
               <select
                 value={pageSize}
                 onChange={(e) => setPageSize(Number(e.target.value))}
-                className="rounded px-2 py-1 text-sm"
+                className="rounded px-2 py-1 text-sm transition-colors"
                 style={{
-                  background: '#0B0E11',
-                  border: '1px solid #2B3139',
-                  color: '#EAECEF',
+                  background: 'var(--panel-bg)',
+                  border: `1px solid var(--panel-border)`,
+                  color: 'var(--text-primary)',
                 }}
               >
                 <option value={20}>20</option>
@@ -872,8 +911,19 @@ export function PositionHistory({ traderId }: PositionHistoryProps) {
                   disabled={currentPage === 1}
                   className="px-2 py-1 rounded text-xs transition-colors disabled:opacity-30"
                   style={{
-                    background: currentPage === 1 ? 'transparent' : '#2B3139',
-                    color: '#EAECEF',
+                    background: currentPage === 1 ? 'transparent' : 'var(--panel-bg-hover)',
+                    color: currentPage === 1 ? 'var(--text-disabled)' : 'var(--text-primary)',
+                    border: `1px solid var(--panel-border)`,
+                  }}
+                  onMouseEnter={(e) => {
+                    if (currentPage !== 1) {
+                      e.currentTarget.style.background = 'var(--panel-bg)'
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (currentPage !== 1) {
+                      e.currentTarget.style.background = 'var(--panel-bg-hover)'
+                    }
                   }}
                 >
                   «
@@ -883,13 +933,24 @@ export function PositionHistory({ traderId }: PositionHistoryProps) {
                   disabled={currentPage === 1}
                   className="px-2 py-1 rounded text-xs transition-colors disabled:opacity-30"
                   style={{
-                    background: currentPage === 1 ? 'transparent' : '#2B3139',
-                    color: '#EAECEF',
+                    background: currentPage === 1 ? 'transparent' : 'var(--panel-bg-hover)',
+                    color: currentPage === 1 ? 'var(--text-disabled)' : 'var(--text-primary)',
+                    border: `1px solid var(--panel-border)`,
+                  }}
+                  onMouseEnter={(e) => {
+                    if (currentPage !== 1) {
+                      e.currentTarget.style.background = 'var(--panel-bg)'
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (currentPage !== 1) {
+                      e.currentTarget.style.background = 'var(--panel-bg-hover)'
+                    }
                   }}
                 >
                   ‹
                 </button>
-                <span className="px-3 text-xs" style={{ color: '#EAECEF' }}>
+                <span className="px-3 text-xs" style={{ color: 'var(--text-primary)' }}>
                   {currentPage} / {totalPages}
                 </span>
                 <button
@@ -897,8 +958,19 @@ export function PositionHistory({ traderId }: PositionHistoryProps) {
                   disabled={currentPage === totalPages}
                   className="px-2 py-1 rounded text-xs transition-colors disabled:opacity-30"
                   style={{
-                    background: currentPage === totalPages ? 'transparent' : '#2B3139',
-                    color: '#EAECEF',
+                    background: currentPage === totalPages ? 'transparent' : 'var(--panel-bg-hover)',
+                    color: currentPage === totalPages ? 'var(--text-disabled)' : 'var(--text-primary)',
+                    border: `1px solid var(--panel-border)`,
+                  }}
+                  onMouseEnter={(e) => {
+                    if (currentPage !== totalPages) {
+                      e.currentTarget.style.background = 'var(--panel-bg)'
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (currentPage !== totalPages) {
+                      e.currentTarget.style.background = 'var(--panel-bg-hover)'
+                    }
                   }}
                 >
                   ›
@@ -908,8 +980,19 @@ export function PositionHistory({ traderId }: PositionHistoryProps) {
                   disabled={currentPage === totalPages}
                   className="px-2 py-1 rounded text-xs transition-colors disabled:opacity-30"
                   style={{
-                    background: currentPage === totalPages ? 'transparent' : '#2B3139',
-                    color: '#EAECEF',
+                    background: currentPage === totalPages ? 'transparent' : 'var(--panel-bg-hover)',
+                    color: currentPage === totalPages ? 'var(--text-disabled)' : 'var(--text-primary)',
+                    border: `1px solid var(--panel-border)`,
+                  }}
+                  onMouseEnter={(e) => {
+                    if (currentPage !== totalPages) {
+                      e.currentTarget.style.background = 'var(--panel-bg)'
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (currentPage !== totalPages) {
+                      e.currentTarget.style.background = 'var(--panel-bg-hover)'
+                    }
                   }}
                 >
                   »
