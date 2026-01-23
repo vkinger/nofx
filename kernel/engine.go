@@ -751,7 +751,7 @@ func (e *StrategyEngine) getAI500Coins(limit int) ([]CandidateCoin, error) {
 
 func (e *StrategyEngine) getOITopCoins(limit int) ([]CandidateCoin, error) {
 	if limit <= 0 {
-		limit = 10
+		limit = 20
 	}
 
 	positions, err := e.nofxosClient.GetOITopPositions()
@@ -992,7 +992,7 @@ func (e *StrategyEngine) FetchOIRankingData() *nofxos.OIRankingData {
 
 	limit := indicators.OIRankingLimit
 	if limit <= 0 {
-		limit = 15
+		limit = 10
 	}
 
 	logger.Infof("📊 Fetching OI ranking data (duration: %s, limit: %d)", duration, limit)
@@ -1023,7 +1023,7 @@ func (e *StrategyEngine) FetchNetFlowRankingData() *nofxos.NetFlowRankingData {
 
 	limit := indicators.NetFlowRankingLimit
 	if limit <= 0 {
-		limit = 15
+		limit = 10
 	}
 
 	logger.Infof("💰 Fetching NetFlow ranking data (duration: %s, limit: %d)", duration, limit)
@@ -1055,7 +1055,7 @@ func (e *StrategyEngine) FetchPriceRankingData() *nofxos.PriceRankingData {
 
 	limit := indicators.PriceRankingLimit
 	if limit <= 0 {
-		limit = 15
+		limit = 10
 	}
 
 	logger.Infof("📈 Fetching Price ranking data (durations: %s, limit: %d)", durations, limit)
