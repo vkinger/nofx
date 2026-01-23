@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"encoding/json"
 	"net/http"
 )
 
@@ -68,4 +69,48 @@ func (c *GrokClient) SetAPIKey(apiKey string, customURL string, customModel stri
 // Grok uses standard OpenAI-compatible API with Bearer auth
 func (c *GrokClient) setAuthHeader(reqHeaders http.Header) {
 	c.Client.setAuthHeader(reqHeaders)
+}
+
+// buildMCPRequestBody Grok uses OpenAI-compatible API, so JSON Schema format is the same as OpenAI
+// Note: Grok currently does not support JSON Schema, but this method is implemented for consistency
+// and future compatibility. The checkModelSupportsJSONSchema check will prevent JSON Schema from
+// being added if the model doesn't support it.
+func (c *GrokClient) buildMCPRequestBody(systemPrompt, userPrompt string) map[string]any {
+	// Call base implementation
+	requestBody := c.Client.buildMCPRequestBody(systemPrompt, userPrompt)
+
+	// Add JSON Schema support if model supports it and schema is provided
+	if c.JSONSchema != "" && checkModelSupportsJSONSchema(c.Provider, c.Model) {
+		// Parse JSON Schema string to map
+		var schemaMap map[string]interface{}
+		if err := json.Unmarshal([]byte(c.JSONSchema), &schemaMap); err == nil {
+			// Validate that schemaMap is not empty
+			if len(schemaMap) > 0 {
+				// Grok uses OpenAI-compatible format: response_format with json_schema
+				requestBody["response_format"] = map[string]interface{}{
+					"type": "json_schema",
+					"json_schema": map[string]interface{}{
+						"name":        "trading_decision",
+						"schema":      schemaMap,
+						"strict":      true, // Enable strict mode for guaranteed schema compliance
+						"description": "Trading decision output format",
+					},
+				}
+				c.logger.Infof("🔧 [MCP Grok] JSON Schema enabled for structured output")
+			} else {
+				c.logger.Warnf("⚠️ [MCP Grok] JSON Schema is empty after parsing, skipping response_format")
+			}
+		} else {
+			c.logger.Warnf("⚠️ [MCP Grok] Failed to parse JSON Schema: %v, JSON Schema content (first 200 chars): %s", err, c.JSONSchema[:min(len(c.JSONSchema), 200)])
+		}
+	} else {
+		// Log why JSON Schema is not being used
+		if c.JSONSchema == "" {
+			c.logger.Debugf("🔍 [MCP Grok] JSON Schema is empty, not using structured output")
+		} else if !checkModelSupportsJSONSchema(c.Provider, c.Model) {
+			c.logger.Debugf("🔍 [MCP Grok] Model %s/%s does not support JSON Schema API", c.Provider, c.Model)
+		}
+	}
+
+	return requestBody
 }
