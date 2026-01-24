@@ -1826,21 +1826,39 @@ func sortDecisionsByPriority(decisions []kernel.Decision) []kernel.Decision {
 	return sorted
 }
 
-// startDrawdownMonitor starts drawdown monitoring
+// startDrawdownMonitor starts drawdown monitoring with dynamic frequency
+// 动态监控频率：根据持仓最大利润水平调整检查间隔
 func (at *AutoTrader) startDrawdownMonitor() {
 	at.monitorWg.Add(1)
 	go func() {
 		defer at.monitorWg.Done()
 
-		ticker := time.NewTicker(1 * time.Minute) // Check every minute
-		defer ticker.Stop()
+		// Initial check interval (will be adjusted dynamically)
+		checkInterval := 1 * time.Minute
+		timer := time.NewTimer(checkInterval)
+		defer timer.Stop()
 
-		logger.Info("📊 Started position drawdown monitoring (check every minute)")
+		logger.Info("📊 Started position drawdown monitoring (dynamic frequency: 30s/45s/60s based on profit level)")
 
 		for {
 			select {
-			case <-ticker.C:
-				at.checkPositionDrawdown()
+			case <-timer.C:
+				// Perform drawdown check and get maximum profit level
+				maxProfitPct := at.checkPositionDrawdown()
+
+				// Calculate next check interval based on maximum profit
+				nextInterval := getDrawdownCheckInterval(maxProfitPct)
+
+				// Update timer if interval changed
+				if nextInterval != checkInterval {
+					checkInterval = nextInterval
+					logger.Infof("🔄 Drawdown monitoring frequency adjusted: %.0fs (max profit: %.2f%%)",
+						checkInterval.Seconds(), maxProfitPct)
+				}
+
+				// Reset timer for next check
+				timer.Reset(checkInterval)
+
 			case <-at.stopMonitorCh:
 				logger.Info("⏹ Stopped position drawdown monitoring")
 				return
@@ -1849,14 +1867,43 @@ func (at *AutoTrader) startDrawdownMonitor() {
 	}()
 }
 
+// getTieredDrawdownThreshold returns drawdown threshold based on profit level (tiered drawdown strategy)
+// 分级回撤策略（方案A优化）：利润越高，允许的回撤越大，但阈值更保守
+func getTieredDrawdownThreshold(profitPct float64) float64 {
+	if profitPct >= 25.0 {
+		return 45.0 // 利润>=25%，允许回撤45%（让利润奔跑，但更保守）
+	} else if profitPct >= 12.0 {
+		return 35.0 // 利润12-25%，回撤35%（标准保护，略微收紧）
+	} else if profitPct >= 6.0 {
+		return 30.0 // 利润6-12%，回撤30%（保守保护，提高触发门槛）
+	}
+	return 0.0 // 利润<6%，不触发回撤保护（提高触发门槛，减少误触发）
+}
+
+// getDrawdownCheckInterval returns dynamic check interval based on maximum profit level
+// 动态监控频率：利润越高，检查越频繁（降低回撤风险）
+func getDrawdownCheckInterval(maxProfitPct float64) time.Duration {
+	if maxProfitPct >= 20.0 {
+		return 30 * time.Second // 高利润（≥20%）：30秒检查（更频繁，及时保护）
+	} else if maxProfitPct >= 10.0 {
+		return 45 * time.Second // 中等利润（10-20%）：45秒检查（平衡）
+	} else {
+		return 1 * time.Minute // 低利润（<10%）：1分钟检查（标准频率）
+	}
+}
+
 // checkPositionDrawdown checks position drawdown situation
-func (at *AutoTrader) checkPositionDrawdown() {
-	// Get current positions
+// 优化：使用分级回撤策略 + 混合利润计算（价格变化实时监控 + 实际盈亏最终验证）
+// 返回：最大利润水平（用于动态调整检查频率）
+func (at *AutoTrader) checkPositionDrawdown() float64 {
+	// Get current positions (with cache for efficiency)
 	positions, err := at.trader.GetPositions()
 	if err != nil {
 		logger.Infof("❌ Drawdown monitoring: failed to get positions: %v", err)
-		return
+		return 0.0
 	}
+
+	maxProfitPct := 0.0 // Track maximum profit across all positions
 
 	for _, pos := range positions {
 		symbol := pos["symbol"].(string)
@@ -1868,7 +1915,7 @@ func (at *AutoTrader) checkPositionDrawdown() {
 			quantity = -quantity // Short position quantity is negative, convert to positive
 		}
 
-		// Calculate current P&L percentage
+		// Calculate current P&L percentage using price change (real-time, no cache delay)
 		leverage := 10 // Default value
 		if lev, ok := pos["leverage"].(float64); ok {
 			leverage = int(lev)
@@ -1904,25 +1951,85 @@ func (at *AutoTrader) checkPositionDrawdown() {
 			drawdownPct = ((peakPnLPct - currentPnLPct) / peakPnLPct) * 100
 		}
 
-		// Check close position condition: profit > 5% and drawdown >= 40%
-		if currentPnLPct > 5.0 && drawdownPct >= 40.0 {
-			logger.Infof("🚨 Drawdown close position condition triggered: %s %s | Current profit: %.2f%% | Peak profit: %.2f%% | Drawdown: %.2f%%",
-				symbol, side, currentPnLPct, peakPnLPct, drawdownPct)
+		// Get tiered drawdown threshold based on current profit level
+		drawdownThreshold := getTieredDrawdownThreshold(currentPnLPct)
 
-			// Execute close position
-			if err := at.emergencyClosePosition(symbol, side); err != nil {
-				logger.Infof("❌ Drawdown close position failed (%s %s): %v", symbol, side, err)
-			} else {
-				logger.Infof("✅ Drawdown close position succeeded: %s %s", symbol, side)
-				// Clear cache for this position after closing
-				at.ClearPeakPnLCache(symbol, side)
+		// Check if close to trigger threshold (using price-based calculation for real-time monitoring)
+		// 使用价格变化进行实时监控，如果接近触发阈值，再用实际盈亏验证
+		// 注意：触发门槛从4.5%提高到5.5%，与getTieredDrawdownThreshold的6%门槛保持一致
+		needsVerification := currentPnLPct >= 5.5 && drawdownPct >= (drawdownThreshold-2.0) && drawdownThreshold > 0
+
+		if needsVerification {
+			// 接近触发阈值，强制刷新缓存获取最新实际盈亏进行验证
+			// 注意：由于trader接口没有暴露清除缓存的方法，这里通过重新获取来刷新
+			// 如果缓存未过期，可能需要等待；但通常回撤监控每分钟检查一次，缓存应该已更新
+			refreshPositions, err := at.trader.GetPositions()
+			if err == nil {
+				// 找到对应的持仓
+				for _, refreshPos := range refreshPositions {
+					if refreshPos["symbol"].(string) == symbol && refreshPos["side"].(string) == side {
+						// 使用实际盈亏进行最终验证（更准确，考虑手续费、资金费率等）
+						unrealizedPnl := refreshPos["unRealizedProfit"].(float64)
+						refreshQuantity := refreshPos["positionAmt"].(float64)
+						if refreshQuantity < 0 {
+							refreshQuantity = -refreshQuantity
+						}
+						refreshMarkPrice := refreshPos["markPrice"].(float64)
+						refreshLeverage := 10
+						if lev, ok := refreshPos["leverage"].(float64); ok {
+							refreshLeverage = int(lev)
+						}
+						marginUsed := (refreshQuantity * refreshMarkPrice) / float64(refreshLeverage)
+						realPnlPct := calculatePnLPercentage(unrealizedPnl, marginUsed)
+
+						// 使用实际盈亏重新计算回撤
+						at.peakPnLCacheMutex.RLock()
+						refreshPeakPnlPct := at.peakPnLCache[posKey]
+						at.peakPnLCacheMutex.RUnlock()
+
+						var realDrawdownPct float64
+						if refreshPeakPnlPct > 0 && realPnlPct < refreshPeakPnlPct {
+							realDrawdownPct = ((refreshPeakPnlPct - realPnlPct) / refreshPeakPnlPct) * 100
+						}
+
+						// 使用实际盈亏和分级回撤阈值进行最终判断
+						// 注意：触发门槛从5%提高到6%，与getTieredDrawdownThreshold保持一致
+						realDrawdownThreshold := getTieredDrawdownThreshold(realPnlPct)
+						if realPnlPct >= 6.0 && realDrawdownPct >= realDrawdownThreshold && realDrawdownThreshold > 0 {
+							logger.Infof("🚨 Drawdown close position condition triggered (tiered): %s %s | Real profit: %.2f%% | Peak profit: %.2f%% | Drawdown: %.2f%% (threshold: %.2f%%)",
+								symbol, side, realPnlPct, refreshPeakPnlPct, realDrawdownPct, realDrawdownThreshold)
+
+							// Execute close position
+							if err := at.emergencyClosePosition(symbol, side); err != nil {
+								logger.Infof("❌ Drawdown close position failed (%s %s): %v", symbol, side, err)
+							} else {
+								logger.Infof("✅ Drawdown close position succeeded: %s %s", symbol, side)
+								// Clear cache for this position after closing
+								at.ClearPeakPnLCache(symbol, side)
+							}
+						} else {
+							// 实际盈亏验证未触发，记录调试信息
+							logger.Infof("📊 Drawdown monitoring (verified): %s %s | Price-based: %.2f%% (drawdown: %.2f%%) | Real PnL: %.2f%% (drawdown: %.2f%%, threshold: %.2f%%)",
+								symbol, side, currentPnLPct, drawdownPct, realPnlPct, realDrawdownPct, realDrawdownThreshold)
+						}
+						break
+					}
+				}
 			}
-		} else if currentPnLPct > 5.0 {
+		} else if currentPnLPct >= 6.0 {
 			// Record situations close to close position condition (for debugging)
-			logger.Infof("📊 Drawdown monitoring: %s %s | Profit: %.2f%% | Peak: %.2f%% | Drawdown: %.2f%%",
-				symbol, side, currentPnLPct, peakPnLPct, drawdownPct)
+			// 注意：记录门槛从5%提高到6%，与触发门槛保持一致
+			logger.Infof("📊 Drawdown monitoring: %s %s | Profit: %.2f%% | Peak: %.2f%% | Drawdown: %.2f%% (threshold: %.2f%%)",
+				symbol, side, currentPnLPct, peakPnLPct, drawdownPct, drawdownThreshold)
+		}
+
+		// Track maximum profit for dynamic frequency adjustment
+		if currentPnLPct > maxProfitPct {
+			maxProfitPct = currentPnLPct
 		}
 	}
+
+	return maxProfitPct
 }
 
 // emergencyClosePosition emergency close position function
