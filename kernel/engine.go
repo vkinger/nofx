@@ -1825,9 +1825,26 @@ func (e *StrategyEngine) BuildUserPrompt(ctx *Context) string {
 		maxCandidateCoins = 10 // 默认值
 	}
 
-	// 优化兜底：如果配置的数量过多（>5个），限制为 5 个（减少 token 消耗）
-	if maxCandidateCoins > 5 {
-		maxCandidateCoins = 5
+	// 方案3：动态上限 - 根据最大持仓数计算合理上限，同时设置绝对上限
+	// 公式：候选币种数 = MaxPositions × 2 + 1（提供足够选择空间）
+	riskControl := e.config.RiskControl
+	maxPositions := riskControl.MaxPositions
+	if maxPositions <= 0 {
+		maxPositions = 3 // 默认值
+	}
+	
+	// 计算动态上限
+	dynamicLimit := maxPositions*2 + 1
+	
+	// 设置绝对上限（防止配置过大）
+	absoluteMaxLimit := 10
+	
+	// 取三者最小值：用户配置、动态上限、绝对上限
+	if maxCandidateCoins > dynamicLimit {
+		maxCandidateCoins = dynamicLimit
+	}
+	if maxCandidateCoins > absoluteMaxLimit {
+		maxCandidateCoins = absoluteMaxLimit
 	}
 
 	candidateCoins := ctx.CandidateCoins
@@ -1871,21 +1888,21 @@ func (e *StrategyEngine) BuildUserPrompt(ctx *Context) string {
 	}
 
 	// OI Ranking data (market-wide open interest changes)
-	// 优化：只显示 Top 5，减少 token 消耗
+	// 优化：显示 Top 5，平衡信息完整性与token消耗（Top 5提供更全面的市场信号）
 	if ctx.OIRankingData != nil {
 		limitedOIRanking := limitOIRankingData(ctx.OIRankingData, 5)
 		sb.WriteString(nofxos.FormatOIRankingForAI(limitedOIRanking, nofxosLang))
 	}
 
 	// NetFlow Ranking data (market-wide fund flow)
-	// 优化：只显示 Top 5，减少 token 消耗
+	// 优化：显示 Top 5，平衡信息完整性与token消耗（Top 5提供更全面的市场信号）
 	if ctx.NetFlowRankingData != nil {
 		limitedNetFlowRanking := limitNetFlowRankingData(ctx.NetFlowRankingData, 5)
 		sb.WriteString(nofxos.FormatNetFlowRankingForAI(limitedNetFlowRanking, nofxosLang))
 	}
 
 	// Price Ranking data (market-wide gainers/losers)
-	// 优化：只显示 Top 5，减少 token 消耗
+	// 优化：显示 Top 5，平衡信息完整性与token消耗（Top 5提供更全面的市场信号）
 	if ctx.PriceRankingData != nil {
 		limitedPriceRanking := limitPriceRankingData(ctx.PriceRankingData, 5)
 		sb.WriteString(nofxos.FormatPriceRankingForAI(limitedPriceRanking, nofxosLang))
@@ -2226,8 +2243,8 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 		fmtPrice := market.FormatPriceWithDynamicPrecision
 
 		// 显示摘要（包含关键价位）
-		sb.WriteString(fmt.Sprintf("Summary (%d bars): Close %s | High %s | Low %s | Change %+.2f%% | Trend: %s%s\n",
-			len(klines), fmtPrice(latest.Close), fmtPrice(maxPrice), fmtPrice(minPrice),
+		sb.WriteString(fmt.Sprintf("Summary: Close %s | High %s | Low %s | Change %+.2f%% | Trend: %s%s\n",
+			fmtPrice(latest.Close), fmtPrice(maxPrice), fmtPrice(minPrice),
 			priceChange, trend, trendStrength))
 
 		// 显示最近5根K线（必需：量价分析需要5根，同时提供完整形态识别上下文）
@@ -2413,20 +2430,6 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 		}
 
 		sb.WriteString("\n")
-	} else if len(data.MidPrices) > 0 {
-		// 兼容旧数据格式
-		midPrices := data.MidPrices
-		if len(midPrices) > 30 {
-			midPrices = midPrices[len(midPrices)-30:]
-		}
-		sb.WriteString(fmt.Sprintf("Mid prices: %s\n\n", formatFloatSlice(midPrices)))
-		if indicators.EnableVolume && len(data.Volume) > 0 {
-			volume := data.Volume
-			if len(volume) > 30 {
-				volume = volume[len(volume)-30:]
-			}
-			sb.WriteString(fmt.Sprintf("Volume: %s\n\n", formatFloatSlice(volume)))
-		}
 	}
 
 	// === 指标摘要优化：添加趋势信息和关键信号 ===
