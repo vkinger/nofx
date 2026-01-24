@@ -1275,13 +1275,22 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                               e.stopPropagation()
                               toggleTraderAddressVisibility(trader.trader_id)
                             }}
-                            className="p-0.5 rounded hover:bg-gray-700 transition-colors"
+                            className="p-0.5 rounded transition-colors"
+                            style={{
+                              color: 'var(--text-secondary)',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = 'var(--panel-bg-hover)'
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = 'transparent'
+                            }}
                             title={isVisible ? (language === 'zh' ? '隐藏' : 'Hide') : (language === 'zh' ? '显示' : 'Show')}
                           >
                             {isVisible ? (
-                              <EyeOff className="w-3 h-3" style={{ color: '#848E9C' }} />
+                              <EyeOff className="w-3 h-3" style={{ color: 'var(--text-secondary)' }} />
                             ) : (
-                              <Eye className="w-3 h-3" style={{ color: '#848E9C' }} />
+                              <Eye className="w-3 h-3" style={{ color: 'var(--text-secondary)' }} />
                             )}
                           </button>
                           <button
@@ -1290,7 +1299,16 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                               e.stopPropagation()
                               handleCopyAddress(trader.trader_id, walletAddr)
                             }}
-                            className="p-0.5 rounded hover:bg-gray-700 transition-colors"
+                            className="p-0.5 rounded transition-colors"
+                            style={{
+                              color: 'var(--text-secondary)',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = 'var(--panel-bg-hover)'
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = 'transparent'
+                            }}
                             title={language === 'zh' ? '复制' : 'Copy'}
                           >
                             {isCopied ? (
@@ -1308,18 +1326,15 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                       {t('status', language)}
                     </div> */}
                       <div
-                        className={`px-2 md:px-3 py-1 rounded text-xs font-bold ${trader.is_running
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-red-100 text-red-800'
-                          }`}
+                        className="px-2 md:px-3 py-1 rounded text-xs font-bold"
                         style={
                           trader.is_running
                             ? {
-                              background: 'rgba(14, 203, 129, 0.1)',
+                              background: isDark ? 'rgba(14, 203, 129, 0.15)' : 'rgba(14, 203, 129, 0.2)',
                               color: '#0ECB81',
                             }
                             : {
-                              background: 'rgba(246, 70, 93, 0.1)',
+                              background: isDark ? 'rgba(246, 70, 93, 0.15)' : 'rgba(246, 70, 93, 0.2)',
                               color: '#F6465D',
                             }
                         }
@@ -1358,7 +1373,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                         className="px-2 md:px-3 py-1.5 md:py-2 rounded text-xs md:text-sm font-semibold transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap flex items-center gap-1"
                         style={{
                           background: trader.is_running
-                            ? 'rgba(132, 142, 156, 0.1)'
+                            ? (isDark ? 'rgba(132, 142, 156, 0.1)' : 'rgba(132, 142, 156, 0.15)')
                             : 'rgba(255, 193, 7, 0.1)',
                           color: trader.is_running ? 'var(--text-disabled)' : '#FFC107',
                         }}
@@ -1402,7 +1417,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                               color: '#0ECB81',
                             }
                             : {
-                              background: 'rgba(132, 142, 156, 0.1)',
+                              background: isDark ? 'rgba(132, 142, 156, 0.1)' : 'rgba(132, 142, 156, 0.15)',
                               color: 'var(--text-secondary)',
                             }
                         }
