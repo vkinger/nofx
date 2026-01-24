@@ -2059,14 +2059,6 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 	if len(data.TimeframeData) > 0 {
 		// 优先使用策略配置的时间框架
 		timeframes := indicators.Klines.SelectedTimeframes
-
-		// 兜底：如果配置为空，使用默认的关键时间框架
-		if len(timeframes) == 0 {
-			// 如果没有配置，使用默认的关键时间框架
-			timeframes = []string{"5m", "15m", "1h", "4h"}
-		}
-		// 去掉硬编码限制，直接使用配置值（因为已实现摘要化，不会显著增加token）
-
 		// 显示配置的时间框架（已优化）
 		for _, tf := range timeframes {
 			if tfData, ok := data.TimeframeData[tf]; ok {
@@ -2167,15 +2159,31 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 		priceChange := ((latest.Close - oldest.Close) / oldest.Close) * 100
 
 		// 改进趋势判断：分段分析（首1/3 vs 中1/3 vs 尾1/3）
+		// 优化：使用更精确的分段边界计算，确保三段尽可能均匀
 		trend := "sideways"
 		trendStrength := ""
 		if len(klines) >= 9 {
 			n := len(klines)
-			seg1End := n / 3
-			seg2End := 2 * n / 3
+			// 优化分段边界：使用浮点数计算后取整，确保三段长度尽可能均匀
+			seg1End := int(float64(n) / 3.0)
+			seg2End := int(float64(n) * 2.0 / 3.0)
+			// 确保边界有效
+			if seg1End < 1 {
+				seg1End = 1
+			}
+			if seg2End <= seg1End {
+				seg2End = seg1End + 1
+			}
+			if seg2End >= n {
+				seg2End = n - 1
+			}
 
-			// 计算各段平均价
+			// 计算各段平均价（使用实际段长度，避免除零）
 			var seg1Sum, seg2Sum, seg3Sum float64
+			seg1Count := seg1End
+			seg2Count := seg2End - seg1End
+			seg3Count := n - seg2End
+
 			for i := 0; i < seg1End; i++ {
 				seg1Sum += klines[i].Close
 			}
@@ -2185,9 +2193,9 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 			for i := seg2End; i < n; i++ {
 				seg3Sum += klines[i].Close
 			}
-			seg1Avg := seg1Sum / float64(seg1End)
-			seg2Avg := seg2Sum / float64(seg2End-seg1End)
-			seg3Avg := seg3Sum / float64(n-seg2End)
+			seg1Avg := seg1Sum / float64(seg1Count)
+			seg2Avg := seg2Sum / float64(seg2Count)
+			seg3Avg := seg3Sum / float64(seg3Count)
 
 			// 判断趋势类型
 			if seg3Avg > seg2Avg && seg2Avg > seg1Avg {
@@ -2222,8 +2230,8 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 			len(klines), fmtPrice(latest.Close), fmtPrice(maxPrice), fmtPrice(minPrice),
 			priceChange, trend, trendStrength))
 
-		// 显示最近3根K线（而非1根），便于识别K线形态
-		recentCount := 3
+		// 显示最近5根K线（必需：量价分析需要5根，同时提供完整形态识别上下文）
+		recentCount := 5
 		if len(klines) < recentCount {
 			recentCount = len(klines)
 		}
@@ -2277,11 +2285,26 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 			body2 := k2.Close - k2.Open
 			range2 := k2.High - k2.Low
 
-			// 吞没形态 (Engulfing)
-			if body1 < 0 && body2 > 0 && k2.Open <= k1.Close && k2.Close >= k1.Open && math.Abs(body2) > math.Abs(body1)*1.2 {
-				patterns = append(patterns, "BULLISH_ENGULFING")
-			} else if body1 > 0 && body2 < 0 && k2.Open >= k1.Close && k2.Close <= k1.Open && math.Abs(body2) > math.Abs(body1)*1.2 {
-				patterns = append(patterns, "BEARISH_ENGULFING")
+			// 吞没形态 (Engulfing) - 优化：更严格的判断条件
+			// 看涨吞没：前一根阴线，后一根阳线完全吞没前一根
+			if body1 < 0 && body2 > 0 && 
+				k2.Open < k1.Close && k2.Close > k1.Open && 
+				math.Abs(body2) > math.Abs(body1)*1.2 {
+				// 检查是否真正吞没（高点更高，低点更低）
+				if k2.High > k1.High && k2.Low < k1.Low {
+					patterns = append(patterns, "BULLISH_ENGULFING (strong)")
+				} else {
+					patterns = append(patterns, "BULLISH_ENGULFING")
+				}
+			} else if body1 > 0 && body2 < 0 && 
+				k2.Open > k1.Close && k2.Close < k1.Open && 
+				math.Abs(body2) > math.Abs(body1)*1.2 {
+				// 看跌吞没：前一根阳线，后一根阴线完全吞没前一根
+				if k2.High > k1.High && k2.Low < k1.Low {
+					patterns = append(patterns, "BEARISH_ENGULFING (strong)")
+				} else {
+					patterns = append(patterns, "BEARISH_ENGULFING")
+				}
 			}
 
 			// 锤子线 (Hammer) - 下影线长，实体小，在下跌趋势中
