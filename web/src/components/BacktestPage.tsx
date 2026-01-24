@@ -286,6 +286,8 @@ function CandlestickChartComponent({
   trades: BacktestTradeEvent[]
   language: string
 }) {
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
@@ -632,6 +634,9 @@ function PositionsDisplay({
   positions: BacktestPositionStatus[]
   language: string
 }) {
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
+  
   if (!positions || positions.length === 0) {
     return null
   }
