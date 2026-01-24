@@ -1532,6 +1532,7 @@ func (e *StrategyEngine) buildOutputFormatWithJSONSchemaAPI(accountEquity float6
 		sb.WriteString("**重要：模型已启用JSON Schema结构化输出，输出格式将严格按照Schema验证。**\n\n")
 		sb.WriteString("## 输出格式要求\n\n")
 		sb.WriteString("**必须**使用以下JSON对象格式输出（包含思维链和决策数组）：\n\n")
+		sb.WriteString("⚠️ **关键提醒**：最外层的 `reasoning` 字段是JSON Schema中的必需字段（required），绝对不能省略！即使 `decisions` 数组为空，也必须提供 `reasoning` 字段。\n\n")
 		sb.WriteString("```json\n")
 		sb.WriteString("{\n")
 		sb.WriteString("  \"reasoning\": \"思维链分析过程...\",\n")
@@ -3006,17 +3007,35 @@ func extractCoTTrace(response string) string {
 	s = fixMissingQuotes(s)
 
 	// 查找JSON对象（包含reasoning和decisions字段）
-	jsonObjStart := strings.Index(s, `{"reasoning"`)
+	// 支持两种顺序：{"reasoning": ..., "decisions": ...} 或 {"decisions": ..., "reasoning": ...}
+	var jsonObjStart int = -1
+
+	// 先尝试查找 {"reasoning" 开头
+	if idx := strings.Index(s, `{"reasoning"`); idx >= 0 {
+		jsonObjStart = idx
+	} else if idx := strings.Index(s, `{"decisions"`); idx >= 0 {
+		// 如果找不到 {"reasoning"，尝试查找 {"decisions" 开头
+		jsonObjStart = idx
+	}
+
 	if jsonObjStart >= 0 {
 		// 找到可能的JSON对象开始位置，尝试提取完整的JSON对象
 		jsonObjEnd := findMatchingBrace(s, jsonObjStart)
 		if jsonObjEnd > jsonObjStart {
 			jsonObjStr := s[jsonObjStart : jsonObjEnd+1]
 			var newFormat newFormatResponse
-			if err := json.Unmarshal([]byte(jsonObjStr), &newFormat); err == nil && newFormat.Reasoning != "" {
-				logger.Infof("✓ Extracted reasoning chain using new JSON format (reasoning field)")
-				return strings.TrimSpace(newFormat.Reasoning)
+			if err := json.Unmarshal([]byte(jsonObjStr), &newFormat); err == nil {
+				if newFormat.Reasoning != "" {
+					logger.Infof("✓ Extracted reasoning chain using new JSON format (reasoning field)")
+					return strings.TrimSpace(newFormat.Reasoning)
+				} else {
+					logger.Warnf("⚠️  JSON object parsed but reasoning field is empty. JSON: %s", jsonObjStr[:min(len(jsonObjStr), 200)])
+				}
+			} else {
+				logger.Warnf("⚠️  Failed to parse JSON object for reasoning: %v. JSON start: %s", err, jsonObjStr[:min(len(jsonObjStr), 200)])
 			}
+		} else {
+			logger.Warnf("⚠️  Failed to find matching brace for JSON object starting at position %d", jsonObjStart)
 		}
 	}
 
@@ -3098,7 +3117,17 @@ func extractDecisions(response string) ([]Decision, error) {
 	}
 
 	// 尝试解析新格式的JSON对象
-	jsonObjStart := strings.Index(s, `{"reasoning"`)
+	// 支持两种顺序：{"reasoning": ..., "decisions": ...} 或 {"decisions": ..., "reasoning": ...}
+	var jsonObjStart int = -1
+
+	// 先尝试查找 {"reasoning" 开头
+	if idx := strings.Index(s, `{"reasoning"`); idx >= 0 {
+		jsonObjStart = idx
+	} else if idx := strings.Index(s, `{"decisions"`); idx >= 0 {
+		// 如果找不到 {"reasoning"，尝试查找 {"decisions" 开头
+		jsonObjStart = idx
+	}
+
 	if jsonObjStart >= 0 {
 		jsonObjEnd := findMatchingBrace(s, jsonObjStart)
 		if jsonObjEnd > jsonObjStart {
@@ -3106,10 +3135,16 @@ func extractDecisions(response string) ([]Decision, error) {
 			var newFormat newFormatResponse
 			if err := json.Unmarshal([]byte(jsonObjStr), &newFormat); err == nil {
 				if len(newFormat.Decisions) > 0 {
-					logger.Infof("✓ Extracted decisions using new JSON format (decisions field)")
+					logger.Infof("✓ Extracted decisions using new JSON format (decisions field), reasoning present: %v", newFormat.Reasoning != "")
 					return newFormat.Decisions, nil
+				} else {
+					logger.Warnf("⚠️  JSON object parsed but decisions array is empty. JSON: %s", jsonObjStr[:min(len(jsonObjStr), 200)])
 				}
+			} else {
+				logger.Warnf("⚠️  Failed to parse JSON object for decisions: %v. JSON start: %s", err, jsonObjStr[:min(len(jsonObjStr), 200)])
 			}
+		} else {
+			logger.Warnf("⚠️  Failed to find matching brace for JSON object starting at position %d", jsonObjStart)
 		}
 	}
 
