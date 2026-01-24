@@ -1205,19 +1205,37 @@ export function AdvancedChart({
                 key={indicator.id}
                 className="flex items-center gap-2.5 p-2 rounded-md cursor-pointer transition-all group"
                 style={{
-                  background: indicator.enabled ? 'rgba(240, 185, 11, 0.1)' : 'transparent',
-                  border: `1px solid ${indicator.enabled ? 'rgba(240, 185, 11, 0.2)' : 'transparent'}`,
+                  background: indicator.enabled 
+                    ? (isDark ? 'rgba(240, 185, 11, 0.15)' : 'rgba(240, 185, 11, 0.25)')
+                    : 'transparent',
+                  border: `1px solid ${indicator.enabled 
+                    ? (isDark ? 'rgba(240, 185, 11, 0.4)' : 'rgba(240, 185, 11, 0.6)')
+                    : 'transparent'}`,
                 }}
                 onMouseEnter={(e) => {
                   if (!indicator.enabled) {
                     e.currentTarget.style.background = 'var(--panel-bg-hover)'
                     e.currentTarget.style.borderColor = 'var(--panel-border)'
+                  } else {
+                    e.currentTarget.style.background = isDark 
+                      ? 'rgba(240, 185, 11, 0.2)' 
+                      : 'rgba(240, 185, 11, 0.3)'
+                    e.currentTarget.style.borderColor = isDark 
+                      ? 'rgba(240, 185, 11, 0.5)' 
+                      : 'rgba(240, 185, 11, 0.7)'
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (!indicator.enabled) {
                     e.currentTarget.style.background = 'transparent'
                     e.currentTarget.style.borderColor = 'transparent'
+                  } else {
+                    e.currentTarget.style.background = isDark 
+                      ? 'rgba(240, 185, 11, 0.15)' 
+                      : 'rgba(240, 185, 11, 0.25)'
+                    e.currentTarget.style.borderColor = isDark 
+                      ? 'rgba(240, 185, 11, 0.4)' 
+                      : 'rgba(240, 185, 11, 0.6)'
                   }
                 }}
               >
@@ -1226,22 +1244,50 @@ export function AdvancedChart({
                     type="checkbox"
                     checked={indicator.enabled}
                     onChange={() => toggleIndicator(indicator.id)}
-                    className="w-4 h-4 rounded border text-yellow-500 focus:ring-2 focus:ring-yellow-500/50"
-                    style={{ borderColor: 'var(--panel-border)' }}
+                    className="w-4 h-4 rounded border focus:ring-2 focus:ring-yellow-500/50"
+                    style={{ 
+                      borderColor: indicator.enabled 
+                        ? 'var(--nofx-gold)' 
+                        : 'var(--panel-border)',
+                      backgroundColor: indicator.enabled 
+                        ? 'var(--nofx-gold)' 
+                        : 'transparent',
+                      accentColor: 'var(--nofx-gold)',
+                    }}
                   />
                 </div>
                 <div
                   className="w-8 h-3 rounded-sm border"
                   style={{ 
                     backgroundColor: indicator.color,
-                    borderColor: 'var(--panel-border)',
+                    borderColor: indicator.enabled 
+                      ? 'var(--nofx-gold)' 
+                      : 'var(--panel-border)',
+                    opacity: indicator.enabled ? 1 : 0.6,
                   }}
                 ></div>
-                <span className="text-xs sm:text-sm group-hover:text-white transition-colors flex-1" style={{ color: 'var(--text-primary)' }}>
+                <span 
+                  className="text-xs sm:text-sm transition-colors flex-1 font-medium" 
+                  style={{ 
+                    color: indicator.enabled 
+                      ? 'var(--nofx-gold)' 
+                      : 'var(--text-primary)',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!indicator.enabled) {
+                      e.currentTarget.style.color = 'var(--nofx-gold)'
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!indicator.enabled) {
+                      e.currentTarget.style.color = 'var(--text-primary)'
+                    }
+                  }}
+                >
                   {indicator.name}
                 </span>
                 {indicator.enabled && (
-                  <span className="text-xs" style={{ color: 'var(--nofx-gold)' }}>●</span>
+                  <span className="text-xs font-bold" style={{ color: 'var(--nofx-gold)' }}>●</span>
                 )}
               </label>
             ))}
