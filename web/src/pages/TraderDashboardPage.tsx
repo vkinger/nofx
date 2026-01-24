@@ -685,7 +685,16 @@ export function TraderDashboardPage({
                                                             }
                                                         }}
                                                     >
-                                                        <td className="px-1 py-3 font-mono font-semibold whitespace-nowrap text-left text-nofx-text-main group-hover/row:text-white transition-colors">
+                                                        <td 
+                                                            className="px-1 py-3 font-mono font-semibold whitespace-nowrap text-left transition-colors"
+                                                            style={{ color: 'var(--text-primary)' }}
+                                                            onMouseEnter={(e) => {
+                                                                e.currentTarget.style.color = 'var(--nofx-gold)'
+                                                            }}
+                                                            onMouseLeave={(e) => {
+                                                                e.currentTarget.style.color = 'var(--text-primary)'
+                                                            }}
+                                                        >
                                                             {pos.symbol}
                                                             <div className="text-[11px] text-nofx-text-muted mt-1 flex flex-wrap items-center gap-1">
                                                                 {(() => {
@@ -732,10 +741,10 @@ export function TraderDashboardPage({
                                                                 {language === 'zh' ? '平仓' : 'Close'}
                                                             </button>
                                                         </td>
-                                                        <td className="px-1 py-3 font-mono whitespace-nowrap text-right text-nofx-text-main hidden md:table-cell">{pos.entry_price.toFixed(4)}</td>
-                                                        <td className="px-1 py-3 font-mono whitespace-nowrap text-right text-nofx-text-main hidden md:table-cell">{pos.mark_price.toFixed(4)}</td>
-                                                        <td className="px-1 py-3 font-mono whitespace-nowrap text-right text-nofx-text-main">{pos.quantity.toFixed(4)}</td>
-                                                        <td className="px-1 py-3 font-mono font-bold whitespace-nowrap text-right text-nofx-text-main hidden md:table-cell">{(pos.quantity * pos.mark_price).toFixed(2)}</td>
+                                                        <td className="px-1 py-3 font-mono whitespace-nowrap text-right hidden md:table-cell" style={{ color: 'var(--text-primary)' }}>{pos.entry_price.toFixed(4)}</td>
+                                                        <td className="px-1 py-3 font-mono whitespace-nowrap text-right hidden md:table-cell" style={{ color: 'var(--text-primary)' }}>{pos.mark_price.toFixed(4)}</td>
+                                                        <td className="px-1 py-3 font-mono whitespace-nowrap text-right" style={{ color: 'var(--text-primary)' }}>{pos.quantity.toFixed(4)}</td>
+                                                        <td className="px-1 py-3 font-mono font-bold whitespace-nowrap text-right hidden md:table-cell" style={{ color: 'var(--text-primary)' }}>{(pos.quantity * pos.mark_price).toFixed(2)}</td>
                                                         <td className="px-1 py-3 font-mono whitespace-nowrap text-center text-nofx-gold hidden md:table-cell">{pos.leverage}x</td>
                                                         <td className="px-1 py-3 font-mono whitespace-nowrap text-right">
                                                             <span
