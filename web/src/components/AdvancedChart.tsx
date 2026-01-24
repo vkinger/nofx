@@ -166,6 +166,7 @@ export function AdvancedChart({
   const seriesMarkersRef = useRef<any>(null) // Markers primitive for v5
   const currentMarkersDataRef = useRef<any[]>([]) // 存储当前的标记数据
   const klineDataRef = useRef<Map<number, { volume: number; quoteVolume: number }>>(new Map()) // 存储 kline 额外数据
+  const currentKlineDataRef = useRef<Kline[]>([]) // 存储当前的完整 K 线数据，用于指标更新
   const priceLinesRef = useRef<any[]>([]) // 存储挂单价格线
 
   const [loading, setLoading] = useState(true)
@@ -645,6 +646,9 @@ export function AdvancedChart({
           })
         }
 
+        // 保存 K 线数据供指标更新使用
+        currentKlineDataRef.current = klineData
+
         // 2. 显示成交量
         if (volumeSeriesRef.current) {
           const volumeEnabled = indicators.find(i => i.id === 'volume')?.enabled
@@ -1028,6 +1032,13 @@ export function AdvancedChart({
       prev.map(ind => (ind.id === id ? { ...ind, enabled: !ind.enabled } : ind))
     )
   }
+
+  // 监听指标状态变化，自动更新图表上的指标
+  useEffect(() => {
+    if (currentKlineDataRef.current.length > 0 && chartRef.current) {
+      updateIndicators(currentKlineDataRef.current)
+    }
+  }, [indicators])
 
   return (
     <div
