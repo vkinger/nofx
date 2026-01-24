@@ -235,15 +235,28 @@ export function StrategyMarketPage() {
         <div className="w-full relative z-10">
 
           {/* Header Section */}
-          <div className="mb-12 border-b border-zinc-800 pb-8 relative">
-            <div className="absolute top-0 right-0 p-2 border border-zinc-800 rounded bg-black/50 text-xs text-zinc-500 font-mono hidden md:block">
+          <div className="mb-12 border-b pb-8 relative" style={{ borderColor: 'var(--panel-border)' }}>
+            <div 
+              className="absolute top-0 right-0 p-2 border rounded text-xs font-mono hidden md:block"
+              style={{
+                background: isDark ? 'rgba(0, 0, 0, 0.5)' : 'var(--panel-bg)',
+                borderColor: 'var(--panel-border)',
+                color: 'var(--text-secondary)',
+              }}
+            >
               SYSTEM_STATUS: <span className="text-emerald-500 animate-pulse">ONLINE</span>
               <br />
               MARKET_UPLINK: <span className="text-emerald-500">ESTABLISHED</span>
             </div>
 
             <div className="flex items-center gap-4 mb-4">
-              <div className="bg-zinc-900 border border-zinc-700 p-3 rounded-none relative group overflow-hidden">
+              <div 
+                className="border p-3 rounded-none relative group overflow-hidden"
+                style={{
+                  background: isDark ? 'rgba(39, 39, 42, 0.5)' : 'var(--panel-bg)',
+                  borderColor: 'var(--panel-border)',
+                }}
+              >
                 <div className="absolute inset-0 bg-nofx-gold/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                 <Database className="w-8 h-8 text-nofx-gold relative z-10" />
               </div>
@@ -256,7 +269,13 @@ export function StrategyMarketPage() {
                 </p>
               </div>
             </div>
-            <p className="text-sm text-zinc-500 max-w-2xl border-l-2 border-zinc-800 pl-4">
+            <p 
+              className="text-sm max-w-2xl border-l-2 pl-4"
+              style={{
+                color: 'var(--text-secondary)',
+                borderColor: 'var(--panel-border)',
+              }}
+            >
               {t.description}
             </p>
           </div>
@@ -266,8 +285,29 @@ export function StrategyMarketPage() {
             {/* Search */}
             <div className="relative flex-1 group">
               <div className="absolute -inset-0.5 bg-gradient-to-r from-nofx-gold/20 to-zinc-800/20 rounded opacity-0 group-hover:opacity-100 transition duration-500 blur"></div>
-              <div className="relative bg-black flex items-center border border-zinc-800 group-hover:border-nofx-gold/50 transition-colors">
-                <div className="pl-4 pr-3 text-zinc-500 group-hover:text-nofx-gold transition-colors">
+              <div 
+                className="relative flex items-center border transition-colors"
+                style={{
+                  background: isDark ? 'rgba(0, 0, 0, 0.8)' : 'var(--panel-bg)',
+                  borderColor: 'var(--panel-border)',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--panel-border)'
+                }}
+              >
+                <div 
+                  className="pl-4 pr-3 transition-colors"
+                  style={{ color: 'var(--text-secondary)' }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = 'var(--nofx-gold)'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = 'var(--text-secondary)'
+                  }}
+                >
                   <Terminal size={16} />
                 </div>
                 <input
@@ -275,7 +315,10 @@ export function StrategyMarketPage() {
                   placeholder={t.search}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-transparent py-3 text-sm focus:outline-none placeholder-zinc-700 text-nofx-gold font-mono"
+                  className="w-full bg-transparent py-3 text-sm focus:outline-none font-mono"
+                  style={{
+                    color: 'var(--nofx-gold)',
+                  }}
                 />
                 <div className="pr-4">
                   <div className="w-2 h-4 bg-nofx-gold animate-pulse"></div>
@@ -284,7 +327,13 @@ export function StrategyMarketPage() {
             </div>
 
             {/* Category Filter */}
-            <div className="flex gap-2 bg-zinc-900/50 p-1 border border-zinc-800">
+            <div 
+              className="flex gap-2 p-1 border"
+              style={{
+                background: isDark ? 'rgba(39, 39, 42, 0.5)' : 'var(--panel-bg)',
+                borderColor: 'var(--panel-border)',
+              }}
+            >
               {['all', 'popular', 'recent'].map((cat) => (
                 <button
                   key={cat}
@@ -341,15 +390,29 @@ export function StrategyMarketPage() {
 
           {/* Empty State */}
           {!isLoading && filteredStrategies.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-32 border border-zinc-800 border-dashed bg-zinc-900/20 rounded">
+            <div 
+              className="flex flex-col items-center justify-center py-32 border border-dashed rounded"
+              style={{
+                borderColor: 'var(--panel-border)',
+                background: isDark ? 'rgba(39, 39, 42, 0.2)' : 'var(--panel-bg)',
+              }}
+            >
               <div className="relative mb-6">
                 <div className="absolute -inset-4 bg-red-500/10 rounded-full blur-xl animate-pulse"></div>
-                <Activity className="w-16 h-16 text-zinc-700 relative z-10" />
+                <Activity className="w-16 h-16 relative z-10" style={{ color: 'var(--text-secondary)' }} />
               </div>
-              <h3 className="text-xl font-bold text-zinc-300 font-mono tracking-tight mb-2">
+              <h3 
+                className="text-xl font-bold font-mono tracking-tight mb-2"
+                style={{ color: 'var(--text-primary)' }}
+              >
                 [{t.noStrategies}]
               </h3>
-              <p className="text-zinc-600 text-xs tracking-wide uppercase">{t.noStrategiesDesc}</p>
+              <p 
+                className="text-xs tracking-wide uppercase"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                {t.noStrategiesDesc}
+              </p>
             </div>
           )}
 
@@ -371,7 +434,17 @@ export function StrategyMarketPage() {
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.95 }}
                       transition={{ delay: i * 0.05 }}
-                      className={`group relative bg-black border border-zinc-800 hover:border-zinc-600 transition-all duration-300 ${style.shadow}`}
+                      className={`group relative border transition-all duration-300 ${style.shadow}`}
+                      style={{
+                        background: isDark ? 'rgba(0, 0, 0, 0.8)' : 'var(--panel-bg)',
+                        borderColor: 'var(--panel-border)',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = isDark ? 'rgb(113, 113, 122)' : 'var(--panel-border-hover)'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = 'var(--panel-border)'
+                      }}
                     >
                       {/* Holographic Border Highlight */}
                       <div className={`absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-${style.color.split('-')[1]}-500 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500`}></div>
@@ -393,7 +466,14 @@ export function StrategyMarketPage() {
                                 PUBLIC_ACCESS
                               </div>
                             ) : (
-                              <div className="flex items-center gap-1.5 text-zinc-500 border border-zinc-800 bg-zinc-900 px-2 py-1">
+                              <div 
+                                className="flex items-center gap-1.5 border px-2 py-1"
+                                style={{
+                                  color: 'var(--text-secondary)',
+                                  borderColor: 'var(--panel-border)',
+                                  background: isDark ? 'rgba(39, 39, 42, 0.5)' : 'var(--panel-bg)',
+                                }}
+                              >
                                 <EyeOff size={10} />
                                 RESTRICTED
                               </div>
@@ -402,11 +482,26 @@ export function StrategyMarketPage() {
                         </div>
 
                         {/* Name and Description */}
-                        <h3 className={`text-lg font-bold mb-2 tracking-tight group-hover:${style.color} transition-colors uppercase truncate relative`}>
+                        <h3 
+                          className="text-lg font-bold mb-2 tracking-tight transition-colors uppercase truncate relative"
+                          style={{ color: 'var(--text-primary)' }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.color = style.color.includes('text-') ? style.color : 'var(--nofx-gold)'
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.color = 'var(--text-primary)'
+                          }}
+                        >
                           {strategy.name}
-                          <span className="absolute -bottom-1 left-0 w-8 h-[2px] bg-zinc-800 group-hover:bg-nofx-gold transition-colors"></span>
+                          <span 
+                            className="absolute -bottom-1 left-0 w-8 h-[2px] group-hover:bg-nofx-gold transition-colors"
+                            style={{ backgroundColor: 'var(--panel-border)' }}
+                          ></span>
                         </h3>
-                        <p className="text-xs text-zinc-500 mb-6 line-clamp-2 h-8 leading-relaxed font-sans">
+                        <p 
+                          className="text-xs mb-6 line-clamp-2 h-8 leading-relaxed font-sans"
+                          style={{ color: 'var(--text-secondary)' }}
+                        >
                           {strategy.description || 'NO_DESCRIPTION_AVAILABLE'}
                         </p>
 
@@ -479,7 +574,22 @@ export function StrategyMarketPage() {
                           {strategy.config_visible && strategy.config ? (
                             <button
                               onClick={() => handleCopyConfig(strategy)}
-                              className="w-full py-2.5 text-[10px] font-bold font-mono uppercase tracking-widest border border-zinc-700 bg-black hover:bg-zinc-900 text-zinc-300 hover:text-nofx-gold hover:border-nofx-gold transition-all flex items-center justify-center gap-2 group/btn"
+                              className="w-full py-2.5 text-[10px] font-bold font-mono uppercase tracking-widest border transition-all flex items-center justify-center gap-2 group/btn"
+                              style={{
+                                background: isDark ? 'rgba(0, 0, 0, 0.8)' : 'var(--panel-bg)',
+                                borderColor: 'var(--panel-border)',
+                                color: 'var(--text-secondary)',
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = isDark ? 'rgba(39, 39, 42, 0.8)' : 'var(--panel-bg-hover)'
+                                e.currentTarget.style.color = 'var(--nofx-gold)'
+                                e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = isDark ? 'rgba(0, 0, 0, 0.8)' : 'var(--panel-bg)'
+                                e.currentTarget.style.color = 'var(--text-secondary)'
+                                e.currentTarget.style.borderColor = 'var(--panel-border)'
+                              }}
                             >
                               {copiedId === strategy.id ? (
                                 <>
@@ -494,7 +604,16 @@ export function StrategyMarketPage() {
                               )}
                             </button>
                           ) : (
-                            <button disabled className="w-full py-2.5 text-[10px] font-bold font-mono uppercase tracking-widest border border-zinc-800 bg-black text-zinc-700 cursor-not-allowed flex items-center justify-center gap-2">
+                            <button 
+                              disabled 
+                              className="w-full py-2.5 text-[10px] font-bold font-mono uppercase tracking-widest border cursor-not-allowed flex items-center justify-center gap-2"
+                              style={{
+                                background: isDark ? 'rgba(0, 0, 0, 0.8)' : 'var(--panel-bg)',
+                                borderColor: 'var(--panel-border)',
+                                color: 'var(--text-disabled)',
+                                opacity: 0.5,
+                              }}
+                            >
                               <Shield size={12} />
                               {t.hideConfig}
                             </button>
@@ -519,14 +638,29 @@ export function StrategyMarketPage() {
             >
               <div className="relative group cursor-pointer" onClick={() => window.location.href = '/strategy'}>
                 <div className="absolute -inset-1 bg-gradient-to-r from-nofx-gold to-yellow-600 rounded blur opacity-25 group-hover:opacity-75 transition duration-1000 group-hover:duration-200"></div>
-                <div className="relative px-8 py-4 bg-black border border-zinc-800 hover:border-nofx-gold/50 flex items-center gap-4 transition-all">
+                <div 
+                  className="relative px-8 py-4 border flex items-center gap-4 transition-all"
+                  style={{
+                    background: isDark ? 'rgba(0, 0, 0, 0.8)' : 'var(--panel-bg)',
+                    borderColor: 'var(--panel-border)',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--panel-border)'
+                  }}
+                >
                   <Hexagon className="text-nofx-gold animate-spin-slow" size={24} />
                   <div className="text-left">
                     <div className="text-sm font-bold uppercase tracking-wider transition-colors" style={{ color: 'var(--text-primary)' }} onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--nofx-gold)' }} onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-primary)' }}>{t.shareYours}</div>
-                    <div className="text-[10px] text-zinc-500 font-mono">CONTRIBUTE TO THE GLOBAL DATABASE</div>
+                    <div className="text-[10px] font-mono" style={{ color: 'var(--text-secondary)' }}>CONTRIBUTE TO THE GLOBAL DATABASE</div>
                   </div>
-                  <div className="w-[1px] h-8 bg-zinc-800 mx-2"></div>
-                  <div className="text-xs font-mono text-zinc-400 group-hover:translate-x-1 transition-transform">
+                  <div className="w-[1px] h-8 mx-2" style={{ backgroundColor: 'var(--panel-border)' }}></div>
+                  <div 
+                    className="text-xs font-mono group-hover:translate-x-1 transition-transform"
+                    style={{ color: 'var(--text-secondary)' }}
+                  >
                     INITIALIZE_UPLOAD -&gt;
                   </div>
                 </div>

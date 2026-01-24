@@ -82,7 +82,16 @@ export function CompetitionPage() {
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 md:gap-0">
             <div className="flex items-center gap-3 md:gap-4">
               <div
-                className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center bg-black/60 border border-nofx-gold/30 shadow-[0_0_15px_rgba(240,185,11,0.2)]"
+                className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center border transition-colors"
+                style={{
+                  background: isDark 
+                    ? 'rgba(0, 0, 0, 0.6)' 
+                    : 'var(--panel-bg)',
+                  borderColor: 'var(--nofx-gold)',
+                  boxShadow: isDark 
+                    ? '0 0 15px rgba(240,185,11,0.2)' 
+                    : '0 0 10px rgba(240,185,11,0.1)',
+                }}
               >
                 <Trophy
                   className="w-6 h-6 md:w-7 md:h-7 text-nofx-gold"
@@ -100,7 +109,10 @@ export function CompetitionPage() {
                     0 {t('traders', language)}
                   </span>
                 </h1>
-                <p className="text-xs text-zinc-400">
+                <p 
+                  className="text-xs"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
                   {t('liveBattle', language)}
                 </p>
               </div>
@@ -108,14 +120,32 @@ export function CompetitionPage() {
           </div>
 
           {/* Empty State */}
-          <div className="bg-black/40 border border-white/10 rounded-xl p-16 text-center backdrop-blur-md">
+          <div 
+            className="rounded-xl p-16 text-center backdrop-blur-md transition-all duration-300"
+            style={{
+              background: isDark 
+                ? 'rgba(0, 0, 0, 0.4)' 
+                : 'var(--panel-bg)',
+              border: '1px solid var(--panel-border)',
+            }}
+          >
             <Trophy
-              className="w-16 h-16 mx-auto mb-4 text-zinc-700"
+              className="w-16 h-16 mx-auto mb-4 transition-colors"
+              style={{ 
+                color: isDark ? 'var(--text-secondary)' : 'var(--text-secondary)',
+                opacity: isDark ? 0.6 : 0.5,
+              }}
             />
-            <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--text-primary)' }}>
+            <h3 
+              className="text-lg font-bold mb-2" 
+              style={{ color: 'var(--text-primary)' }}
+            >
               {t('noTraders', language)}
             </h3>
-            <p className="text-sm text-zinc-400">
+            <p 
+              className="text-sm" 
+              style={{ color: 'var(--text-secondary)' }}
+            >
               {t('createFirstTrader', language)}
             </p>
           </div>
@@ -139,7 +169,16 @@ export function CompetitionPage() {
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 md:gap-0">
           <div className="flex items-center gap-3 md:gap-4">
             <div
-              className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center bg-black/60 border border-nofx-gold/30 shadow-[0_0_15px_rgba(240,185,11,0.2)]"
+              className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center border transition-colors"
+              style={{
+                background: isDark 
+                  ? 'rgba(0, 0, 0, 0.6)' 
+                  : 'var(--panel-bg)',
+                borderColor: 'var(--nofx-gold)',
+                boxShadow: isDark 
+                  ? '0 0 15px rgba(240,185,11,0.2)' 
+                  : '0 0 10px rgba(240,185,11,0.1)',
+              }}
             >
               <Trophy
                 className="w-6 h-6 md:w-7 md:h-7 text-nofx-gold"
@@ -147,7 +186,8 @@ export function CompetitionPage() {
             </div>
             <div>
               <h1
-                className="text-xl md:text-2xl font-bold flex items-center gap-2 text-white"
+                className="text-xl md:text-2xl font-bold flex items-center gap-2"
+                style={{ color: 'var(--text-primary)' }}
               >
                 {t('aiCompetition', language)}
                 <span
@@ -156,13 +196,19 @@ export function CompetitionPage() {
                   {competition.count} {t('traders', language)}
                 </span>
               </h1>
-              <p className="text-xs text-zinc-400">
+              <p 
+                className="text-xs"
+                style={{ color: 'var(--text-secondary)' }}
+              >
                 {t('liveBattle', language)}
               </p>
             </div>
           </div>
           <div className="text-left md:text-right w-full md:w-auto">
-            <div className="text-xs mb-1 text-zinc-400">
+            <div 
+              className="text-xs mb-1"
+              style={{ color: 'var(--text-secondary)' }}
+            >
               {t('leader', language)}
             </div>
             <div
@@ -191,11 +237,15 @@ export function CompetitionPage() {
           >
             <div className="flex items-center justify-between mb-6">
               <h2
-                className="text-lg font-bold flex items-center gap-2 text-white"
+                className="text-lg font-bold flex items-center gap-2"
+                style={{ color: 'var(--text-primary)' }}
               >
                 {t('performanceComparison', language)}
               </h2>
-              <div className="text-xs text-zinc-400">
+              <div 
+                className="text-xs"
+                style={{ color: 'var(--text-secondary)' }}
+              >
                 {t('realTimePnL', language)}
               </div>
             </div>
@@ -204,12 +254,25 @@ export function CompetitionPage() {
 
           {/* Right: Leaderboard */}
           <div
-            className="bg-black/40 border border-white/10 rounded-xl p-6 backdrop-blur-md animate-slide-in hover:border-white/20 transition-colors"
-            style={{ animationDelay: '0.1s' }}
+            className="rounded-xl p-6 backdrop-blur-md animate-slide-in transition-colors"
+            style={{ 
+              animationDelay: '0.1s',
+              background: isDark 
+                ? 'rgba(0, 0, 0, 0.4)' 
+                : 'var(--panel-bg)',
+              border: '1px solid var(--panel-border)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = isDark ? 'rgba(255, 255, 255, 0.2)' : 'var(--panel-border-hover)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = 'var(--panel-border)'
+            }}
           >
             <div className="flex items-center justify-between mb-6">
               <h2
-                className="text-lg font-bold flex items-center gap-2 text-white"
+                className="text-lg font-bold flex items-center gap-2"
+                style={{ color: 'var(--text-primary)' }}
               >
                 {t('leaderboard', language)}
               </h2>
@@ -372,8 +435,14 @@ export function CompetitionPage() {
         {/* Head-to-Head Stats */}
         {competition.traders.length === 2 && (
           <div
-            className="bg-black/40 border border-white/10 rounded-xl p-6 backdrop-blur-md animate-slide-in"
-            style={{ animationDelay: '0.3s' }}
+            className="rounded-xl p-6 backdrop-blur-md animate-slide-in"
+            style={{ 
+              animationDelay: '0.3s',
+              background: isDark 
+                ? 'rgba(0, 0, 0, 0.4)' 
+                : 'var(--panel-bg)',
+              border: '1px solid var(--panel-border)',
+            }}
           >
             <h2
               className="text-lg font-bold mb-6 flex items-center gap-2"

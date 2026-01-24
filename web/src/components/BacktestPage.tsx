@@ -41,6 +41,7 @@ import {
 } from 'recharts'
 import { api } from '../lib/api'
 import { useLanguage } from '../contexts/LanguageContext'
+import { useTheme } from '../contexts/ThemeContext'
 import { t } from '../i18n/translations'
 import { confirmToast } from '../lib/notify'
 import { DecisionCard } from './DecisionCard'
@@ -80,7 +81,7 @@ function StatCard({
   value,
   suffix,
   trend,
-  color = '#EAECEF',
+  color = 'var(--text-primary)',
   metricKey,
   language = 'en',
 }: {
@@ -106,7 +107,7 @@ function StatCard({
     >
       <div className="flex items-center gap-2 mb-2">
         <Icon className="w-4 h-4" style={{ color: '#F0B90B' }} />
-        <span className="text-xs" style={{ color: '#848E9C' }}>
+        <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
           {label}
         </span>
         {metricKey && (
@@ -118,7 +119,7 @@ function StatCard({
           {value}
         </span>
         {suffix && (
-          <span className="text-xs" style={{ color: '#848E9C' }}>
+          <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
             {suffix}
           </span>
         )}
@@ -168,7 +169,7 @@ function ProgressRing({ progress, size = 120 }: { progress: number; size?: numbe
         <span className="text-2xl font-bold" style={{ color: '#F0B90B' }}>
           {progress.toFixed(0)}%
         </span>
-        <span className="text-xs" style={{ color: '#848E9C' }}>
+        <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
           Complete
         </span>
       </div>
@@ -446,7 +447,7 @@ function CandlestickChartComponent({
 
   if (symbols.length === 0) {
     return (
-      <div className="py-12 text-center" style={{ color: '#5E6673' }}>
+      <div className="py-12 text-center" style={{ color: 'var(--text-tertiary)' }}>
         {language === 'zh' ? '没有交易记录' : 'No trades to display'}
       </div>
     )
@@ -458,14 +459,18 @@ function CandlestickChartComponent({
       <div className="flex items-center gap-4 flex-wrap">
         <div className="flex items-center gap-2">
           <CandlestickIcon size={16} style={{ color: '#F0B90B' }} />
-          <span className="text-sm" style={{ color: '#848E9C' }}>
+          <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
             {language === 'zh' ? '币种' : 'Symbol'}
           </span>
           <select
             value={selectedSymbol}
             onChange={(e) => setSelectedSymbol(e.target.value)}
             className="px-3 py-1.5 rounded text-sm"
-            style={{ background: '#1E2329', border: '1px solid #2B3139', color: '#EAECEF' }}
+            style={{ 
+              background: isDark ? 'rgba(30, 35, 41, 0.8)' : 'var(--panel-bg)', 
+              border: '1px solid var(--panel-border)', 
+              color: 'var(--text-primary)',
+            }}
           >
             {symbols.map((sym) => (
               <option key={sym} value={sym}>
@@ -497,7 +502,7 @@ function CandlestickChartComponent({
           </div>
         </div>
 
-        <span className="text-xs" style={{ color: '#5E6673' }}>
+        <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
           ({symbolTrades.length} {language === 'zh' ? '笔交易' : 'trades'})
         </span>
       </div>
@@ -509,7 +514,7 @@ function CandlestickChartComponent({
         style={{ background: 'var(--background)', minHeight: 400 }}
       >
         {isLoading && (
-          <div className="flex items-center justify-center h-[400px]" style={{ color: '#848E9C' }}>
+          <div className="flex items-center justify-center h-[400px]" style={{ color: 'var(--text-secondary)' }}>
             <RefreshCw className="animate-spin mr-2" size={16} />
             {language === 'zh' ? '加载K线数据...' : 'Loading kline data...'}
           </div>
@@ -523,7 +528,7 @@ function CandlestickChartComponent({
       </div>
 
       {/* Legend */}
-      <div className="flex items-center gap-4 text-xs" style={{ color: '#848E9C' }}>
+      <div className="flex items-center gap-4 text-xs" style={{ color: 'var(--text-secondary)' }}>
         <div className="flex items-center gap-1.5">
           <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#0ECB81' }} />
           <span>{language === 'zh' ? '开仓/盈利' : 'Open/Profit'}</span>
@@ -532,7 +537,7 @@ function CandlestickChartComponent({
           <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#F6465D' }} />
           <span>{language === 'zh' ? '亏损平仓' : 'Loss Close'}</span>
         </div>
-        <span style={{ color: '#5E6673' }}>|</span>
+        <span style={{ color: 'var(--text-tertiary)' }}>|</span>
         <span>▲ Long · ▼ Short · ✕ {language === 'zh' ? '平仓' : 'Close'}</span>
       </div>
     </div>
@@ -545,7 +550,7 @@ function TradeTimeline({ trades }: { trades: BacktestTradeEvent[] }) {
 
   if (recentTrades.length === 0) {
     return (
-      <div className="py-12 text-center" style={{ color: '#5E6673' }}>
+      <div className="py-12 text-center" style={{ color: 'var(--text-tertiary)' }}>
         No trades yet
       </div>
     )
@@ -581,7 +586,7 @@ function TradeTimeline({ trades }: { trades: BacktestTradeEvent[] }) {
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <span className="font-mono font-bold text-sm" style={{ color: '#EAECEF' }}>
+                <span className="font-mono font-bold text-sm" style={{ color: 'var(--text-primary)' }}>
                   {trade.symbol.replace('USDT', '')}
                 </span>
                 <span
@@ -591,12 +596,12 @@ function TradeTimeline({ trades }: { trades: BacktestTradeEvent[] }) {
                   {trade.action.replace('_', ' ').toUpperCase()}
                 </span>
                 {trade.leverage && (
-                  <span className="text-xs" style={{ color: '#848E9C' }}>
+                  <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                     {trade.leverage}x
                   </span>
                 )}
               </div>
-              <div className="text-xs mt-1" style={{ color: '#848E9C' }}>
+              <div className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
                 {new Date(trade.ts).toLocaleString()} · Qty: {trade.qty.toFixed(4)} · ${trade.price.toFixed(2)}
               </div>
             </div>
@@ -608,7 +613,7 @@ function TradeTimeline({ trades }: { trades: BacktestTradeEvent[] }) {
                 {trade.realized_pnl >= 0 ? '+' : ''}
                 {trade.realized_pnl.toFixed(2)}
               </div>
-              <div className="text-xs" style={{ color: '#848E9C' }}>
+              <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                 USDT
               </div>
             </div>
@@ -637,7 +642,10 @@ function PositionsDisplay({
   return (
     <div
       className="mt-3 p-3 rounded-lg"
-      style={{ background: 'rgba(30, 35, 41, 0.8)', border: '1px solid #2B3139' }}
+      style={{ 
+        background: isDark ? 'rgba(30, 35, 41, 0.8)' : 'var(--panel-bg)', 
+        border: '1px solid var(--panel-border)',
+      }}
     >
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
@@ -653,7 +661,7 @@ function PositionsDisplay({
           </span>
         </div>
         <div className="flex items-center gap-3 text-xs">
-          <span style={{ color: '#848E9C' }}>
+          <span style={{ color: 'var(--text-secondary)' }}>
             {language === 'zh' ? '保证金' : 'Margin'}: ${totalMargin.toFixed(2)}
           </span>
           <span
@@ -705,7 +713,7 @@ function PositionsDisplay({
                       {isLong ? 'LONG' : 'SHORT'} {pos.leverage}x
                     </span>
                   </div>
-                  <div className="text-[10px]" style={{ color: '#5E6673' }}>
+                  <div className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
                     {language === 'zh' ? '数量' : 'Qty'}: {pos.quantity.toFixed(4)} ·{' '}
                     {language === 'zh' ? '保证金' : 'Margin'}: ${pos.margin_used.toFixed(2)}
                   </div>
@@ -714,7 +722,7 @@ function PositionsDisplay({
 
               <div className="text-right">
                 <div className="flex items-center gap-2 text-xs">
-                  <span style={{ color: '#848E9C' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>
                     {language === 'zh' ? '开仓' : 'Entry'}: ${pos.entry_price.toFixed(2)}
                   </span>
                   <span style={{ color: 'var(--text-primary)' }}>
@@ -744,6 +752,8 @@ function PositionsDisplay({
 // ============ Main Component ============
 export function BacktestPage() {
   const { language } = useLanguage()
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
   const tr = useCallback(
     (key: string, params?: Record<string, string | number>) => t(`backtestPage.${key}`, language, params),
     [language]
@@ -1245,7 +1255,7 @@ export function BacktestPage() {
                         <label className="block text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
                           {tr('form.symbolsLabel')}
                           {strategyHasDynamicCoins && (
-                            <span className="ml-2" style={{ color: '#5E6673' }}>
+                            <span className="ml-2" style={{ color: 'var(--text-tertiary)' }}>
                               ({language === 'zh' ? '可选 - 策略已配置币种来源' : 'Optional - strategy has coin source'})
                             </span>
                           )}
@@ -1282,9 +1292,9 @@ export function BacktestPage() {
                           <textarea
                             className="w-full p-2 rounded-lg text-xs font-mono"
                             style={{
-                              background: '#0B0E11',
-                              border: '1px solid #2B3139',
-                              color: '#EAECEF',
+                              background: isDark ? 'rgba(11, 14, 17, 0.8)' : 'var(--panel-bg)',
+                              border: '1px solid var(--panel-border)',
+                              color: 'var(--text-primary)',
                             }}
                             value={formState.symbols}
                             onChange={(e) => handleFormChange('symbols', e.target.value)}
@@ -1339,8 +1349,20 @@ export function BacktestPage() {
                               key={r.hours}
                               type="button"
                               onClick={() => applyQuickRange(r.hours)}
-                              className="px-3 py-1 rounded text-xs"
-                              style={{ background: '#1E2329', border: '1px solid #2B3139', color: '#EAECEF' }}
+                              className="px-3 py-1 rounded text-xs transition-colors"
+                              style={{ 
+                                background: isDark ? 'rgba(30, 35, 41, 0.8)' : 'var(--panel-bg)', 
+                                border: '1px solid var(--panel-border)', 
+                                color: 'var(--text-primary)',
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = isDark ? 'rgba(30, 35, 41, 1)' : 'var(--panel-bg-hover)'
+                                e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = isDark ? 'rgba(30, 35, 41, 0.8)' : 'var(--panel-bg)'
+                                e.currentTarget.style.borderColor = 'var(--panel-border)'
+                              }}
                             >
                               {r.label}
                             </button>
@@ -1383,9 +1405,9 @@ export function BacktestPage() {
                                 }}
                                 className="px-2 py-1 rounded text-xs transition-all"
                                 style={{
-                                  background: isSelected ? 'rgba(240,185,11,0.15)' : '#1E2329',
-                                  border: `1px solid ${isSelected ? '#F0B90B' : '#2B3139'}`,
-                                  color: isSelected ? '#F0B90B' : '#848E9C',
+                                  background: isSelected ? 'rgba(240,185,11,0.15)' : (isDark ? 'rgba(30, 35, 41, 0.8)' : 'var(--panel-bg)'),
+                                  border: `1px solid ${isSelected ? 'var(--nofx-gold)' : 'var(--panel-border)'}`,
+                                  color: isSelected ? 'var(--nofx-gold)' : 'var(--text-secondary)',
                                 }}
                               >
                                 {tf}
@@ -1397,7 +1419,7 @@ export function BacktestPage() {
 
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-xs mb-1" style={{ color: '#848E9C' }}>
+                          <label className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
                             {tr('form.initialBalanceLabel')}
                           </label>
                           <input
@@ -1409,7 +1431,7 @@ export function BacktestPage() {
                           />
                         </div>
                         <div>
-                          <label className="block text-xs mb-1" style={{ color: '#848E9C' }}>
+                          <label className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
                             {tr('form.decisionTfLabel')}
                           </label>
                           <select
@@ -1432,7 +1454,11 @@ export function BacktestPage() {
                           type="button"
                           onClick={() => setWizardStep(1)}
                           className="flex-1 py-2 rounded-lg font-medium flex items-center justify-center gap-2"
-                          style={{ background: '#1E2329', border: '1px solid #2B3139', color: '#EAECEF' }}
+                          style={{ 
+                            background: isDark ? 'rgba(30, 35, 41, 0.8)' : 'var(--panel-bg)', 
+                            border: '1px solid var(--panel-border)', 
+                            color: 'var(--text-primary)',
+                          }}
                         >
                           <ChevronLeft className="w-4 h-4" />
                           {language === 'zh' ? '上一步' : 'Back'}
@@ -1461,7 +1487,7 @@ export function BacktestPage() {
                     >
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-xs mb-1" style={{ color: '#848E9C' }}>
+                          <label className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
                             {tr('form.btcEthLeverageLabel')}
                           </label>
                           <input
@@ -1473,7 +1499,7 @@ export function BacktestPage() {
                           />
                         </div>
                         <div>
-                          <label className="block text-xs mb-1" style={{ color: '#848E9C' }}>
+                          <label className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
                             {tr('form.altcoinLeverageLabel')}
                           </label>
                           <input
@@ -1488,7 +1514,7 @@ export function BacktestPage() {
 
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                         <div>
-                          <label className="block text-xs mb-1" style={{ color: '#848E9C' }}>
+                          <label className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
                             {tr('form.feeLabel')}
                           </label>
                           <input
@@ -1500,7 +1526,7 @@ export function BacktestPage() {
                           />
                         </div>
                         <div>
-                          <label className="block text-xs mb-1" style={{ color: '#848E9C' }}>
+                          <label className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
                             {tr('form.slippageLabel')}
                           </label>
                           <input
@@ -1512,7 +1538,7 @@ export function BacktestPage() {
                           />
                         </div>
                         <div>
-                          <label className="block text-xs mb-1" style={{ color: '#848E9C' }}>
+                          <label className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
                             {tr('form.cadenceLabel')}
                           </label>
                           <input
@@ -1526,7 +1552,7 @@ export function BacktestPage() {
                       </div>
 
                       <div>
-                        <label className="block text-xs mb-1" style={{ color: '#848E9C' }}>
+                        <label className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
                           {language === 'zh' ? '策略风格' : 'Strategy Style'}
                         </label>
                         <div className="flex flex-wrap gap-1">
@@ -1537,9 +1563,9 @@ export function BacktestPage() {
                               onClick={() => handleFormChange('prompt', p)}
                               className="px-3 py-1.5 rounded text-xs transition-all"
                               style={{
-                                background: formState.prompt === p ? 'rgba(240,185,11,0.15)' : '#1E2329',
-                                border: `1px solid ${formState.prompt === p ? '#F0B90B' : '#2B3139'}`,
-                                color: formState.prompt === p ? '#F0B90B' : '#848E9C',
+                                background: formState.prompt === p ? 'rgba(240,185,11,0.15)' : (isDark ? 'rgba(30, 35, 41, 0.8)' : 'var(--panel-bg)'),
+                                border: `1px solid ${formState.prompt === p ? 'var(--nofx-gold)' : 'var(--panel-border)'}`,
+                                color: formState.prompt === p ? 'var(--nofx-gold)' : 'var(--text-secondary)',
                               }}
                             >
                               {tr(`form.promptPresets.${p}`)}
@@ -1548,7 +1574,7 @@ export function BacktestPage() {
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap gap-4 text-xs" style={{ color: '#848E9C' }}>
+                      <div className="flex flex-wrap gap-4 text-xs" style={{ color: 'var(--text-secondary)' }}>
                         <label className="flex items-center gap-2 cursor-pointer">
                           <input
                             type="checkbox"
@@ -1573,8 +1599,20 @@ export function BacktestPage() {
                         <button
                           type="button"
                           onClick={() => setWizardStep(2)}
-                          className="flex-1 py-2 rounded-lg font-medium flex items-center justify-center gap-2"
-                          style={{ background: '#1E2329', border: '1px solid #2B3139', color: '#EAECEF' }}
+                          className="flex-1 py-2 rounded-lg font-medium flex items-center justify-center gap-2 transition-colors"
+                          style={{ 
+                            background: isDark ? 'rgba(30, 35, 41, 0.8)' : 'var(--panel-bg)', 
+                            border: '1px solid var(--panel-border)', 
+                            color: 'var(--text-primary)',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = isDark ? 'rgba(30, 35, 41, 1)' : 'var(--panel-bg-hover)'
+                            e.currentTarget.style.borderColor = 'var(--nofx-gold)'
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = isDark ? 'rgba(30, 35, 41, 0.8)' : 'var(--panel-bg)'
+                            e.currentTarget.style.borderColor = 'var(--panel-border)'
+                          }}
                         >
                           <ChevronLeft className="w-4 h-4" />
                           {language === 'zh' ? '上一步' : 'Back'}
@@ -1602,18 +1640,18 @@ export function BacktestPage() {
             {/* Run History */}
             <div className="binance-card p-4">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-bold flex items-center gap-2" style={{ color: '#EAECEF' }}>
-                  <Layers className="w-4 h-4" style={{ color: '#F0B90B' }} />
+                <h3 className="text-sm font-bold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+                  <Layers className="w-4 h-4" style={{ color: 'var(--nofx-gold)' }} />
                   {tr('runList.title')}
                 </h3>
-                <span className="text-xs" style={{ color: '#848E9C' }}>
+                <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                   {runs.length} {language === 'zh' ? '条' : 'runs'}
                 </span>
               </div>
 
               <div className="space-y-2 max-h-[300px] overflow-y-auto">
                 {runs.length === 0 ? (
-                  <div className="py-8 text-center text-sm" style={{ color: '#5E6673' }}>
+                  <div className="py-8 text-center text-sm" style={{ color: 'var(--text-tertiary)' }}>
                     {tr('emptyStates.noRuns')}
                   </div>
                 ) : (
@@ -1623,12 +1661,14 @@ export function BacktestPage() {
                       onClick={() => setSelectedRunId(run.run_id)}
                       className="w-full p-3 rounded-lg text-left transition-all"
                       style={{
-                        background: run.run_id === selectedRunId ? 'rgba(240,185,11,0.1)' : '#1E2329',
-                        border: `1px solid ${run.run_id === selectedRunId ? '#F0B90B' : '#2B3139'}`,
+                        background: run.run_id === selectedRunId 
+                          ? 'rgba(240,185,11,0.1)' 
+                          : (isDark ? 'rgba(30, 35, 41, 0.8)' : 'var(--panel-bg)'),
+                        border: `1px solid ${run.run_id === selectedRunId ? 'var(--nofx-gold)' : 'var(--panel-border)'}`,
                       }}
                     >
                       <div className="flex items-center justify-between">
-                        <span className="font-mono text-xs" style={{ color: '#EAECEF' }}>
+                        <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
                           {run.run_id.slice(0, 20)}...
                         </span>
                         <span
@@ -1640,7 +1680,7 @@ export function BacktestPage() {
                         </span>
                       </div>
                       <div className="flex items-center justify-between mt-1">
-                        <span className="text-xs" style={{ color: '#848E9C' }}>
+                        <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                           {run.summary.progress_pct.toFixed(0)}% · ${run.summary.equity_last.toFixed(0)}
                         </span>
                         <button
@@ -1648,7 +1688,7 @@ export function BacktestPage() {
                             e.stopPropagation()
                             toggleCompare(run.run_id)
                           }}
-                          className="p-1 rounded"
+                          className="p-1 rounded transition-colors"
                           style={{
                             background: compareRunIds.includes(run.run_id)
                               ? 'rgba(240,185,11,0.2)'
@@ -1659,7 +1699,7 @@ export function BacktestPage() {
                           <Eye
                             className="w-3 h-3"
                             style={{
-                              color: compareRunIds.includes(run.run_id) ? '#F0B90B' : '#5E6673',
+                              color: compareRunIds.includes(run.run_id) ? 'var(--nofx-gold)' : 'var(--text-tertiary)',
                             }}
                           />
                         </button>
@@ -1676,10 +1716,16 @@ export function BacktestPage() {
             {!selectedRunId ? (
               <div
                 className="binance-card p-12 text-center"
-                style={{ color: '#5E6673' }}
+                style={{ color: 'var(--text-tertiary)' }}
               >
-                <Brain className="w-12 h-12 mx-auto mb-4 opacity-30" />
-                <p>{tr('emptyStates.selectRun')}</p>
+                <Brain 
+                  className="w-12 h-12 mx-auto mb-4 transition-colors" 
+                  style={{ 
+                    color: 'var(--text-tertiary)',
+                    opacity: isDark ? 0.3 : 0.4,
+                  }} 
+                />
+                <p style={{ color: 'var(--text-secondary)' }}>{tr('emptyStates.selectRun')}</p>
               </div>
             ) : (
               <>
@@ -1689,7 +1735,7 @@ export function BacktestPage() {
                     <div className="flex items-center gap-4">
                       <ProgressRing progress={status?.progress_pct ?? selectedRun?.summary.progress_pct ?? 0} size={80} />
                       <div>
-                        <h2 className="font-mono font-bold" style={{ color: '#EAECEF' }}>
+                        <h2 className="font-mono font-bold" style={{ color: 'var(--text-primary)' }}>
                           {selectedRunId}
                         </h2>
                         <div className="flex items-center gap-2 mt-1">
@@ -1704,7 +1750,7 @@ export function BacktestPage() {
                             {tr(`states.${status?.state ?? selectedRun?.state}`)}
                           </span>
                           {selectedRun?.summary.decision_tf && (
-                            <span className="text-xs" style={{ color: '#848E9C' }}>
+                            <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                               {selectedRun.summary.decision_tf} · {selectedRun.summary.symbol_count} symbols
                             </span>
                           )}
@@ -1717,16 +1763,34 @@ export function BacktestPage() {
                         <>
                           <button
                             onClick={() => handleControl('pause')}
-                            className="p-2 rounded-lg transition-all hover:bg-[#2B3139]"
-                            style={{ border: '1px solid #2B3139' }}
+                            className="p-2 rounded-lg transition-all"
+                            style={{ 
+                              border: '1px solid var(--panel-border)',
+                              background: isDark ? 'rgba(30, 35, 41, 0.8)' : 'var(--panel-bg)',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = isDark ? 'rgba(30, 35, 41, 1)' : 'var(--panel-bg-hover)'
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = isDark ? 'rgba(30, 35, 41, 0.8)' : 'var(--panel-bg)'
+                            }}
                             title={tr('actions.pause')}
                           >
-                            <Pause className="w-4 h-4" style={{ color: '#F0B90B' }} />
+                            <Pause className="w-4 h-4" style={{ color: 'var(--nofx-gold)' }} />
                           </button>
                           <button
                             onClick={() => handleControl('stop')}
-                            className="p-2 rounded-lg transition-all hover:bg-[#2B3139]"
-                            style={{ border: '1px solid #2B3139' }}
+                            className="p-2 rounded-lg transition-all"
+                            style={{ 
+                              border: '1px solid var(--panel-border)',
+                              background: isDark ? 'rgba(30, 35, 41, 0.8)' : 'var(--panel-bg)',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = isDark ? 'rgba(30, 35, 41, 1)' : 'var(--panel-bg-hover)'
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = isDark ? 'rgba(30, 35, 41, 0.8)' : 'var(--panel-bg)'
+                            }}
                             title={tr('actions.stop')}
                           >
                             <Square className="w-4 h-4" style={{ color: '#F6465D' }} />
@@ -1736,8 +1800,17 @@ export function BacktestPage() {
                       {status?.state === 'paused' && (
                         <button
                           onClick={() => handleControl('resume')}
-                          className="p-2 rounded-lg transition-all hover:bg-[#2B3139]"
-                          style={{ border: '1px solid #2B3139' }}
+                          className="p-2 rounded-lg transition-all"
+                          style={{ 
+                            border: '1px solid var(--panel-border)',
+                            background: isDark ? 'rgba(30, 35, 41, 0.8)' : 'var(--panel-bg)',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = isDark ? 'rgba(30, 35, 41, 1)' : 'var(--panel-bg-hover)'
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = isDark ? 'rgba(30, 35, 41, 0.8)' : 'var(--panel-bg)'
+                          }}
                           title={tr('actions.resume')}
                         >
                           <Play className="w-4 h-4" style={{ color: '#0ECB81' }} />
@@ -1745,16 +1818,34 @@ export function BacktestPage() {
                       )}
                       <button
                         onClick={handleExport}
-                        className="p-2 rounded-lg transition-all hover:bg-[#2B3139]"
-                        style={{ border: '1px solid #2B3139' }}
+                        className="p-2 rounded-lg transition-all"
+                        style={{ 
+                          border: '1px solid var(--panel-border)',
+                          background: isDark ? 'rgba(30, 35, 41, 0.8)' : 'var(--panel-bg)',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = isDark ? 'rgba(30, 35, 41, 1)' : 'var(--panel-bg-hover)'
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = isDark ? 'rgba(30, 35, 41, 0.8)' : 'var(--panel-bg)'
+                        }}
                         title={tr('detail.exportLabel')}
                       >
-                        <Download className="w-4 h-4" style={{ color: '#EAECEF' }} />
+                        <Download className="w-4 h-4" style={{ color: 'var(--text-primary)' }} />
                       </button>
                       <button
                         onClick={handleDelete}
-                        className="p-2 rounded-lg transition-all hover:bg-[#2B3139]"
-                        style={{ border: '1px solid #2B3139' }}
+                        className="p-2 rounded-lg transition-all"
+                        style={{ 
+                          border: '1px solid var(--panel-border)',
+                          background: isDark ? 'rgba(30, 35, 41, 0.8)' : 'var(--panel-bg)',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = isDark ? 'rgba(30, 35, 41, 1)' : 'var(--panel-bg-hover)'
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = isDark ? 'rgba(30, 35, 41, 0.8)' : 'var(--panel-bg)'
+                        }}
                         title={tr('detail.deleteLabel')}
                       >
                         <Trash2 className="w-4 h-4" style={{ color: '#F6465D' }} />
@@ -1819,13 +1910,13 @@ export function BacktestPage() {
 
                 {/* Tabs */}
                 <div className="binance-card">
-                  <div className="flex border-b" style={{ borderColor: '#2B3139' }}>
+                  <div className="flex border-b" style={{ borderColor: 'var(--panel-border)' }}>
                     {(['overview', 'chart', 'trades', 'decisions'] as ViewTab[]).map((tab) => (
                       <button
                         key={tab}
                         onClick={() => setViewTab(tab)}
                         className="px-4 py-3 text-sm font-medium transition-all relative"
-                        style={{ color: viewTab === tab ? '#F0B90B' : '#848E9C' }}
+                        style={{ color: viewTab === tab ? 'var(--nofx-gold)' : 'var(--text-secondary)' }}
                       >
                         {tab === 'overview'
                           ? language === 'zh'
@@ -1865,41 +1956,65 @@ export function BacktestPage() {
                           {equity && equity.length > 0 ? (
                             <BacktestChart equity={equity} trades={trades ?? []} />
                           ) : (
-                            <div className="py-12 text-center" style={{ color: '#5E6673' }}>
+                            <div className="py-12 text-center" style={{ color: 'var(--text-tertiary)' }}>
                               {tr('charts.equityEmpty')}
                             </div>
                           )}
 
                           {metrics && (
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
-                              <div className="p-3 rounded-lg" style={{ background: '#1E2329' }}>
-                                <div className="flex items-center gap-1 text-xs" style={{ color: '#848E9C' }}>
+                              <div 
+                                className="p-3 rounded-lg" 
+                                style={{ 
+                                  background: isDark ? 'rgba(30, 35, 41, 0.8)' : 'var(--panel-bg)',
+                                  border: '1px solid var(--panel-border)',
+                                }}
+                              >
+                                <div className="flex items-center gap-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
                                   {language === 'zh' ? '胜率' : 'Win Rate'}
                                   <MetricTooltip metricKey="win_rate" language={language} size={11} />
                                 </div>
-                                <div className="text-lg font-bold" style={{ color: '#EAECEF' }}>
+                                <div className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
                                   {(metrics.win_rate ?? 0).toFixed(1)}%
                                 </div>
                               </div>
-                              <div className="p-3 rounded-lg" style={{ background: '#1E2329' }}>
-                                <div className="flex items-center gap-1 text-xs" style={{ color: '#848E9C' }}>
+                              <div 
+                                className="p-3 rounded-lg" 
+                                style={{ 
+                                  background: isDark ? 'rgba(30, 35, 41, 0.8)' : 'var(--panel-bg)',
+                                  border: '1px solid var(--panel-border)',
+                                }}
+                              >
+                                <div className="flex items-center gap-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
                                   {language === 'zh' ? '盈亏因子' : 'Profit Factor'}
                                   <MetricTooltip metricKey="profit_factor" language={language} size={11} />
                                 </div>
-                                <div className="text-lg font-bold" style={{ color: '#EAECEF' }}>
+                                <div className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
                                   {(metrics.profit_factor ?? 0).toFixed(2)}
                                 </div>
                               </div>
-                              <div className="p-3 rounded-lg" style={{ background: '#1E2329' }}>
-                                <div className="text-xs" style={{ color: '#848E9C' }}>
+                              <div 
+                                className="p-3 rounded-lg" 
+                                style={{ 
+                                  background: isDark ? 'rgba(30, 35, 41, 0.8)' : 'var(--panel-bg)',
+                                  border: '1px solid var(--panel-border)',
+                                }}
+                              >
+                                <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                                   {language === 'zh' ? '总交易数' : 'Total Trades'}
                                 </div>
-                                <div className="text-lg font-bold" style={{ color: '#EAECEF' }}>
+                                <div className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
                                   {metrics.trades ?? 0}
                                 </div>
                               </div>
-                              <div className="p-3 rounded-lg" style={{ background: '#1E2329' }}>
-                                <div className="text-xs" style={{ color: '#848E9C' }}>
+                              <div 
+                                className="p-3 rounded-lg" 
+                                style={{ 
+                                  background: isDark ? 'rgba(30, 35, 41, 0.8)' : 'var(--panel-bg)',
+                                  border: '1px solid var(--panel-border)',
+                                }}
+                              >
+                                <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                                   {language === 'zh' ? '最佳币种' : 'Best Symbol'}
                                 </div>
                                 <div className="text-lg font-bold" style={{ color: '#0ECB81' }}>
@@ -1921,13 +2036,13 @@ export function BacktestPage() {
                         >
                           {/* Equity Chart */}
                           <div>
-                            <h4 className="text-sm font-medium mb-3" style={{ color: '#EAECEF' }}>
+                            <h4 className="text-sm font-medium mb-3" style={{ color: 'var(--text-primary)' }}>
                               {language === 'zh' ? '资金曲线' : 'Equity Curve'}
                             </h4>
                             {equity && equity.length > 0 ? (
                               <BacktestChart equity={equity} trades={trades ?? []} />
                             ) : (
-                              <div className="py-12 text-center" style={{ color: '#5E6673' }}>
+                              <div className="py-12 text-center" style={{ color: 'var(--text-tertiary)' }}>
                                 {tr('charts.equityEmpty')}
                               </div>
                             )}
@@ -1936,7 +2051,7 @@ export function BacktestPage() {
                           {/* Candlestick Chart with Trade Markers */}
                           {selectedRunId && trades && trades.length > 0 && (
                             <div>
-                              <h4 className="text-sm font-medium mb-3" style={{ color: '#EAECEF' }}>
+                              <h4 className="text-sm font-medium mb-3" style={{ color: 'var(--text-primary)' }}>
                                 {language === 'zh' ? 'K线图 & 交易标记' : 'Candlestick & Trade Markers'}
                               </h4>
                               <CandlestickChartComponent
@@ -1977,7 +2092,7 @@ export function BacktestPage() {
                               />
                             ))
                           ) : (
-                            <div className="py-12 text-center" style={{ color: '#5E6673' }}>
+                            <div className="py-12 text-center" style={{ color: 'var(--text-tertiary)' }}>
                               {tr('decisionTrail.emptyHint')}
                             </div>
                           )}

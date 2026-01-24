@@ -1021,7 +1021,22 @@ function StatCard({
                     : 'var(--panel-bg)'
             }}
         >
-            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity text-4xl grayscale group-hover:grayscale-0">
+            <div 
+                className="absolute top-0 right-0 p-4 text-4xl transition-all duration-300"
+                style={{
+                    opacity: isDark ? 0.15 : 0.25,
+                    color: isDark ? 'var(--text-secondary)' : 'var(--text-secondary)',
+                    filter: isDark ? 'none' : 'none',
+                }}
+                onMouseEnter={(e) => {
+                    e.currentTarget.style.opacity = isDark ? '0.3' : '0.4'
+                    e.currentTarget.style.color = 'var(--nofx-gold)'
+                }}
+                onMouseLeave={(e) => {
+                    e.currentTarget.style.opacity = isDark ? '0.15' : '0.25'
+                    e.currentTarget.style.color = isDark ? 'var(--text-secondary)' : 'var(--text-secondary)'
+                }}
+            >
                 {icon}
             </div>
             <div className="text-xs mb-2 font-mono uppercase tracking-wider flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
