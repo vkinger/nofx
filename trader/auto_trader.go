@@ -125,6 +125,8 @@ type AutoTrader struct {
 	peakPnLCacheMutex     sync.RWMutex                        // Cache read-write lock
 	trailingStopPrice     map[string]float64                  // Trailing stop price cache (symbol_side -> trailing stop price)
 	trailingStopPriceMutex sync.RWMutex                        // Trailing stop price cache mutex
+	closingPositions      map[string]bool                     // Positions currently being closed (symbol_side -> true) to prevent duplicate closes
+	closingPositionsMutex sync.Mutex                           // Mutex for closing positions map
 	lastBalanceSyncTime   time.Time                           // Last balance sync time
 	userID                string                              // User ID
 	gridState             *GridState                          // Grid trading state (only used when StrategyType == "grid_trading")
@@ -379,6 +381,8 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 		peakPnLCacheMutex:     sync.RWMutex{},
 		trailingStopPrice:     make(map[string]float64),
 		trailingStopPriceMutex: sync.RWMutex{},
+		closingPositions:      make(map[string]bool),
+		closingPositionsMutex: sync.Mutex{},
 		lastBalanceSyncTime:   time.Now(),
 		userID:                userID,
 		telegramNotifier:      telegramNotifier,
@@ -1419,10 +1423,40 @@ func (at *AutoTrader) executeCloseLongWithRecord(decision *kernel.Decision, acti
 	// Record quantity for notification pnl calculation
 	actionRecord.Quantity = quantity
 
+	// Check if position is already being closed by stop-loss/drawdown system (conflict detection)
+	posKey := decision.Symbol + "_long"
+	at.closingPositionsMutex.Lock()
+	if at.closingPositions[posKey] {
+		at.closingPositionsMutex.Unlock()
+		logger.Infof("⚠️  Position %s long is being closed by stop-loss/drawdown system, AI close decision skipped", decision.Symbol)
+		return fmt.Errorf("position %s long is being closed by stop-loss/drawdown system", decision.Symbol)
+	}
+	// Mark as closing
+	at.closingPositions[posKey] = true
+	at.closingPositionsMutex.Unlock()
+
+	// Ensure we clear the flag when done
+	defer func() {
+		at.closingPositionsMutex.Lock()
+		delete(at.closingPositions, posKey)
+		at.closingPositionsMutex.Unlock()
+	}()
+
 	// Close position
 	order, err := at.trader.CloseLong(decision.Symbol, 0) // 0 = close all
 	if err != nil {
+		// Check if error is due to position not existing (already closed by stop-loss/drawdown)
+		errStr := strings.ToLower(err.Error())
+		if strings.Contains(errStr, "no position") || strings.Contains(errStr, "not found") || strings.Contains(errStr, "already closed") {
+			logger.Infof("ℹ️  Position %s long already closed (may have been closed by stop-loss/drawdown), AI close decision skipped", decision.Symbol)
+			return nil // Not an error, position was already closed
+		}
 		return err
+	}
+	// Check if order result indicates no position
+	if status, ok := order["status"].(string); ok && status == "NO_POSITION" {
+		logger.Infof("ℹ️  Position %s long already closed (NO_POSITION status), AI close decision skipped", decision.Symbol)
+		return nil
 	}
 
 	// Record order ID
@@ -1486,10 +1520,40 @@ func (at *AutoTrader) executeCloseShortWithRecord(decision *kernel.Decision, act
 	// Record quantity for notification pnl calculation
 	actionRecord.Quantity = quantity
 
+	// Check if position is already being closed by stop-loss/drawdown system (conflict detection)
+	posKey := decision.Symbol + "_short"
+	at.closingPositionsMutex.Lock()
+	if at.closingPositions[posKey] {
+		at.closingPositionsMutex.Unlock()
+		logger.Infof("⚠️  Position %s short is being closed by stop-loss/drawdown system, AI close decision skipped", decision.Symbol)
+		return fmt.Errorf("position %s short is being closed by stop-loss/drawdown system", decision.Symbol)
+	}
+	// Mark as closing
+	at.closingPositions[posKey] = true
+	at.closingPositionsMutex.Unlock()
+
+	// Ensure we clear the flag when done
+	defer func() {
+		at.closingPositionsMutex.Lock()
+		delete(at.closingPositions, posKey)
+		at.closingPositionsMutex.Unlock()
+	}()
+
 	// Close position
 	order, err := at.trader.CloseShort(decision.Symbol, 0) // 0 = close all
 	if err != nil {
+		// Check if error is due to position not existing (already closed by stop-loss/drawdown)
+		errStr := strings.ToLower(err.Error())
+		if strings.Contains(errStr, "no position") || strings.Contains(errStr, "not found") || strings.Contains(errStr, "already closed") {
+			logger.Infof("ℹ️  Position %s short already closed (may have been closed by stop-loss/drawdown), AI close decision skipped", decision.Symbol)
+			return nil // Not an error, position was already closed
+		}
 		return err
+	}
+	// Check if order result indicates no position
+	if status, ok := order["status"].(string); ok && status == "NO_POSITION" {
+		logger.Infof("ℹ️  Position %s short already closed (NO_POSITION status), AI close decision skipped", decision.Symbol)
+		return nil
 	}
 
 	// Record order ID
@@ -2022,8 +2086,8 @@ func (at *AutoTrader) checkPositionDrawdown() float64 {
 							logger.Infof("🚨 Drawdown close position condition triggered (tiered): %s %s | Real profit: %.2f%% | Peak profit: %.2f%% | Drawdown: %.2f%% (threshold: %.2f%%)",
 								symbol, side, realPnlPct, refreshPeakPnlPct, realDrawdownPct, realDrawdownThreshold)
 
-							// Execute close position
-							if err := at.emergencyClosePosition(symbol, side); err != nil {
+							// Execute close position (risk control has absolute priority)
+							if err := at.emergencyClosePosition(symbol, side, true); err != nil {
 								logger.Infof("❌ Drawdown close position failed (%s %s): %v", symbol, side, err)
 							} else {
 								// 计算并打印平仓盈亏信息
@@ -2063,19 +2127,100 @@ func (at *AutoTrader) checkPositionDrawdown() float64 {
 	return maxProfitPct
 }
 
-// emergencyClosePosition emergency close position function
-func (at *AutoTrader) emergencyClosePosition(symbol, side string) error {
+// emergencyClosePosition emergency close position function with conflict detection
+// 紧急平仓函数，带冲突检测：防止与AI决策、自动回撤、自动止损重复平仓
+// isRiskControl: true表示风控系统调用（监控系统），绝对优先，可以打断AI决策；false表示AI决策调用
+func (at *AutoTrader) emergencyClosePosition(symbol, side string, isRiskControl bool) error {
+	posKey := symbol + "_" + side
+
+	// Risk control system has absolute priority: can interrupt AI decisions
+	// 风控系统绝对优先：可以打断AI决策的平仓
+	at.closingPositionsMutex.Lock()
+	if at.closingPositions[posKey] {
+		if isRiskControl {
+			// Risk control system: force interrupt AI decision and execute close
+			// 风控系统：强制打断AI决策并执行平仓
+			logger.Infof("🛡️  Risk control system interrupting AI close decision for %s %s (risk control has absolute priority)", symbol, side)
+			// Clear the flag and mark as closing by risk control
+			delete(at.closingPositions, posKey)
+			at.closingPositions[posKey] = true
+			at.closingPositionsMutex.Unlock()
+		} else {
+			// AI decision: skip if risk control is closing
+			// AI决策：如果风控系统正在平仓，则跳过
+			at.closingPositionsMutex.Unlock()
+			logger.Infof("⚠️  Position %s %s is being closed by risk control system (stop-loss/drawdown), AI close decision skipped", symbol, side)
+			return fmt.Errorf("position %s %s is being closed by risk control system", symbol, side)
+		}
+	} else {
+		// Mark as closing
+		at.closingPositions[posKey] = true
+		at.closingPositionsMutex.Unlock()
+	}
+
+	// Ensure we clear the flag when done (even if error occurs)
+	defer func() {
+		at.closingPositionsMutex.Lock()
+		delete(at.closingPositions, posKey)
+		at.closingPositionsMutex.Unlock()
+	}()
+
+	// Verify position still exists before closing (may have been closed by AI decision or other system)
+	positions, err := at.trader.GetPositions()
+	if err == nil {
+		positionExists := false
+		for _, pos := range positions {
+			if pos["symbol"].(string) == symbol && pos["side"].(string) == side {
+				if amt, ok := pos["positionAmt"].(float64); ok {
+					if side == "long" && amt > 0 {
+						positionExists = true
+					} else if side == "short" && amt < 0 {
+						positionExists = true
+					}
+				}
+				break
+			}
+		}
+		if !positionExists {
+			logger.Infof("ℹ️  Position %s %s no longer exists (may have been closed by AI decision/stop-loss/drawdown), skipping emergency close", symbol, side)
+			return nil // Not an error, position was already closed
+		}
+	}
+
+	// Execute close
 	switch side {
 	case "long":
 		order, err := at.trader.CloseLong(symbol, 0) // 0 = close all
 		if err != nil {
+			// Check if error is due to position not existing (already closed)
+			errStr := strings.ToLower(err.Error())
+			if strings.Contains(errStr, "no position") || strings.Contains(errStr, "not found") || strings.Contains(errStr, "already closed") {
+				logger.Infof("ℹ️  Position %s %s already closed (no position error), emergency close skipped", symbol, side)
+				return nil // Not an error, position was already closed
+			}
 			return err
+		}
+		// Check if order result indicates no position
+		if status, ok := order["status"].(string); ok && status == "NO_POSITION" {
+			logger.Infof("ℹ️  Position %s %s already closed (NO_POSITION status), emergency close skipped", symbol, side)
+			return nil
 		}
 		logger.Infof("✅ Emergency close long position succeeded, order ID: %v", order["orderId"])
 	case "short":
 		order, err := at.trader.CloseShort(symbol, 0) // 0 = close all
 		if err != nil {
+			// Check if error is due to position not existing (already closed)
+			errStr := strings.ToLower(err.Error())
+			if strings.Contains(errStr, "no position") || strings.Contains(errStr, "not found") || strings.Contains(errStr, "already closed") {
+				logger.Infof("ℹ️  Position %s %s already closed (no position error), emergency close skipped", symbol, side)
+				return nil // Not an error, position was already closed
+			}
 			return err
+		}
+		// Check if order result indicates no position
+		if status, ok := order["status"].(string); ok && status == "NO_POSITION" {
+			logger.Infof("ℹ️  Position %s %s already closed (NO_POSITION status), emergency close skipped", symbol, side)
+			return nil
 		}
 		logger.Infof("✅ Emergency close short position succeeded, order ID: %v", order["orderId"])
 	default:
@@ -2832,9 +2977,9 @@ func (at *AutoTrader) checkStopLoss() {
 		}
 
 		// Execute stop-loss if any strategy triggered (multi-strategy coordination)
-		// 多策略协同：任一策略触发即止损
+		// 多策略协同：任一策略触发即止损（风控系统绝对优先）
 		if shouldClose {
-			if err := at.emergencyClosePosition(symbol, side); err != nil {
+			if err := at.emergencyClosePosition(symbol, side, true); err != nil {
 				logger.Infof("❌ [%s] Stop-loss close position failed (%s %s): %v", triggeredStrategy, symbol, side, err)
 			} else {
 				logger.Infof("✅ [%s] Stop-loss close position succeeded: %s %s | Realized PnL: %.2f USDT (%.2f%%) | Entry: %.6f | Exit: %.6f | Qty: %.6f | Margin: %.2f USDT",
