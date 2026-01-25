@@ -1285,7 +1285,10 @@ func (s *Server) handleClosePosition(c *gin.Context) {
 		return
 	}
 
-	logger.Infof("🔻 User %s requested position close: trader=%s, symbol=%s, side=%s", userID, traderID, req.Symbol, req.Side)
+	logger.Infof("🔻 User %s requested manual position close: trader=%s, symbol=%s, side=%s (manual close has highest priority, no conflict detection)", userID, traderID, req.Symbol, req.Side)
+
+	// Manual close has highest priority: directly call trader without conflict detection
+	// 手动平仓最高优先级：直接调用 trader，不检测冲突，可以打断监控系统和AI决策
 
 	// Get trader configuration from database (including exchange info)
 	fullConfig, err := s.store.Trader().GetFullConfig(userID, traderID)
