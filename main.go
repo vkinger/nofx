@@ -47,6 +47,11 @@ func (usa *userStoreAdapterImpl) GetByEmail(email string) (notification.UserInte
 	return &userAdapterImpl{user: user}, nil
 }
 
+// UpdateTelegramChatID 更新用户的 Telegram Chat ID
+func (usa *userStoreAdapterImpl) UpdateTelegramChatID(userID string, chatID int64) error {
+	return usa.store.UpdateTelegramChatID(userID, chatID)
+}
+
 // userAdapterImpl 用户适配器实现
 type userAdapterImpl struct {
 	user *store.User
