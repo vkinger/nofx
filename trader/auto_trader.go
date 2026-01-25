@@ -2089,6 +2089,16 @@ func (at *AutoTrader) checkPositionDrawdown() float64 {
 							// Execute close position (risk control has absolute priority)
 							if err := at.emergencyClosePosition(symbol, side, true); err != nil {
 								logger.Infof("❌ Drawdown close position failed (%s %s): %v", symbol, side, err)
+								// Send Telegram notification for close failure
+								failureDetails := map[string]interface{}{
+									"warning_type": "平仓失败",
+									"current_profit": realPnlPct,
+									"peak_profit": refreshPeakPnlPct,
+									"drawdown": realDrawdownPct,
+									"threshold": realDrawdownThreshold,
+									"error": err.Error(),
+								}
+								at.sendDrawdownWarningNotification(symbol, side, failureDetails)
 							} else {
 								// 计算并打印平仓盈亏信息
 								// 注意：unrealizedPnl 是平仓前的未实现盈亏，平仓后这个值会变成已实现盈亏
@@ -2099,6 +2109,19 @@ func (at *AutoTrader) checkPositionDrawdown() float64 {
 								logger.Infof("✅ Drawdown close position succeeded: %s %s | Realized PnL: %.2f USDT (%.2f%%) | Entry: %.6f | Exit: %.6f | Qty: %.6f | Margin: %.2f USDT",
 									symbol, side, realizedPnl, realizedPnlPct, entryPrice, refreshMarkPrice, closeQuantity, marginUsed)
 								
+								// Send Telegram notification
+								notificationDetails := map[string]interface{}{
+									"entry_price": entryPrice,
+									"exit_price":  refreshMarkPrice,
+									"quantity":    closeQuantity,
+									"margin":      marginUsed,
+									"pnl":         realizedPnl,
+									"pnl_pct":     realizedPnlPct,
+									"peak_profit": refreshPeakPnlPct,
+									"drawdown":    realDrawdownPct,
+								}
+								at.sendRiskControlCloseNotification(symbol, side, "回撤止损 (Drawdown Stop-Loss)", notificationDetails)
+								
 								// Clear cache for this position after closing
 								at.ClearPeakPnLCache(symbol, side)
 							}
@@ -2106,6 +2129,17 @@ func (at *AutoTrader) checkPositionDrawdown() float64 {
 							// 实际盈亏验证未触发，记录调试信息
 							logger.Infof("📊 Drawdown monitoring (verified): %s %s | Price-based: %.2f%% (drawdown: %.2f%%) | Real PnL: %.2f%% (drawdown: %.2f%%, threshold: %.2f%%)",
 								symbol, side, currentPnLPct, drawdownPct, realPnlPct, realDrawdownPct, realDrawdownThreshold)
+							// Send Telegram notification for drawdown warning (close to threshold)
+							warningDetails := map[string]interface{}{
+								"warning_type": "接近回撤阈值",
+								"current_profit": currentPnLPct,
+								"peak_profit": refreshPeakPnlPct,
+								"drawdown": drawdownPct,
+								"threshold": realDrawdownThreshold,
+								"real_pnl": realPnlPct,
+								"real_drawdown": realDrawdownPct,
+							}
+							at.sendDrawdownWarningNotification(symbol, side, warningDetails)
 						}
 						break
 					}
@@ -2116,6 +2150,18 @@ func (at *AutoTrader) checkPositionDrawdown() float64 {
 			// 注意：记录门槛从5%提高到6%，与触发门槛保持一致
 			logger.Infof("📊 Drawdown monitoring: %s %s | Profit: %.2f%% | Peak: %.2f%% | Drawdown: %.2f%% (threshold: %.2f%%)",
 				symbol, side, currentPnLPct, peakPnLPct, drawdownPct, drawdownThreshold)
+			// Send Telegram notification for high profit monitoring (only if drawdown is significant)
+			// 只在回撤较大时发送通知，避免通知过于频繁
+			if drawdownPct > 0 && drawdownPct >= (drawdownThreshold*0.5) && drawdownThreshold > 0 {
+				monitoringDetails := map[string]interface{}{
+					"warning_type": "回撤监控",
+					"current_profit": currentPnLPct,
+					"peak_profit": peakPnLPct,
+					"drawdown": drawdownPct,
+					"threshold": drawdownThreshold,
+				}
+				at.sendDrawdownWarningNotification(symbol, side, monitoringDetails)
+			}
 		}
 
 		// Track maximum profit for dynamic frequency adjustment
@@ -2707,6 +2753,30 @@ func (at *AutoTrader) sendDecisionNotification(decision *kernel.Decision, action
 	}
 }
 
+// sendRiskControlCloseNotification 发送风控系统平仓通知
+func (at *AutoTrader) sendRiskControlCloseNotification(symbol, side, strategy string, details map[string]interface{}) {
+	if at.telegramNotifier == nil {
+		return
+	}
+
+	msg := notification.FormatRiskControlCloseMessage(at.name, symbol, side, strategy, details)
+	if err := at.telegramNotifier.SendMessage(msg); err != nil {
+		logger.Warnf("Failed to send risk control close notification: %v", err)
+	}
+}
+
+// sendDrawdownWarningNotification 发送回撤监控警告通知
+func (at *AutoTrader) sendDrawdownWarningNotification(symbol, side string, details map[string]interface{}) {
+	if at.telegramNotifier == nil {
+		return
+	}
+
+	msg := notification.FormatDrawdownWarningMessage(at.name, symbol, side, details)
+	if err := at.telegramNotifier.SendMessage(msg); err != nil {
+		logger.Warnf("Failed to send drawdown warning notification: %v", err)
+	}
+}
+
 // sendAccountSummary 发送账户和持仓摘要
 func (at *AutoTrader) sendAccountSummary() {
 	if at.telegramNotifier == nil {
@@ -2929,6 +2999,7 @@ func (at *AutoTrader) checkStopLoss() {
 
 		// 5. Check drawdown stop-loss (回撤止损)
 		// 回撤止损：使用现有的分级回撤策略，但使用高频检查
+		var refreshPeakPnlPct, realDrawdownPct float64
 		if !shouldClose {
 			// Get peak profit
 			at.peakPnLCacheMutex.RLock()
@@ -2958,10 +3029,9 @@ func (at *AutoTrader) checkStopLoss() {
 			if currentPnLPct >= 5.5 && drawdownPct >= (drawdownThreshold-2.0) && drawdownThreshold > 0 {
 				// Recalculate drawdown with actual P&L
 				at.peakPnLCacheMutex.RLock()
-				refreshPeakPnlPct := at.peakPnLCache[posKey]
+				refreshPeakPnlPct = at.peakPnLCache[posKey]
 				at.peakPnLCacheMutex.RUnlock()
 
-				var realDrawdownPct float64
 				if refreshPeakPnlPct > 0 && realPnlPct < refreshPeakPnlPct {
 					realDrawdownPct = ((refreshPeakPnlPct - realPnlPct) / refreshPeakPnlPct) * 100
 				}
@@ -2984,6 +3054,26 @@ func (at *AutoTrader) checkStopLoss() {
 			} else {
 				logger.Infof("✅ [%s] Stop-loss close position succeeded: %s %s | Realized PnL: %.2f USDT (%.2f%%) | Entry: %.6f | Exit: %.6f | Qty: %.6f | Margin: %.2f USDT",
 					triggeredStrategy, symbol, side, unrealizedPnl, realPnlPct, entryPrice, markPrice, quantity, marginUsed)
+				
+				// Send Telegram notification
+				notificationDetails := map[string]interface{}{
+					"entry_price": entryPrice,
+					"exit_price":  markPrice,
+					"quantity":    quantity,
+					"margin":      marginUsed,
+					"pnl":         unrealizedPnl,
+					"pnl_pct":     realPnlPct,
+				}
+				// Add strategy-specific details
+				if triggeredStrategy == "Drawdown Stop-Loss" {
+					if refreshPeakPnlPct > 0 {
+						notificationDetails["peak_profit"] = refreshPeakPnlPct
+					}
+					if realDrawdownPct > 0 {
+						notificationDetails["drawdown"] = realDrawdownPct
+					}
+				}
+				at.sendRiskControlCloseNotification(symbol, side, triggeredStrategy, notificationDetails)
 				
 				// Clear all caches after closing
 				at.ClearPeakPnLCache(symbol, side)

@@ -111,6 +111,77 @@ func FormatDecisionMessage(traderName, symbol, action string, details map[string
 	return msg
 }
 
+// FormatRiskControlCloseMessage 格式化风控系统平仓通知消息
+func FormatRiskControlCloseMessage(traderName, symbol, side, strategy string, details map[string]interface{}) string {
+	emoji := "🛡️"
+	msg := fmt.Sprintf("%s <b>%s</b> - 风控平仓\n", emoji, traderName)
+	msg += fmt.Sprintf("📌 策略: %s\n", strategy)
+	msg += fmt.Sprintf("💰 币种: %s %s\n", symbol, side)
+
+	if entryPrice, ok := details["entry_price"].(float64); ok && entryPrice > 0 {
+		msg += fmt.Sprintf("📥 开仓价: %s\n", market.FormatPriceWithDynamicPrecision(entryPrice))
+	}
+	if exitPrice, ok := details["exit_price"].(float64); ok && exitPrice > 0 {
+		msg += fmt.Sprintf("📤 平仓价: %s\n", market.FormatPriceWithDynamicPrecision(exitPrice))
+	}
+	if quantity, ok := details["quantity"].(float64); ok && quantity > 0 {
+		msg += fmt.Sprintf("📊 数量: %.8f\n", quantity)
+	}
+	if margin, ok := details["margin"].(float64); ok && margin > 0 {
+		msg += fmt.Sprintf("💵 保证金: $%.2f\n", margin)
+	}
+	if pnl, ok := details["pnl"].(float64); ok {
+		pnlEmoji := "📈"
+		if pnl < 0 {
+			pnlEmoji = "📉"
+		}
+		msg += fmt.Sprintf("%s 盈亏: $%.2f", pnlEmoji, pnl)
+		if pnlPct, ok := details["pnl_pct"].(float64); ok {
+			msg += fmt.Sprintf(" (%.2f%%)", pnlPct)
+		}
+		msg += "\n"
+	}
+	if peakProfit, ok := details["peak_profit"].(float64); ok && peakProfit > 0 {
+		msg += fmt.Sprintf("📊 峰值利润: %.2f%%\n", peakProfit)
+	}
+	if drawdown, ok := details["drawdown"].(float64); ok && drawdown > 0 {
+		msg += fmt.Sprintf("📉 回撤: %.2f%%\n", drawdown)
+	}
+
+	return msg
+}
+
+// FormatDrawdownWarningMessage 格式化回撤监控警告消息
+func FormatDrawdownWarningMessage(traderName, symbol, side string, details map[string]interface{}) string {
+	emoji := "⚠️"
+	msg := fmt.Sprintf("%s <b>%s</b> - 回撤监控警告\n", emoji, traderName)
+	msg += fmt.Sprintf("💰 币种: %s %s\n", symbol, side)
+
+	if currentProfit, ok := details["current_profit"].(float64); ok {
+		msg += fmt.Sprintf("📊 当前利润: %.2f%%\n", currentProfit)
+	}
+	if peakProfit, ok := details["peak_profit"].(float64); ok && peakProfit > 0 {
+		msg += fmt.Sprintf("📈 峰值利润: %.2f%%\n", peakProfit)
+	}
+	if drawdown, ok := details["drawdown"].(float64); ok && drawdown > 0 {
+		msg += fmt.Sprintf("📉 回撤: %.2f%%\n", drawdown)
+	}
+	if threshold, ok := details["threshold"].(float64); ok && threshold > 0 {
+		msg += fmt.Sprintf("🛑 阈值: %.2f%%\n", threshold)
+	}
+	if realPnl, ok := details["real_pnl"].(float64); ok {
+		msg += fmt.Sprintf("💵 实际盈亏: %.2f%%\n", realPnl)
+	}
+	if realDrawdown, ok := details["real_drawdown"].(float64); ok && realDrawdown > 0 {
+		msg += fmt.Sprintf("📉 实际回撤: %.2f%%\n", realDrawdown)
+	}
+	if warningType, ok := details["warning_type"].(string); ok {
+		msg += fmt.Sprintf("⚠️ 类型: %s\n", warningType)
+	}
+
+	return msg
+}
+
 // FormatAccountInfoMessage 格式化账户信息消息
 func FormatAccountInfoMessage(traderName string, accountInfo map[string]interface{}) string {
 	msg := fmt.Sprintf("📊 <b>%s - 账户信息</b>\n\n", traderName)
