@@ -3896,11 +3896,20 @@ func (s *Server) handleTelegramWebhook(c *gin.Context) {
 	// 先读取原始请求体用于调试
 	bodyBytes, _ := c.GetRawData()
 	if len(bodyBytes) > 0 {
-		maxLen := 500
-		if len(bodyBytes) < maxLen {
-			maxLen = len(bodyBytes)
+		// 尝试格式化 JSON 以便更好地查看
+		var jsonData interface{}
+		if err := json.Unmarshal(bodyBytes, &jsonData); err == nil {
+			// 格式化 JSON 输出
+			prettyJSON, _ := json.MarshalIndent(jsonData, "", "  ")
+			logger.Infof("Telegram webhook raw body (formatted JSON):\n%s", string(prettyJSON))
+		} else {
+			// 如果无法解析为 JSON，输出原始内容（限制长度）
+			maxLen := 1000
+			if len(bodyBytes) < maxLen {
+				maxLen = len(bodyBytes)
+			}
+			logger.Infof("Telegram webhook raw body (first %d chars): %s", maxLen, string(bodyBytes[:maxLen]))
 		}
-		logger.Infof("Telegram webhook raw body (first %d chars): %s", maxLen, string(bodyBytes[:maxLen]))
 		// 重新设置请求体，因为 GetRawData 会消耗它
 		c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 	}
