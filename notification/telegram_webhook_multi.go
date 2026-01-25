@@ -170,3 +170,16 @@ func (mtw *MultiTelegramWebhook) GetWebhookByChatID(chatID int64) *TelegramWebho
 	}
 	return nil
 }
+
+// GetFirstWebhook 获取第一个可用的 webhook（用于处理未匹配的 /login 或 /start 命令）
+func (mtw *MultiTelegramWebhook) GetFirstWebhook() *TelegramWebhook {
+	mtw.mu.RLock()
+	defer mtw.mu.RUnlock()
+
+	for _, webhook := range mtw.webhooks {
+		if webhook != nil {
+			return webhook
+		}
+	}
+	return nil
+}

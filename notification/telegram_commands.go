@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"nofx/auth"
 	"nofx/kernel"
+	"nofx/logger"
 	"nofx/market"
 	"strconv"
 	"strings"
@@ -24,6 +25,7 @@ type UserInterface interface {
 type UserStoreInterface interface {
 	GetByID(userID string) (UserInterface, error)
 	GetByEmail(email string) (UserInterface, error)
+	UpdateTelegramChatID(userID string, chatID int64) error
 }
 
 // TraderInterface 交易员接口（避免循环导入）
@@ -143,6 +145,36 @@ func (ctx *CommandContext) clearSession(chatID int64) {
 // CreateCommandHandlers 创建指令处理器
 func CreateCommandHandlers(ctx *CommandContext) map[string]CommandHandler {
 	handlers := make(map[string]CommandHandler)
+
+	// /start - 发送欢迎消息（用户首次打开对话时）
+	handlers["/start"] = func(update *tgbotapi.Update) string {
+		return `🤖 <b>欢迎使用 NOFX 交易机器人</b>
+
+📋 <b>快速开始：</b>
+
+1️⃣ <b>登录</b>（首次使用需要）：
+   /login [邮箱] [OTP码]
+   示例: /login user@example.com 123456
+
+2️⃣ <b>查看账户</b>：
+   /account [邮箱] [OTP码]
+   或登录后直接: /account
+
+3️⃣ <b>查看价格</b>（无需登录）：
+   /price BTCUSDT
+
+📢 <b>自动推送功能：</b>
+登录成功后，系统会自动推送以下信息：
+- 📈 交易决策通知（开仓/平仓）
+- 📊 账户摘要和持仓详情
+- 🛡️ 风控系统通知（止损/回撤）
+
+💡 <b>提示：</b>
+- 首次使用请先执行 /login 命令进行登录
+- 登录成功后，您的 Telegram ChatID 会自动配置
+- 之后您将自动接收交易通知，无需手动查询
+- 发送 /help 查看完整帮助信息`
+	}
 
 	// /login - 登录并保存session（邮箱和OTP）
 	handlers["/login"] = func(update *tgbotapi.Update) string {
@@ -318,10 +350,19 @@ func handleLoginCommand(ctx *CommandContext, update *tgbotapi.Update) string {
 		return "❌ OTP 验证码错误。请使用 Google Authenticator 应用中的当前验证码。"
 	}
 
-	// OTP验证成功，创建会话（有效期30秒，与OTP有效期一致）
-	ctx.setSession(chatID, user.GetID(), email)
+	// OTP验证成功，自动更新用户的 Telegram ChatID
+	userID := user.GetID()
+	if err := ctx.UserStore.UpdateTelegramChatID(userID, chatID); err != nil {
+		logger.Warnf("Failed to update user Telegram ChatID: %v", err)
+		// 即使更新失败，也继续创建会话，不阻止登录
+	} else {
+		logger.Infof("✓ Updated Telegram ChatID for user %s (email: %s) to %d", userID, email, chatID)
+	}
 
-	return fmt.Sprintf("✅ 登录成功！\n\n账户: %s\n免验证时长: 30秒\n\n💡 30秒内使用其他指令无需输入邮箱和OTP。", email)
+	// 创建会话（有效期30秒，与OTP有效期一致）
+	ctx.setSession(chatID, userID, email)
+
+	return fmt.Sprintf("✅ 登录成功！\n\n账户: %s\nTelegram ChatID: %d\n免验证时长: 30秒\n\n💡 30秒内使用其他指令无需输入邮箱和OTP。\n💡 您的 Telegram ChatID 已自动配置，后续将只向您推送通知。", email, chatID)
 }
 
 // handleCommandWithSessionOrOTP 处理需要认证的指令（支持session或邮箱+OTP）

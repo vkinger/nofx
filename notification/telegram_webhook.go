@@ -186,14 +186,13 @@ func (tw *TelegramWebhook) HandleUpdate(update *tgbotapi.Update) {
 		return
 	}
 
-	// 只处理来自配置的 chatID 的消息
+	// 允许所有命令来自任何 ChatID
+	// 系统通过 session 或 OTP 验证用户身份，而不是通过 ChatID 过滤
+	// 这允许所有用户使用所有命令，实现真正的按用户推送
 	// 注意：频道消息的 ChatID 是负数，个人聊天的 ChatID 是正数
 	if update.Message.Chat.ID != tw.chatID {
-		logger.Warnf("Telegram webhook message from unauthorized chatID: %d (expected: %d), ignoring. Chat type: %s",
-			update.Message.Chat.ID, tw.chatID, update.Message.Chat.Type)
-		logger.Infof("Please check your TELEGRAM_CHAT_ID configuration. Current message chatID: %d, configured chatID: %d",
+		logger.Debugf("Telegram webhook message from ChatID: %d (configured ChatID: %d), allowing (all commands allowed from any ChatID)",
 			update.Message.Chat.ID, tw.chatID)
-		return
 	}
 
 	logger.Infof("Telegram webhook message accepted, sending to command channel - ChatID: %d, Text: %s",
@@ -215,7 +214,7 @@ func (tw *TelegramWebhook) RegisterCommand(command string, handler CommandHandle
 	tw.commandHandlers[command] = handler
 }
 
-// SendMessage 发送消息
+// SendMessage 发送消息（发送到配置的 ChatID）
 func (tw *TelegramWebhook) SendMessage(text string) error {
 	if !tw.enabled {
 		return nil
@@ -227,6 +226,27 @@ func (tw *TelegramWebhook) SendMessage(text string) error {
 	_, err := tw.bot.Send(msg)
 	if err != nil {
 		logger.Errorf("Failed to send telegram message: %v", err)
+		return err
+	}
+	return nil
+}
+
+// SendMessageToChatID 发送消息到指定的 ChatID（支持动态 ChatID，用于向任意用户发送响应）
+func (tw *TelegramWebhook) SendMessageToChatID(chatID int64, text string) error {
+	if !tw.enabled {
+		return nil
+	}
+
+	if chatID == 0 {
+		return nil
+	}
+
+	msg := tgbotapi.NewMessage(chatID, text)
+	msg.ParseMode = "HTML"
+
+	_, err := tw.bot.Send(msg)
+	if err != nil {
+		logger.Errorf("Failed to send telegram message to ChatID %d: %v", chatID, err)
 		return err
 	}
 	return nil
@@ -281,13 +301,25 @@ func (tw *TelegramWebhook) processCommands() {
 		case update := <-tw.commandChan:
 			// 使用 defer recover 来捕获 panic，防止 goroutine 崩溃
 			func() {
+				// 保存原始 ChatID（用于错误处理时发送响应）
+				var originalChatID int64
+				if update.Message != nil {
+					originalChatID = update.Message.Chat.ID
+				}
+				
 				defer func() {
 					if r := recover(); r != nil {
 						logger.Errorf("Panic in command handler: %v", r)
 						// 发送错误消息给用户
 						errorMsg := "❌ 处理指令时发生错误，请稍后重试。如果问题持续，请联系管理员。"
-						if err := tw.SendMessage(errorMsg); err != nil {
-							logger.Errorf("Failed to send error message: %v", err)
+						if originalChatID != 0 && originalChatID != tw.chatID {
+							if err := tw.SendMessageToChatID(originalChatID, errorMsg); err != nil {
+								logger.Errorf("Failed to send error message to ChatID %d: %v", originalChatID, err)
+							}
+						} else {
+							if err := tw.SendMessage(errorMsg); err != nil {
+								logger.Errorf("Failed to send error message: %v", err)
+							}
 						}
 					}
 				}()
@@ -344,11 +376,25 @@ func (tw *TelegramWebhook) processCommands() {
 					response = "❌ 指令处理完成，但未返回响应。"
 				}
 
-				logger.Infof("Sending response message (length: %d)", len(response))
-				if err := tw.SendMessage(response); err != nil {
-					logger.Errorf("Failed to send command response: %v", err)
+				// 确保 originalChatID 已设置（如果为0，则使用当前消息的 ChatID）
+				if originalChatID == 0 && update.Message != nil {
+					originalChatID = update.Message.Chat.ID
+				}
+				
+				logger.Infof("Sending response message (length: %d) to ChatID: %d", len(response), originalChatID)
+				// 如果原始 ChatID 与配置的 ChatID 不同，使用 SendMessageToChatID 发送
+				if originalChatID != tw.chatID {
+					if err := tw.SendMessageToChatID(originalChatID, response); err != nil {
+						logger.Errorf("Failed to send command response to ChatID %d: %v", originalChatID, err)
+					} else {
+						logger.Infof("Response message sent successfully to ChatID: %d", originalChatID)
+					}
 				} else {
-					logger.Infof("Response message sent successfully")
+					if err := tw.SendMessage(response); err != nil {
+						logger.Errorf("Failed to send command response: %v", err)
+					} else {
+						logger.Infof("Response message sent successfully")
+					}
 				}
 			}()
 		}
