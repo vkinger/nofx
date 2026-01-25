@@ -2704,7 +2704,7 @@ func (at *AutoTrader) GetTrader() Trader {
 	return at.trader
 }
 
-// sendDecisionNotification 发送决策通知
+// sendDecisionNotification 发送决策通知（按用户推送）
 func (at *AutoTrader) sendDecisionNotification(decision *kernel.Decision, actionRecord *store.DecisionAction, execErr error) {
 	if at.telegramNotifier == nil {
 		return
@@ -2748,39 +2748,90 @@ func (at *AutoTrader) sendDecisionNotification(decision *kernel.Decision, action
 	}
 
 	msg := notification.FormatDecisionMessage(at.name, decision.Symbol, decision.Action, details)
+	
+	// 按用户推送：根据交易员的 userID 查找用户的 TelegramChatID
+	if at.userID != "" && at.store != nil {
+		user, err := at.store.User().GetByID(at.userID)
+		if err == nil && user != nil && user.TelegramChatID != 0 {
+			// 用户配置了 Telegram Chat ID，只向该用户推送
+			if err := at.telegramNotifier.SendMessageToUser(user.TelegramChatID, msg); err != nil {
+				logger.Warnf("Failed to send telegram notification to user %s (ChatID: %d): %v", at.userID, user.TelegramChatID, err)
+			}
+			return
+		}
+	}
+	
+	// 回退：用户未配置 Telegram Chat ID，使用广播模式（向后兼容）
 	if err := at.telegramNotifier.SendMessage(msg); err != nil {
 		logger.Warnf("Failed to send telegram notification: %v", err)
 	}
 }
 
-// sendRiskControlCloseNotification 发送风控系统平仓通知
+// sendRiskControlCloseNotification 发送风控系统平仓通知（按用户推送）
 func (at *AutoTrader) sendRiskControlCloseNotification(symbol, side, strategy string, details map[string]interface{}) {
 	if at.telegramNotifier == nil {
 		return
 	}
 
 	msg := notification.FormatRiskControlCloseMessage(at.name, symbol, side, strategy, details)
+	
+	// 按用户推送：根据交易员的 userID 查找用户的 TelegramChatID
+	if at.userID != "" && at.store != nil {
+		user, err := at.store.User().GetByID(at.userID)
+		if err == nil && user != nil && user.TelegramChatID != 0 {
+			// 用户配置了 Telegram Chat ID，只向该用户推送
+			if err := at.telegramNotifier.SendMessageToUser(user.TelegramChatID, msg); err != nil {
+				logger.Warnf("Failed to send risk control close notification to user %s (ChatID: %d): %v", at.userID, user.TelegramChatID, err)
+			}
+			return
+		}
+	}
+	
+	// 回退：用户未配置 Telegram Chat ID，使用广播模式（向后兼容）
 	if err := at.telegramNotifier.SendMessage(msg); err != nil {
 		logger.Warnf("Failed to send risk control close notification: %v", err)
 	}
 }
 
-// sendDrawdownWarningNotification 发送回撤监控警告通知
+// sendDrawdownWarningNotification 发送回撤监控警告通知（按用户推送）
 func (at *AutoTrader) sendDrawdownWarningNotification(symbol, side string, details map[string]interface{}) {
 	if at.telegramNotifier == nil {
 		return
 	}
 
 	msg := notification.FormatDrawdownWarningMessage(at.name, symbol, side, details)
+	
+	// 按用户推送：根据交易员的 userID 查找用户的 TelegramChatID
+	if at.userID != "" && at.store != nil {
+		user, err := at.store.User().GetByID(at.userID)
+		if err == nil && user != nil && user.TelegramChatID != 0 {
+			// 用户配置了 Telegram Chat ID，只向该用户推送
+			if err := at.telegramNotifier.SendMessageToUser(user.TelegramChatID, msg); err != nil {
+				logger.Warnf("Failed to send drawdown warning notification to user %s (ChatID: %d): %v", at.userID, user.TelegramChatID, err)
+			}
+			return
+		}
+	}
+	
+	// 回退：用户未配置 Telegram Chat ID，使用广播模式（向后兼容）
 	if err := at.telegramNotifier.SendMessage(msg); err != nil {
 		logger.Warnf("Failed to send drawdown warning notification: %v", err)
 	}
 }
 
-// sendAccountSummary 发送账户和持仓摘要
+// sendAccountSummary 发送账户和持仓摘要（按用户推送）
 func (at *AutoTrader) sendAccountSummary() {
 	if at.telegramNotifier == nil {
 		return
+	}
+
+	// 获取用户的 Telegram Chat ID（用于按用户推送）
+	var userChatID int64
+	if at.userID != "" && at.store != nil {
+		user, err := at.store.User().GetByID(at.userID)
+		if err == nil && user != nil {
+			userChatID = user.TelegramChatID
+		}
 	}
 
 	// 获取账户信息
@@ -2803,15 +2854,31 @@ func (at *AutoTrader) sendAccountSummary() {
 
 	// 发送账户信息
 	accountMsg := notification.FormatAccountInfoMessage(at.name, accountInfo)
-	if err := at.telegramNotifier.SendMessage(accountMsg); err != nil {
-		logger.Warnf("Failed to send account info: %v", err)
+	if userChatID != 0 {
+		// 按用户推送账户信息
+		if err := at.telegramNotifier.SendMessageToUser(userChatID, accountMsg); err != nil {
+			logger.Warnf("Failed to send account info to user %s (ChatID: %d): %v", at.userID, userChatID, err)
+		}
+	} else {
+		// 回退：用户未配置 Telegram Chat ID，使用广播模式（向后兼容）
+		if err := at.telegramNotifier.SendMessage(accountMsg); err != nil {
+			logger.Warnf("Failed to send account info: %v", err)
+		}
 	}
 
 	// 发送持仓信息
 	if positionCount > 0 {
 		positionsMsg := notification.FormatPositionsMessage(at.name, positions)
-		if err := at.telegramNotifier.SendMessage(positionsMsg); err != nil {
-			logger.Warnf("Failed to send positions info: %v", err)
+		if userChatID != 0 {
+			// 按用户推送持仓信息
+			if err := at.telegramNotifier.SendMessageToUser(userChatID, positionsMsg); err != nil {
+				logger.Warnf("Failed to send positions info to user %s (ChatID: %d): %v", at.userID, userChatID, err)
+			}
+		} else {
+			// 回退：用户未配置 Telegram Chat ID，使用广播模式（向后兼容）
+			if err := at.telegramNotifier.SendMessage(positionsMsg); err != nil {
+				logger.Warnf("Failed to send positions info: %v", err)
+			}
 		}
 	}
 }

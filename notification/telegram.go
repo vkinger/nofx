@@ -36,7 +36,7 @@ func NewTelegramNotifier(token string, chatID int64) (*TelegramNotifier, error) 
 	}, nil
 }
 
-// SendMessage 发送消息
+// SendMessage 发送消息（发送到配置的 ChatID）
 func (tn *TelegramNotifier) SendMessage(text string) error {
 	if !tn.enabled {
 		return nil
@@ -51,6 +51,32 @@ func (tn *TelegramNotifier) SendMessage(text string) error {
 		return err
 	}
 	return nil
+}
+
+// SendMessageToChatID 发送消息到指定的 ChatID（支持动态 ChatID）
+func (tn *TelegramNotifier) SendMessageToChatID(chatID int64, text string) error {
+	if !tn.enabled {
+		return nil
+	}
+
+	if chatID == 0 {
+		return nil
+	}
+
+	msg := tgbotapi.NewMessage(chatID, text)
+	msg.ParseMode = "HTML"
+
+	_, err := tn.bot.Send(msg)
+	if err != nil {
+		logger.Errorf("Failed to send telegram message to ChatID %d: %v", chatID, err)
+		return err
+	}
+	return nil
+}
+
+// GetChatID 获取配置的 ChatID（用于按用户推送匹配）
+func (tn *TelegramNotifier) GetChatID() int64 {
+	return tn.chatID
 }
 
 // FormatDecisionMessage 格式化决策消息

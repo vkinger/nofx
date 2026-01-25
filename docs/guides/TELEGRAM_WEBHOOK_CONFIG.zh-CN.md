@@ -21,10 +21,12 @@
 Telegram Bot Webhook 提供以下功能：
 
 1. **交易通知**：自动推送开仓、平仓、止盈止损等交易信息
-2. **账户查询**：查看账户余额和持仓信息（无需验证）
+2. **账户查询**：查看账户余额和持仓信息（支持session或邮箱+OTP）
 3. **价格查询**：查询指定币种的当前价格（无需验证）
-4. **止盈止损设置**：通过指令设置止盈止损（需要用户ID和2FA验证码）
-5. **平仓操作**：通过指令快速平仓（需要用户ID和2FA验证码）
+4. **登录管理**：通过 `/login` 创建session，30秒内免验证
+5. **止盈止损设置**：通过指令设置止盈止损（支持session或邮箱+OTP）
+6. **平仓操作**：通过指令快速平仓（支持session或邮箱+OTP）
+7. **交易员管理**：查看、启用、停用交易员（支持session或邮箱+OTP）
 
 ## 前置准备
 
@@ -47,15 +49,16 @@ Telegram Bot Webhook 提供以下功能：
 2. 访问：`https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates`
 3. 在返回的 JSON 中找到 `chat.id` 字段
 
-### 3. 获取用户ID
+### 3. 准备邮箱和2FA
 
-用户ID可以从 Web 界面获取：
+指令认证需要使用：
+- **邮箱**：注册时使用的邮箱地址
+- **2FA验证码**：Google Authenticator 应用中的6位数字验证码
 
-1. 登录 Web 界面
-2. 在用户信息或账户设置中查看用户ID
-3. 用户ID格式通常为：`user_abc123` 或类似格式
-
-**注意**：用户ID是系统内部标识，用于区分不同用户账户。
+**注意**：
+- 邮箱应该是注册时使用的邮箱地址
+- 需要先在 Web 界面完成 2FA 设置（Google Authenticator）
+- 支持session机制：使用 `/login` 登录后，30秒内无需重复输入邮箱和OTP
 
 ## 基础配置
 
@@ -505,7 +508,7 @@ curl https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getWebhookInfo
 
 2. **速率限制**：每个 IP 每分钟最多 30 个请求
 
-3. **2FA 验证**：所有操作类指令都需要提供用户ID和 Google Authenticator 验证码
+3. **2FA 验证**：所有操作类指令都需要提供邮箱和 Google Authenticator 验证码（支持session免验证）
 
 ### 安全层级
 
@@ -518,7 +521,7 @@ curl https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getWebhookInfo
 1. **防火墙配置**：在服务器防火墙中限制只允许 Telegram IP 段访问 443 端口
 2. **Nginx IP 限制**：在 Nginx 配置中添加 IP 白名单（见上面的配置示例）
 3. **定期更新**：保持系统和依赖库的更新
-4. **保护用户ID**：不要公开分享你的用户ID
+4. **保护账户信息**：不要公开分享你的邮箱和OTP码
 
 ## 指令使用
 
@@ -526,22 +529,67 @@ curl https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getWebhookInfo
 
 | 指令 | 说明 | 是否需要验证 | 示例 |
 |------|------|--------------|------|
-| `/account` | 查看账户及持仓信息 | 否 | `/account` |
 | `/price [币种]` | 查看币种当前价格 | 否 | `/price BTCUSDT` |
-| `/sl [用户ID] [币种] [止损价] [OTP码]` | 设置止损 | 是 | `/sl user_abc123 BTCUSDT 42000 123456` |
-| `/tp [用户ID] [币种] [止盈价] [OTP码]` | 设置止盈 | 是 | `/tp user_abc123 BTCUSDT 45000 123456` |
-| `/close [用户ID] [币种] [方向] [OTP码]` | 平仓 | 是 | `/close user_abc123 BTCUSDT long 123456` |
+| `/login [邮箱] [OTP码]` | 登录并保存session（30秒免验证） | 是 | `/login user@example.com 123456` |
+| `/account` | 查看账户及持仓信息 | 支持session或邮箱+OTP | `/account` 或 `/account user@example.com 123456` |
+| `/trades [币种] [数量]` | 查看最近交易记录 | 支持session或邮箱+OTP | `/trades BTCUSDT 10` 或 `/trades BTCUSDT 10 user@example.com 123456` |
+| `/trader [交易员ID]` | 查看交易员状态 | 支持session或邮箱+OTP | `/trader trader_id_123` 或 `/trader trader_id_123 user@example.com 123456` |
+| `/start-trader [交易员ID]` | 启用交易员 | 支持session或邮箱+OTP | `/start-trader trader_id_123` 或 `/start-trader trader_id_123 user@example.com 123456` |
+| `/stop-trader [交易员ID]` | 停用交易员 | 支持session或邮箱+OTP | `/stop-trader trader_id_123` 或 `/stop-trader trader_id_123 user@example.com 123456` |
+| `/sl [币种] [止损价]` | 设置止损 | 支持session或邮箱+OTP | `/sl BTCUSDT 42000` 或 `/sl BTCUSDT 42000 user@example.com 123456` |
+| `/tp [币种] [止盈价]` | 设置止盈 | 支持session或邮箱+OTP | `/tp BTCUSDT 45000` 或 `/tp BTCUSDT 45000 user@example.com 123456` |
+| `/close [币种] [方向]` | 平仓 | 支持session或邮箱+OTP | `/close BTCUSDT long` 或 `/close BTCUSDT long user@example.com 123456` |
 | `/help` | 显示帮助信息 | 否 | `/help` |
+
+### 认证方式说明
+
+系统支持两种认证方式：
+
+1. **Session 认证（推荐）**：
+   - 使用 `/login [邮箱] [OTP码]` 登录，创建30秒有效期的session
+   - 登录后30秒内，其他指令无需输入邮箱和OTP
+   - 示例：`/login user@example.com 123456` → 然后直接使用 `/account`、`/sl BTCUSDT 42000` 等
+
+2. **直接认证**：
+   - 在指令末尾提供邮箱和OTP（邮箱和OTP必须放在参数最后）
+   - 示例：`/account user@example.com 123456`、`/sl BTCUSDT 42000 user@example.com 123456`
+
+**注意**：
+- 邮箱和OTP必须放在参数的最后两个位置
+- 如果提供了邮箱和OTP，会覆盖当前session
+- Session有效期30秒，与OTP有效期一致
 
 ### 指令详细说明
 
-#### 1. 查看账户信息（无需验证）
+#### 1. 登录（创建Session）
+
+```
+/login user@example.com 123456
+```
+
+**功能**：登录并创建30秒有效期的session，后续指令无需重复输入邮箱和OTP
+
+**参数**：
+- `邮箱`：注册时使用的邮箱地址
+- `OTP码`：Google Authenticator 验证码（6位数字）
+
+**说明**：
+- 登录成功后，30秒内其他指令无需输入邮箱和OTP
+- Session有效期与OTP有效期一致（30秒）
+- 可以在其他指令末尾提供邮箱和OTP来覆盖当前session
+
+#### 2. 查看账户信息
 
 ```
 /account
+/account user@example.com 123456
 ```
 
 **功能**：显示账户余额、可用资金、已用保证金、总盈亏和持仓列表
+
+**使用方式**：
+- 有session：直接使用 `/account`
+- 无session：使用 `/account user@example.com 123456`
 
 **返回信息**：
 - 总权益
@@ -551,9 +599,7 @@ curl https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getWebhookInfo
 - 持仓数量
 - 每个持仓的详细信息（币种、方向、数量、开仓价、标记价、未实现盈亏）
 
-**注意**：此指令无需提供用户ID或验证码，任何人都可以查询。
-
-#### 2. 查看价格（无需验证）
+#### 3. 查看价格（无需验证）
 
 ```
 /price BTCUSDT
@@ -571,94 +617,169 @@ curl https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getWebhookInfo
 - 区间最高价
 - 区间最低价
 
-**注意**：此指令无需提供用户ID或验证码。
+**注意**：此指令无需提供邮箱或验证码。
 
-#### 3. 设置止损（需要用户ID和OTP）
+#### 4. 查看最近交易记录
 
 ```
-/sl user_abc123 BTCUSDT 42000 123456
+/trades
+/trades BTCUSDT 10
+/trades BTCUSDT 10 user@example.com 123456
+```
+
+**功能**：查看最近的交易记录
+
+**参数**：
+- `币种`（可选）：交易对符号，不提供时显示所有交易
+- `数量`（可选）：显示数量，默认10条
+- `邮箱`（可选）：如果无session，需要提供邮箱
+- `OTP码`（可选）：如果无session，需要提供OTP码
+
+#### 5. 查看交易员状态
+
+```
+/trader
+/trader trader_id_123
+/trader trader_id_123 user@example.com 123456
+```
+
+**功能**：查看交易员运行状态**
+
+**参数**：
+- `交易员ID`（可选）：不提供时显示所有交易员
+- `邮箱`（可选）：如果无session，需要提供邮箱
+- `OTP码`（可选）：如果无session，需要提供OTP码
+
+#### 6. 启用/停用交易员
+
+```
+/start-trader trader_id_123
+/start-trader trader_id_123 user@example.com 123456
+/stop-trader trader_id_123
+/stop-trader trader_id_123 user@example.com 123456
+```
+
+**功能**：启用或停用指定的交易员
+
+**参数**：
+- `交易员ID`：要启用/停用的交易员ID
+- `邮箱`（可选）：如果无session，需要提供邮箱
+- `OTP码`（可选）：如果无session，需要提供OTP码
+
+#### 7. 设置止损
+
+```
+/sl BTCUSDT 42000
+/sl BTCUSDT 42000 user@example.com 123456
 ```
 
 **功能**：为指定币种的持仓设置止损价格
 
 **参数**：
-- `用户ID`：你的用户ID（从 Web 界面获取）
 - `币种`：交易对符号
 - `止损价`：止损触发价格（数字，无需单位）
-- `OTP码`：Google Authenticator 验证码（6位数字）
+- `邮箱`（可选）：如果无session，需要提供邮箱（放在最后）
+- `OTP码`（可选）：如果无session，需要提供OTP码（放在最后）
 
 **说明**：
 - 需要先有该币种的持仓
 - 系统会自动识别持仓方向（long/short）
 - 止损价格必须符合交易所的价格精度要求
-- OTP 码来自你的 Google Authenticator 应用
+- 如果已登录（有session），只需提供币种和止损价
 
-**安全**：此指令需要验证你的身份，确保只有账户所有者可以操作。
-
-#### 4. 设置止盈（需要用户ID和OTP）
+#### 8. 设置止盈
 
 ```
-/tp user_abc123 BTCUSDT 45000 123456
+/tp BTCUSDT 45000
+/tp BTCUSDT 45000 user@example.com 123456
 ```
 
 **功能**：为指定币种的持仓设置止盈价格
 
 **参数**：
-- `用户ID`：你的用户ID（从 Web 界面获取）
 - `币种`：交易对符号
 - `止盈价`：止盈触发价格（数字，无需单位）
-- `OTP码`：Google Authenticator 验证码（6位数字）
+- `邮箱`（可选）：如果无session，需要提供邮箱（放在最后）
+- `OTP码`（可选）：如果无session，需要提供OTP码（放在最后）
 
 **说明**：
 - 需要先有该币种的持仓
 - 系统会自动识别持仓方向（long/short）
 - 止盈价格必须符合交易所的价格精度要求
-- OTP 码来自你的 Google Authenticator 应用
+- 如果已登录（有session），只需提供币种和止盈价
 
-**安全**：此指令需要验证你的身份，确保只有账户所有者可以操作。
-
-#### 5. 平仓（需要用户ID和OTP）
+#### 9. 平仓
 
 ```
-/close user_abc123 BTCUSDT long 123456
+/close BTCUSDT long
+/close BTCUSDT long user@example.com 123456
 ```
 
 **功能**：平掉指定币种和方向的持仓
 
 **参数**：
-- `用户ID`：你的用户ID（从 Web 界面获取）
 - `币种`：交易对符号
 - `方向`：`long`（做多）或 `short`（做空）
-- `OTP码`：Google Authenticator 验证码（6位数字）
+- `邮箱`（可选）：如果无session，需要提供邮箱（放在最后）
+- `OTP码`（可选）：如果无session，需要提供OTP码（放在最后）
 
 **说明**：
 - 会平掉该币种指定方向的所有持仓
 - 请谨慎操作，确保输入正确
-- OTP 码来自你的 Google Authenticator 应用
+- 如果已登录（有session），只需提供币种和方向
 
 **安全**：此指令需要验证你的身份，确保只有账户所有者可以操作。
+
+### 自动推送功能
+
+系统会自动推送以下交易信息到 Telegram：
+
+#### 交易决策通知
+- **开仓通知**：包含价格、数量、杠杆、仓位大小、止损、止盈、信心度
+- **平仓通知**：包含价格、数量、开仓价、盈亏
+- **持仓调整**：包含调整详情
+
+#### 账户摘要
+- 总权益、可用余额、已用保证金
+- 总盈亏（含百分比）
+- 持仓数量
+
+#### 持仓详情
+- 每个持仓的符号、方向、数量、杠杆
+- 开仓价、标记价、未实现盈亏
+
+#### 风控系统通知
+- **回撤监控警告**：接近回撤阈值、平仓失败等关键日志
+- **止损触发通知**：固定止损、回撤止损、移动止损、时间止损、波动止损等
+- **平仓通知**：包含策略类型、盈亏信息、峰值利润、回撤百分比等
+
+**注意**：自动推送功能无需手动配置，系统会在交易执行时自动发送通知。
 
 ### 使用提示
 
 1. **币种格式**：使用标准交易对格式，如 `BTCUSDT`、`ETHUSDT`
 2. **价格格式**：直接使用数字，无需单位或符号
 3. **方向格式**：使用小写 `long` 或 `short`
-4. **用户ID格式**：从 Web 界面获取，通常为 `user_` 开头的字符串
+4. **邮箱格式**：使用注册时使用的邮箱地址
 5. **OTP 码**：6位数字，来自 Google Authenticator 等 2FA 应用
-6. **错误处理**：如果指令格式错误，Bot 会返回错误提示
+6. **参数顺序**：邮箱和OTP必须放在参数的最后两个位置
+7. **Session机制**：使用 `/login` 登录后，30秒内无需重复输入邮箱和OTP
+8. **错误处理**：如果指令格式错误，Bot 会返回错误提示
 
 ### 多用户支持
 
 当前实现支持多用户使用同一个 Bot：
 
-- **查询指令**（`/account`、`/price`）：所有用户都可以使用，无需验证
-- **操作指令**（`/sl`、`/tp`、`/close`）：每个用户需要提供自己的用户ID和OTP码
-- **无需绑定**：不需要预先绑定 Chat ID，每次操作时提供用户ID即可
+- **查询指令**（`/price`、`/help`）：所有用户都可以使用，无需验证
+- **操作指令**（`/account`、`/sl`、`/tp`、`/close`等）：每个用户需要提供自己的邮箱和OTP码
+- **Session隔离**：每个 Chat ID 有独立的session，互不干扰
+- **无需绑定**：不需要预先绑定 Chat ID，每次操作时提供邮箱和OTP即可
 
 **优势**：
 - 多个用户可以共享同一个 Bot
 - 无需预先配置，使用更灵活
 - 安全性更高（每次操作都需要验证）
+- Session机制提升使用体验（30秒免验证）
 
 ## 故障排查
 
@@ -705,12 +826,12 @@ curl https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getWebhookInfo
 
 **可能原因**：
 - OTP 码已过期（通常 30 秒有效）
-- 用户ID错误
+- 邮箱错误
 - 账户未启用 2FA
 
 **解决方案**：
 - 确保使用最新的 OTP 码（Google Authenticator 会自动更新）
-- 检查用户ID是否正确
+- 检查邮箱是否正确（使用注册时使用的邮箱地址）
 - 确认账户已在 Web 界面完成 2FA 设置
 
 #### 5. 用户不存在错误
@@ -718,9 +839,9 @@ curl https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getWebhookInfo
 **症状**：操作指令返回 "用户不存在"
 
 **解决方案**：
-- 检查用户ID是否正确（从 Web 界面获取）
-- 确认用户ID格式正确（通常为 `user_` 开头）
-- 如果用户ID包含空格，确保在指令中正确引用
+- 检查邮箱是否正确（使用注册时使用的邮箱地址）
+- 确认邮箱格式正确（包含 @ 符号）
+- 如果邮箱包含特殊字符，确保在指令中正确引用
 
 #### 6. SSL 证书错误
 
