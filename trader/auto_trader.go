@@ -123,6 +123,8 @@ type AutoTrader struct {
 	monitorWg             sync.WaitGroup                      // Used to wait for monitoring goroutine to finish
 	peakPnLCache          map[string]float64                  // Peak profit cache (symbol -> peak P&L percentage)
 	peakPnLCacheMutex     sync.RWMutex                        // Cache read-write lock
+	trailingStopPrice     map[string]float64                  // Trailing stop price cache (symbol_side -> trailing stop price)
+	trailingStopPriceMutex sync.RWMutex                        // Trailing stop price cache mutex
 	lastBalanceSyncTime   time.Time                           // Last balance sync time
 	userID                string                              // User ID
 	gridState             *GridState                          // Grid trading state (only used when StrategyType == "grid_trading")
@@ -375,6 +377,8 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 		monitorWg:             sync.WaitGroup{},
 		peakPnLCache:          make(map[string]float64),
 		peakPnLCacheMutex:     sync.RWMutex{},
+		trailingStopPrice:     make(map[string]float64),
+		trailingStopPriceMutex: sync.RWMutex{},
 		lastBalanceSyncTime:   time.Now(),
 		userID:                userID,
 		telegramNotifier:      telegramNotifier,
@@ -399,6 +403,9 @@ func (at *AutoTrader) Run() error {
 
 	// Start drawdown monitoring
 	at.startDrawdownMonitor()
+
+	// Start automatic stop-loss monitoring (real-time protection)
+	at.startStopLossMonitor()
 
 	// Start Lighter order sync if using Lighter exchange
 	if at.exchange == "lighter" {
@@ -2584,6 +2591,256 @@ func (at *AutoTrader) sendAccountSummary() {
 		positionsMsg := notification.FormatPositionsMessage(at.name, positions)
 		if err := at.telegramNotifier.SendMessage(positionsMsg); err != nil {
 			logger.Warnf("Failed to send positions info: %v", err)
+		}
+	}
+}
+
+// startStopLossMonitor starts automatic stop-loss monitoring with high-frequency polling (5-10 seconds)
+// 自动止损监控：高频轮询（5-10秒），检查固定止损（-5%）和回撤止损
+func (at *AutoTrader) startStopLossMonitor() {
+	at.monitorWg.Add(1)
+	go func() {
+		defer at.monitorWg.Done()
+
+		// High-frequency check interval (5-10 seconds for timely stop-loss)
+		checkInterval := 8 * time.Second
+		ticker := time.NewTicker(checkInterval)
+		defer ticker.Stop()
+
+		logger.Info("🛡️ Started automatic stop-loss monitoring (high-frequency: 8s interval)")
+
+		for {
+			select {
+			case <-ticker.C:
+				at.checkStopLoss()
+			case <-at.stopMonitorCh:
+				logger.Info("🛡️ Stop-loss monitoring stopped")
+				return
+			}
+		}
+	}()
+}
+
+// checkStopLoss checks all positions for stop-loss conditions (multi-strategy coordination)
+// 多策略协同止损：固定止损、回撤止损、移动止损、时间止损、波动止损
+// 任一策略触发即止损，提供全方位保护
+func (at *AutoTrader) checkStopLoss() {
+	// Get current positions
+	positions, err := at.trader.GetPositions()
+	if err != nil {
+		logger.Infof("❌ Stop-loss monitoring: failed to get positions: %v", err)
+		return
+	}
+
+	for _, pos := range positions {
+		symbol := pos["symbol"].(string)
+		side := pos["side"].(string)
+		entryPrice := pos["entryPrice"].(float64)
+		markPrice := pos["markPrice"].(float64)
+		quantity := pos["positionAmt"].(float64)
+		if quantity < 0 {
+			quantity = -quantity
+		}
+
+		// Get leverage
+		leverage := 10
+		if lev, ok := pos["leverage"].(float64); ok {
+			leverage = int(lev)
+		}
+
+		// Calculate current P&L percentage using price change (real-time)
+		var currentPnLPct float64
+		if side == "long" {
+			currentPnLPct = ((markPrice - entryPrice) / entryPrice) * float64(leverage) * 100
+		} else {
+			currentPnLPct = ((entryPrice - markPrice) / entryPrice) * float64(leverage) * 100
+		}
+
+		// Prepare common data for all strategies
+		posKey := symbol + "_" + side
+		unrealizedPnl := pos["unRealizedProfit"].(float64)
+		marginUsed := (quantity * markPrice) / float64(leverage)
+		realPnlPct := calculatePnLPercentage(unrealizedPnl, marginUsed)
+		
+		// Track which strategy triggered (for logging)
+		triggeredStrategy := ""
+		shouldClose := false
+
+		// 1. Check fixed stop-loss (-5%)
+		// 固定止损：亏损达到-5%时立即止损
+		if currentPnLPct <= -5.0 && realPnlPct <= -5.0 {
+			triggeredStrategy = "Fixed Stop-Loss"
+			shouldClose = true
+			logger.Infof("🚨 [%s] Fixed stop-loss triggered: %s %s | Loss: %.2f%% (threshold: -5.00%%)",
+				triggeredStrategy, symbol, side, realPnlPct)
+		}
+
+		// 2. Check trailing stop-loss (移动止损)
+		// 移动止损：价格上升时止损价跟随上升，让利润奔跑
+		if !shouldClose && currentPnLPct > 3.0 { // Only activate when profit > 3%
+			at.trailingStopPriceMutex.Lock()
+			trailingStop, exists := at.trailingStopPrice[posKey]
+			
+			// Calculate trailing stop distance (3% of current price for long, adjust for short)
+			trailingDistance := markPrice * 0.03 // 3% trailing distance
+			
+			if side == "long" {
+				// For long: trailing stop follows price upward
+				newTrailingStop := markPrice - trailingDistance
+				if !exists || newTrailingStop > trailingStop {
+					// Update trailing stop only upward (never lower)
+					at.trailingStopPrice[posKey] = newTrailingStop
+					trailingStop = newTrailingStop
+				}
+				// Check if price dropped below trailing stop
+				if markPrice <= trailingStop {
+					triggeredStrategy = "Trailing Stop-Loss"
+					shouldClose = true
+					logger.Infof("🚨 [%s] Trailing stop-loss triggered: %s %s | Price: %.6f | Trailing Stop: %.6f | Profit: %.2f%%",
+						triggeredStrategy, symbol, side, markPrice, trailingStop, currentPnLPct)
+				}
+			} else {
+				// For short: trailing stop follows price downward
+				newTrailingStop := markPrice + trailingDistance
+				if !exists || newTrailingStop < trailingStop || trailingStop == 0 {
+					// Update trailing stop only downward (never higher)
+					at.trailingStopPrice[posKey] = newTrailingStop
+					trailingStop = newTrailingStop
+				}
+				// Check if price rose above trailing stop
+				if markPrice >= trailingStop {
+					triggeredStrategy = "Trailing Stop-Loss"
+					shouldClose = true
+					logger.Infof("🚨 [%s] Trailing stop-loss triggered: %s %s | Price: %.6f | Trailing Stop: %.6f | Profit: %.2f%%",
+						triggeredStrategy, symbol, side, markPrice, trailingStop, currentPnLPct)
+				}
+			}
+			at.trailingStopPriceMutex.Unlock()
+		}
+
+		// 3. Check time-based stop-loss (时间止损)
+		// 时间止损：持仓时间过长自动止损，避免长期持仓
+		if !shouldClose {
+			positionStartTime, exists := at.positionFirstSeenTime[posKey]
+			if exists {
+				positionDuration := time.Since(time.UnixMilli(positionStartTime))
+				maxHoldTime := 24 * time.Hour // Maximum hold time: 24 hours
+				
+				if positionDuration >= maxHoldTime {
+					triggeredStrategy = "Time-based Stop-Loss"
+					shouldClose = true
+					logger.Infof("🚨 [%s] Time-based stop-loss triggered: %s %s | Hold time: %.1fh (max: %.1fh) | Profit: %.2f%%",
+						triggeredStrategy, symbol, side, positionDuration.Hours(), maxHoldTime.Hours(), currentPnLPct)
+				}
+			}
+		}
+
+		// 4. Check volatility stop-loss (波动止损)
+		// 波动止损：基于ATR的动态止损，适应市场波动
+		if !shouldClose && currentPnLPct > 0 {
+			// Get market data for ATR calculation
+			marketData, err := market.Get(symbol)
+			if err == nil && marketData != nil {
+				// Try to get ATR14 from different possible locations
+				var atr14 float64
+				if marketData.IntradaySeries != nil && marketData.IntradaySeries.ATR14 > 0 {
+					atr14 = marketData.IntradaySeries.ATR14
+				} else if marketData.LongerTermContext != nil && marketData.LongerTermContext.ATR14 > 0 {
+					atr14 = marketData.LongerTermContext.ATR14
+				}
+				
+				if atr14 > 0 {
+					// Calculate ATR-based stop distance (2x ATR for volatility stop)
+					atrStopDistance := atr14 * 2.0
+					
+					if side == "long" {
+						// For long: stop if price drops below entry - 2x ATR
+						volatilityStopPrice := entryPrice - atrStopDistance
+						if markPrice <= volatilityStopPrice {
+							triggeredStrategy = "Volatility Stop-Loss"
+							shouldClose = true
+							logger.Infof("🚨 [%s] Volatility stop-loss triggered: %s %s | Price: %.6f | ATR Stop: %.6f (ATR14: %.6f) | Profit: %.2f%%",
+								triggeredStrategy, symbol, side, markPrice, volatilityStopPrice, atr14, currentPnLPct)
+						}
+					} else {
+						// For short: stop if price rises above entry + 2x ATR
+						volatilityStopPrice := entryPrice + atrStopDistance
+						if markPrice >= volatilityStopPrice {
+							triggeredStrategy = "Volatility Stop-Loss"
+							shouldClose = true
+							logger.Infof("🚨 [%s] Volatility stop-loss triggered: %s %s | Price: %.6f | ATR Stop: %.6f (ATR14: %.6f) | Profit: %.2f%%",
+								triggeredStrategy, symbol, side, markPrice, volatilityStopPrice, atr14, currentPnLPct)
+						}
+					}
+				}
+			}
+		}
+
+		// 5. Check drawdown stop-loss (回撤止损)
+		// 回撤止损：使用现有的分级回撤策略，但使用高频检查
+		if !shouldClose {
+			// Get peak profit
+			at.peakPnLCacheMutex.RLock()
+			peakPnLPct, exists := at.peakPnLCache[posKey]
+			at.peakPnLCacheMutex.RUnlock()
+
+			if !exists {
+				// Initialize peak cache
+				peakPnLPct = currentPnLPct
+				at.UpdatePeakPnL(symbol, side, currentPnLPct)
+			} else {
+				// Update peak cache
+				at.UpdatePeakPnL(symbol, side, currentPnLPct)
+			}
+
+			// Calculate drawdown
+			var drawdownPct float64
+			if peakPnLPct > 0 && currentPnLPct < peakPnLPct {
+				drawdownPct = ((peakPnLPct - currentPnLPct) / peakPnLPct) * 100
+			}
+
+			// Get tiered drawdown threshold
+			drawdownThreshold := getTieredDrawdownThreshold(peakPnLPct)
+
+			// Check if drawdown threshold is triggered (using price-based for quick check)
+			// 使用价格变化进行快速检查，如果接近阈值再用实际盈亏验证
+			if currentPnLPct >= 5.5 && drawdownPct >= (drawdownThreshold-2.0) && drawdownThreshold > 0 {
+				// Recalculate drawdown with actual P&L
+				at.peakPnLCacheMutex.RLock()
+				refreshPeakPnlPct := at.peakPnLCache[posKey]
+				at.peakPnLCacheMutex.RUnlock()
+
+				var realDrawdownPct float64
+				if refreshPeakPnlPct > 0 && realPnlPct < refreshPeakPnlPct {
+					realDrawdownPct = ((refreshPeakPnlPct - realPnlPct) / refreshPeakPnlPct) * 100
+				}
+
+				realDrawdownThreshold := getTieredDrawdownThreshold(refreshPeakPnlPct)
+				if realPnlPct >= 6.0 && realDrawdownPct >= realDrawdownThreshold && realDrawdownThreshold > 0 {
+					triggeredStrategy = "Drawdown Stop-Loss"
+					shouldClose = true
+					logger.Infof("🚨 [%s] Drawdown stop-loss triggered: %s %s | Real profit: %.2f%% | Peak profit: %.2f%% | Drawdown: %.2f%% (threshold: %.2f%%)",
+						triggeredStrategy, symbol, side, realPnlPct, refreshPeakPnlPct, realDrawdownPct, realDrawdownThreshold)
+				}
+			}
+		}
+
+		// Execute stop-loss if any strategy triggered (multi-strategy coordination)
+		// 多策略协同：任一策略触发即止损
+		if shouldClose {
+			if err := at.emergencyClosePosition(symbol, side); err != nil {
+				logger.Infof("❌ [%s] Stop-loss close position failed (%s %s): %v", triggeredStrategy, symbol, side, err)
+			} else {
+				logger.Infof("✅ [%s] Stop-loss close position succeeded: %s %s | Realized PnL: %.2f USDT (%.2f%%) | Entry: %.6f | Exit: %.6f | Qty: %.6f | Margin: %.2f USDT",
+					triggeredStrategy, symbol, side, unrealizedPnl, realPnlPct, entryPrice, markPrice, quantity, marginUsed)
+				
+				// Clear all caches after closing
+				at.ClearPeakPnLCache(symbol, side)
+				at.trailingStopPriceMutex.Lock()
+				delete(at.trailingStopPrice, posKey)
+				at.trailingStopPriceMutex.Unlock()
+				delete(at.positionFirstSeenTime, posKey)
+			}
 		}
 	}
 }
