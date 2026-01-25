@@ -1,0 +1,101 @@
+==========================================
+  历史回撤触发分析报告
+==========================================
+
+生成时间: 2026-01-25 11:37:31
+日志目录: /Users/king/IdeaProjects/nofx/data
+分析记录数: 15
+
+【1. 总体统计】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+总触发次数: 15
+平仓成功: 15 次
+平仓失败: 0 次
+成功率: 100.00%
+
+【2. 按交易对统计】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  RIVERUSDT           :   2 次 (13.3%)
+  AXSUSDT             :   2 次 (13.3%)
+  ZKPUSDT             :   1 次 (6.7%)
+  VIRTUALUSDT         :   1 次 (6.7%)
+  PUMPUSDT            :   1 次 (6.7%)
+  POLUSDT             :   1 次 (6.7%)
+  PIPPINUSDT          :   1 次 (6.7%)
+  FHEUSDT             :   1 次 (6.7%)
+  DUSKUSDT            :   1 次 (6.7%)
+  CLOUSDT             :   1 次 (6.7%)
+  BARDUSDT            :   1 次 (6.7%)
+  ARCUSDT             :   1 次 (6.7%)
+
+【3. 按日期统计】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  01-08:   1 次
+  01-08:   1 次
+  01-09:   1 次
+  01-09:   1 次
+  01-09:   1 次
+  01-10:   1 次
+  01-11:   1 次
+  01-21:   1 次
+  01-21:   1 次
+  01-21:   1 次
+  01-21:   1 次
+  01-21:   1 次
+  01-22:   1 次
+  01-23:   1 次
+  01-25:   1 次
+
+【4. 回撤幅度分析】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+平均回撤: 49.16%
+最高回撤: 65.15%
+最低回撤: 40.48%
+
+回撤分布:
+  <40%:  0 次 (0%)
+  40-50%: 9 次 (60.0%)
+  50-60%: 3 次 (20.0%)
+  >=60%: 3 次 (20.0%)
+
+【5. 峰值利润分析】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+平均峰值利润: 17.51%
+最高峰值利润: 47.59%
+最低峰值利润: 9.25%
+
+【6. 触发时利润分析】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+平均触发利润: 8.41%
+最高触发利润: 23.12%
+最低触发利润: 5.09%
+
+【7. 最新触发记录（最近5次）】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  01-21 17:48:08 [INFO] trader/auto_trader.go:1762 🚨 Drawdown close position condition triggered: AXSUSDT long | Current profit: 6.51% | Peak profit: 11.30% | Drawdown: 42.39%
+  01-21 20:45:08 [INFO] trader/auto_trader.go:1762 🚨 Drawdown close position condition triggered: BARDUSDT long | Current profit: 5.12% | Peak profit: 10.65% | Drawdown: 51.96%
+  01-22 18:54:53 [INFO] trader/auto_trader.go:1858 🚨 Drawdown close position condition triggered: FHEUSDT long | Current profit: 14.62% | Peak profit: 41.95% | Drawdown: 65.15%
+  01-23 19:17:09 [INFO] trader/auto_trader.go:1909 🚨 Drawdown close position condition triggered: RIVERUSDT short | Current profit: 23.12% | Peak profit: 47.59% | Drawdown: 51.41%
+  01-25 08:13:22 [INFO] trader/auto_trader.go:1999 🚨 Drawdown close position condition triggered (tiered): ENSOUSDT long | Real profit: 6.78% | Peak profit: 16.42% | Drawdown: 58.71% (threshold: 30.00%)
+
+【8. 高回撤记录（>=60%）】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  01-08 12:31:42 [INFO] trader/auto_trader.go:1762 🚨 Drawdown close position condition triggered: ZKPUSDT long | Current profit: 5.59% | Peak profit: 14.42% | Drawdown: 61.27% - ZKPUSDT | 峰值: 14.42% | 触发: 5.59% | 回撤: 61.27%
+  01-10 01:45:08 [INFO] trader/auto_trader.go:1762 🚨 Drawdown close position condition triggered: PUMPUSDT long | Current profit: 9.31% | Peak profit: 23.52% | Drawdown: 60.42% - PUMPUSDT | 峰值: 23.52% | 触发: 9.31% | 回撤: 60.42%
+  01-22 18:54:53 [INFO] trader/auto_trader.go:1858 🚨 Drawdown close position condition triggered: FHEUSDT long | Current profit: 14.62% | Peak profit: 41.95% | Drawdown: 65.15% - FHEUSDT | 峰值: 41.95% | 触发: 14.62% | 回撤: 65.15%
+
+【9. 阈值分析（新版本）】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+新版本记录数: 1
+  阈值 30.00%: 1 次
+
+【10. 关键发现与建议】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ 平仓成功率 100%，系统稳定可靠
+✅ 平均回撤 49.16%，阈值设置合理
+⚠️  发现 3 次高回撤（>=60%），建议关注
+✅ 平均峰值利润 17.51%，系统能够捕获高利润
+
+==========================================
+报告生成完成
+==========================================

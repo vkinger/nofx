@@ -1868,16 +1868,18 @@ func (at *AutoTrader) startDrawdownMonitor() {
 }
 
 // getTieredDrawdownThreshold returns drawdown threshold based on profit level (tiered drawdown strategy)
-// 分级回撤策略（方案A优化）：利润越高，允许的回撤越大，但阈值更保守
+// 分级回撤策略（修正逻辑）：利润越高，回调风险越高，应该用更严格的阈值
+// 重要：回撤是从峰值计算的，所以必须基于峰值确定阈值
+// 但峰值越高，阈值应该更严格（百分比更小），以保护高利润
 func getTieredDrawdownThreshold(profitPct float64) float64 {
 	if profitPct >= 25.0 {
-		return 45.0 // 利润>=25%，允许回撤45%（让利润奔跑，但更保守）
+		return 30.0 // 利润>=25%，回撤30%（严格：峰值越高，阈值越严格，保护高利润）
 	} else if profitPct >= 12.0 {
-		return 35.0 // 利润12-25%，回撤35%（标准保护，略微收紧）
+		return 30.0 // 利润12-25%，回撤30%（标准保护）
 	} else if profitPct >= 6.0 {
-		return 30.0 // 利润6-12%，回撤30%（保守保护，提高触发门槛）
+		return 25.0 // 利润6-12%，回撤25%（保守保护）
 	}
-	return 0.0 // 利润<6%，不触发回撤保护（提高触发门槛，减少误触发）
+	return 0.0 // 利润<6%，不触发回撤保护
 }
 
 // getDrawdownCheckInterval returns dynamic check interval based on maximum profit level
@@ -1951,8 +1953,10 @@ func (at *AutoTrader) checkPositionDrawdown() float64 {
 			drawdownPct = ((peakPnLPct - currentPnLPct) / peakPnLPct) * 100
 		}
 
-		// Get tiered drawdown threshold based on current profit level
-		drawdownThreshold := getTieredDrawdownThreshold(currentPnLPct)
+		// Get tiered drawdown threshold based on peak profit level (not current profit)
+		// 重要：必须基于峰值利润确定阈值，因为回撤是从峰值计算的：drawdown = (peak - current) / peak
+		// 逻辑：峰值越高，回调风险越高，阈值应该更严格（百分比更小），以保护高利润
+		drawdownThreshold := getTieredDrawdownThreshold(peakPnLPct)
 
 		// Check if close to trigger threshold (using price-based calculation for real-time monitoring)
 		// 使用价格变化进行实时监控，如果接近触发阈值，再用实际盈亏验证
@@ -1993,9 +1997,15 @@ func (at *AutoTrader) checkPositionDrawdown() float64 {
 						}
 
 						// 使用实际盈亏和分级回撤阈值进行最终判断
-						// 注意：触发门槛从5%提高到6%，与getTieredDrawdownThreshold保持一致
-						realDrawdownThreshold := getTieredDrawdownThreshold(realPnlPct)
+						// 重要：必须基于峰值利润确定阈值，因为回撤是从峰值计算的
+						// 逻辑：峰值越高，回调风险越高，阈值应该更严格（百分比更小）
+						// 例如：峰值16.42%应使用12-25%区间的阈值（30%），而不是当前利润6.78%对应的阈值
+						realDrawdownThreshold := getTieredDrawdownThreshold(refreshPeakPnlPct)
 						if realPnlPct >= 6.0 && realDrawdownPct >= realDrawdownThreshold && realDrawdownThreshold > 0 {
+							// 记录平仓前的持仓信息（用于打印盈亏）
+							entryPrice := refreshPos["entryPrice"].(float64)
+							closeQuantity := refreshQuantity
+							
 							logger.Infof("🚨 Drawdown close position condition triggered (tiered): %s %s | Real profit: %.2f%% | Peak profit: %.2f%% | Drawdown: %.2f%% (threshold: %.2f%%)",
 								symbol, side, realPnlPct, refreshPeakPnlPct, realDrawdownPct, realDrawdownThreshold)
 
@@ -2003,7 +2013,15 @@ func (at *AutoTrader) checkPositionDrawdown() float64 {
 							if err := at.emergencyClosePosition(symbol, side); err != nil {
 								logger.Infof("❌ Drawdown close position failed (%s %s): %v", symbol, side, err)
 							} else {
-								logger.Infof("✅ Drawdown close position succeeded: %s %s", symbol, side)
+								// 计算并打印平仓盈亏信息
+								// 注意：unrealizedPnl 是平仓前的未实现盈亏，平仓后这个值会变成已实现盈亏
+								// 但由于平仓可能涉及滑点和手续费，实际盈亏可能略有差异
+								realizedPnl := unrealizedPnl
+								realizedPnlPct := realPnlPct
+								
+								logger.Infof("✅ Drawdown close position succeeded: %s %s | Realized PnL: %.2f USDT (%.2f%%) | Entry: %.6f | Exit: %.6f | Qty: %.6f | Margin: %.2f USDT",
+									symbol, side, realizedPnl, realizedPnlPct, entryPrice, refreshMarkPrice, closeQuantity, marginUsed)
+								
 								// Clear cache for this position after closing
 								at.ClearPeakPnLCache(symbol, side)
 							}
