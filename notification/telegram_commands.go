@@ -7,6 +7,8 @@ import (
 	"nofx/market"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -73,20 +75,83 @@ type TraderInfo interface {
 	IsRunning() bool
 }
 
+// TelegramSession 会话信息（用于免验证）
+type TelegramSession struct {
+	UserID    string
+	Email     string
+	ExpiresAt time.Time
+}
+
 // CommandContext 指令处理上下文
 type CommandContext struct {
 	TraderManager TraderManagerInterface
 	UserStore     UserStoreInterface
 	Store         StoreInterface
+	// 会话管理：key = chatID，value = 会话信息
+	sessions      map[int64]*TelegramSession
+	sessionsMutex sync.RWMutex
+}
+
+// initSessions 初始化会话管理（如果未初始化）
+func (ctx *CommandContext) initSessions() {
+	if ctx.sessions == nil {
+		ctx.sessions = make(map[int64]*TelegramSession)
+	}
+}
+
+// getSession 获取会话（如果有效）
+func (ctx *CommandContext) getSession(chatID int64) (*TelegramSession, bool) {
+	ctx.initSessions()
+	ctx.sessionsMutex.RLock()
+	defer ctx.sessionsMutex.RUnlock()
+	
+	session, exists := ctx.sessions[chatID]
+	if !exists {
+		return nil, false
+	}
+	
+	// 检查会话是否过期
+	if time.Now().After(session.ExpiresAt) {
+		return nil, false
+	}
+	
+	return session, true
+}
+
+// setSession 设置会话（有效期30秒，与OTP有效期一致）
+func (ctx *CommandContext) setSession(chatID int64, userID, email string) {
+	ctx.initSessions()
+	ctx.sessionsMutex.Lock()
+	defer ctx.sessionsMutex.Unlock()
+	
+	ctx.sessions[chatID] = &TelegramSession{
+		UserID:    userID,
+		Email:     email,
+		ExpiresAt: time.Now().Add(30 * time.Second), // OTP有效期30秒
+	}
+}
+
+// clearSession 清除会话
+func (ctx *CommandContext) clearSession(chatID int64) {
+	ctx.initSessions()
+	ctx.sessionsMutex.Lock()
+	defer ctx.sessionsMutex.Unlock()
+	
+	delete(ctx.sessions, chatID)
 }
 
 // CreateCommandHandlers 创建指令处理器
 func CreateCommandHandlers(ctx *CommandContext) map[string]CommandHandler {
 	handlers := make(map[string]CommandHandler)
 
-	// /account - 查看账户及持仓（需要邮箱和OTP）
+	// /login - 登录并保存session（邮箱和OTP）
+	handlers["/login"] = func(update *tgbotapi.Update) string {
+		return handleLoginCommand(ctx, update)
+	}
+
+	// /account - 查看账户及持仓（支持session或邮箱+OTP）
 	handlers["/account"] = func(update *tgbotapi.Update) string {
-		return handleCommandWithUserIDAndOTP(ctx, update, handleAccountCommandWithOTP)
+		return handleCommandWithSessionOrOTP(ctx, update, handleAccountCommandWithOTP)
 	}
 
 	// /price - 查看币种价格（无需 OTP）
@@ -98,39 +163,39 @@ func CreateCommandHandlers(ctx *CommandContext) map[string]CommandHandler {
 		return handlePriceCommand(ctx, args[0])
 	}
 
-	// /sl - 设置止损（需要邮箱和OTP）
+	// /sl - 设置止损（支持session或邮箱+OTP）
 	handlers["/sl"] = func(update *tgbotapi.Update) string {
-		return handleCommandWithUserIDAndOTP(ctx, update, handleStopLossCommandWithOTP)
+		return handleCommandWithSessionOrOTP(ctx, update, handleStopLossCommandWithOTP)
 	}
 
-	// /tp - 设置止盈（需要邮箱和OTP）
+	// /tp - 设置止盈（支持session或邮箱+OTP）
 	handlers["/tp"] = func(update *tgbotapi.Update) string {
-		return handleCommandWithUserIDAndOTP(ctx, update, handleTakeProfitCommandWithOTP)
+		return handleCommandWithSessionOrOTP(ctx, update, handleTakeProfitCommandWithOTP)
 	}
 
-	// /close - 平仓（需要邮箱和OTP）
+	// /close - 平仓（支持session或邮箱+OTP）
 	handlers["/close"] = func(update *tgbotapi.Update) string {
-		return handleCommandWithUserIDAndOTP(ctx, update, handleCloseCommandWithOTP)
+		return handleCommandWithSessionOrOTP(ctx, update, handleCloseCommandWithOTP)
 	}
 
-	// /trades - 查看最近交易（需要邮箱和OTP）
+	// /trades - 查看最近交易（支持session或邮箱+OTP）
 	handlers["/trades"] = func(update *tgbotapi.Update) string {
-		return handleCommandWithUserIDAndOTP(ctx, update, handleTradesCommandWithOTP)
+		return handleCommandWithSessionOrOTP(ctx, update, handleTradesCommandWithOTP)
 	}
 
-	// /trader - 查看交易员状态（需要邮箱和OTP）
+	// /trader - 查看交易员状态（支持session或邮箱+OTP）
 	handlers["/trader"] = func(update *tgbotapi.Update) string {
-		return handleCommandWithUserIDAndOTP(ctx, update, handleTraderStatusCommandWithOTP)
+		return handleCommandWithSessionOrOTP(ctx, update, handleTraderStatusCommandWithOTP)
 	}
 
-	// /start-trader - 启用交易员（需要邮箱和OTP）
+	// /start-trader - 启用交易员（支持session或邮箱+OTP）
 	handlers["/start-trader"] = func(update *tgbotapi.Update) string {
-		return handleCommandWithUserIDAndOTP(ctx, update, handleStartTraderCommandWithOTP)
+		return handleCommandWithSessionOrOTP(ctx, update, handleStartTraderCommandWithOTP)
 	}
 
-	// /stop-trader - 停用交易员（需要邮箱和OTP）
+	// /stop-trader - 停用交易员（支持session或邮箱+OTP）
 	handlers["/stop-trader"] = func(update *tgbotapi.Update) string {
-		return handleCommandWithUserIDAndOTP(ctx, update, handleStopTraderCommandWithOTP)
+		return handleCommandWithSessionOrOTP(ctx, update, handleStopTraderCommandWithOTP)
 	}
 
 	// /help - 帮助
@@ -140,34 +205,42 @@ func CreateCommandHandlers(ctx *CommandContext) map[string]CommandHandler {
 /price [币种] - 查看币种当前价格（无需验证）
   示例: /price BTCUSDT
 
-<b>需要邮箱和 2FA 验证码的操作：</b>
-/account [邮箱] [OTP码] - 查看账户及持仓信息
-  示例: /account user@example.com 123456
+/login [邮箱] [OTP码] - 登录并保存session（30秒免验证）
+  示例: /login user@example.com 123456
 
-/trades [邮箱] [OTP码] [币种] [数量] - 查看最近交易记录
-  示例: /trades user@example.com 123456
-  示例: /trades user@example.com 123456 BTCUSDT 10
-  （币种和数量可选，默认显示最近10条）
+<b>需要认证的操作（支持session或邮箱+OTP）：</b>
+/account - 查看账户及持仓信息
+  有session: /account
+  无session: /account user@example.com 123456
+  覆盖session: /account user@example.com 123456
 
-/trader [邮箱] [OTP码] [交易员ID] - 查看交易员状态
-  示例: /trader user@example.com 123456
-  示例: /trader user@example.com 123456 trader_id_123
-  （交易员ID可选，不提供时显示所有交易员）
+/trades [币种] [数量] - 查看最近交易记录
+  有session: /trades BTCUSDT 10
+  无session: /trades BTCUSDT 10 user@example.com 123456
 
-/start-trader [邮箱] [交易员ID] [OTP码] - 启用交易员
-  示例: /start-trader user@example.com trader_id_123 123456
+/trader [交易员ID] - 查看交易员状态
+  有session: /trader trader_id_123
+  无session: /trader trader_id_123 user@example.com 123456
 
-/stop-trader [邮箱] [交易员ID] [OTP码] - 停用交易员
-  示例: /stop-trader user@example.com trader_id_123 123456
+/start-trader [交易员ID] - 启用交易员
+  有session: /start-trader trader_id_123
+  无session: /start-trader trader_id_123 user@example.com 123456
 
-/sl [邮箱] [币种] [止损价] [OTP码] - 设置止损
-  示例: /sl user@example.com BTCUSDT 42000 123456
+/stop-trader [交易员ID] - 停用交易员
+  有session: /stop-trader trader_id_123
+  无session: /stop-trader trader_id_123 user@example.com 123456
 
-/tp [邮箱] [币种] [止盈价] [OTP码] - 设置止盈
-  示例: /tp user@example.com BTCUSDT 45000 123456
+/sl [币种] [止损价] - 设置止损
+  有session: /sl BTCUSDT 42000
+  无session: /sl BTCUSDT 42000 user@example.com 123456
 
-/close [邮箱] [币种] [方向] [OTP码] - 平仓
-  示例: /close user@example.com BTCUSDT long 123456
+/tp [币种] [止盈价] - 设置止盈
+  有session: /tp BTCUSDT 45000
+  无session: /tp BTCUSDT 45000 user@example.com 123456
+
+/close [币种] [方向] - 平仓
+  有session: /close BTCUSDT long
+  无session: /close BTCUSDT long user@example.com 123456
 
 /help - 显示帮助信息（无需验证）
 
@@ -189,8 +262,10 @@ func CreateCommandHandlers(ctx *CommandContext) map[string]CommandHandler {
 💰 开仓价、标记价、未实现盈亏
 
 💡 <b>提示：</b>
-- 只有 /price 和 /help 指令无需验证码
-- 其他所有指令都需要提供邮箱和 Google Authenticator 验证码
+- 只有 /price 和 /help 指令无需验证
+- 使用 /login email OTP 登录后，30秒内其他指令无需输入邮箱和OTP
+- 也可以在指令末尾提供邮箱和OTP来操作（覆盖当前session）
+- 免验证时长与OTP有效期一致（30秒）
 - 邮箱应该是注册时使用的邮箱地址
 - OTP 码来自你的 Google Authenticator 等 2FA 应用
 - 交易通知会在 AI 交易员执行交易时自动推送，无需手动查询`
@@ -214,17 +289,18 @@ func getFirstTrader(ctx *CommandContext) (TraderInterface, error) {
 	return nil, fmt.Errorf("没有找到运行中的交易员")
 }
 
-// handleCommandWithEmailAndOTP 处理需要邮箱和OTP验证的指令
-func handleCommandWithUserIDAndOTP(ctx *CommandContext, update *tgbotapi.Update, handler func(*CommandContext, *tgbotapi.Update, UserInterface) string) string {
+// handleLoginCommand 处理登录指令，创建session
+func handleLoginCommand(ctx *CommandContext, update *tgbotapi.Update) string {
 	args := strings.Fields(update.Message.Text)
+	chatID := update.Message.Chat.ID
 
-	if len(args) < 2 {
-		return "❌ 参数不足。操作指令需要邮箱和 Google Authenticator 验证码。\n示例: /account user@example.com 123456\n示例: /sl user@example.com BTCUSDT 42000 123456"
+	if len(args) < 3 {
+		return "❌ 参数不足。登录需要邮箱和 Google Authenticator 验证码。\n示例: /login user@example.com 123456"
 	}
 
-	// 第一个参数是邮箱，最后一个参数是 OTP
-	email := args[0]
-	otpCode := args[len(args)-1]
+	// 第一个参数是邮箱，第二个参数是 OTP
+	email := args[1]
+	otpCode := args[2]
 
 	// 通过邮箱获取用户
 	user, err := ctx.UserStore.GetByEmail(email)
@@ -242,15 +318,88 @@ func handleCommandWithUserIDAndOTP(ctx *CommandContext, update *tgbotapi.Update,
 		return "❌ OTP 验证码错误。请使用 Google Authenticator 应用中的当前验证码。"
 	}
 
-	// 移除邮箱和OTP参数，保留中间的操作参数
-	// 格式: /account email OTP -> (空)
-	// 格式: /sl email symbol price OTP -> symbol price
-	// 格式: /close email symbol side OTP -> symbol side
-	if len(args) > 2 {
-		update.Message.Text = strings.Join(args[1:len(args)-1], " ")
+	// OTP验证成功，创建会话（有效期30秒，与OTP有效期一致）
+	ctx.setSession(chatID, user.GetID(), email)
+
+	return fmt.Sprintf("✅ 登录成功！\n\n账户: %s\n免验证时长: 30秒\n\n💡 30秒内使用其他指令无需输入邮箱和OTP。", email)
+}
+
+// handleCommandWithSessionOrOTP 处理需要认证的指令（支持session或邮箱+OTP）
+// 如果session有效，直接使用；如果提供了邮箱和OTP（在参数最后），则使用提供的账户
+func handleCommandWithSessionOrOTP(ctx *CommandContext, update *tgbotapi.Update, handler func(*CommandContext, *tgbotapi.Update, UserInterface) string) string {
+	chatID := update.Message.Chat.ID
+	args := strings.Fields(update.Message.Text)
+
+	var user UserInterface
+	var err error
+	var useProvidedAccount bool
+
+	// 检查参数最后是否有邮箱和OTP（邮箱包含@，OTP是6位数字）
+	// 格式: /account email OTP
+	// 格式: /sl symbol price email OTP
+	// 格式: /close symbol side email OTP
+	if len(args) >= 2 {
+		lastArg := args[len(args)-1]
+		secondLastArg := args[len(args)-2]
+
+		// 检查最后一个参数是否是OTP（6位数字）
+		if len(lastArg) == 6 {
+			if _, parseErr := strconv.Atoi(lastArg); parseErr == nil {
+				// 检查倒数第二个参数是否是邮箱（包含@）
+				if strings.Contains(secondLastArg, "@") {
+					// 提供了邮箱和OTP，使用提供的账户
+					email := secondLastArg
+					otpCode := lastArg
+
+					user, err = ctx.UserStore.GetByEmail(email)
+					if err == nil {
+						// 检查用户是否已启用 OTP
+						if !user.IsOTPVerified() {
+							return "❌ 该账户尚未完成 2FA 设置。请先在 Web 界面完成 2FA 配置。"
+						}
+
+						// 验证 OTP
+						if !auth.VerifyOTP(user.GetOTPSecret(), otpCode) {
+							return "❌ OTP 验证码错误。请使用 Google Authenticator 应用中的当前验证码。"
+						}
+
+						// OTP验证成功，更新会话
+						ctx.setSession(chatID, user.GetID(), email)
+						useProvidedAccount = true
+
+						// 移除邮箱和OTP参数
+						args = args[:len(args)-2]
+					}
+				}
+			}
+		}
+	}
+
+	// 如果没有提供邮箱和OTP，尝试使用session
+	if !useProvidedAccount {
+		if session, valid := ctx.getSession(chatID); valid {
+			// 会话有效，使用session中的用户
+			user, err = ctx.UserStore.GetByID(session.UserID)
+			if err != nil {
+				// 用户不存在，清除会话
+				ctx.clearSession(chatID)
+			}
+		}
+	}
+
+	// 如果既没有提供账户，也没有有效session，返回错误
+	if user == nil {
+		return "❌ 需要登录或提供账户信息。\n\n方式1: 先使用 /login email OTP 登录\n方式2: 在指令末尾提供邮箱和OTP\n示例: /account user@example.com 123456\n示例: /sl BTCUSDT 42000 user@example.com 123456"
+	}
+
+	// 移除命令本身（第一个参数），保留操作参数
+	// 如果使用了提供的账户，还需要移除邮箱和OTP（已经在前面移除了）
+	if len(args) > 1 {
+		update.Message.Text = strings.Join(args[1:], " ")
 	} else {
 		update.Message.Text = ""
 	}
+
 	return handler(ctx, update, user)
 }
 
