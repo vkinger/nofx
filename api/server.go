@@ -3983,7 +3983,16 @@ func (s *Server) handleTelegramWebhook(c *gin.Context) {
 				webhook.HandleUpdate(&update)
 				logger.Debugf("Telegram webhook update handled by bot (ChatID: %d)", targetChatID)
 			} else {
-				logger.Warnf("Telegram webhook update for ChatID %d not handled (no matching webhook found)", targetChatID)
+				// 如果找不到匹配的 webhook，使用第一个可用的 webhook 处理
+				// 这允许所有用户（无论 ChatID）使用所有命令
+				// 系统通过 session 或 OTP 验证用户身份，而不是通过 ChatID
+				firstWebhook := s.multiTelegramWebhook.GetFirstWebhook()
+				if firstWebhook != nil {
+					logger.Infof("Using first available webhook to handle command from ChatID: %d (no matching webhook found)", targetChatID)
+					firstWebhook.HandleUpdate(&update)
+				} else {
+					logger.Warnf("Telegram webhook update for ChatID %d not handled (no matching webhook found and no webhooks available)", targetChatID)
+				}
 			}
 		}
 	} else if s.telegramWebhook != nil {
