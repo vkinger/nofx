@@ -326,13 +326,28 @@ func handleLoginCommand(ctx *CommandContext, update *tgbotapi.Update) string {
 	args := strings.Fields(update.Message.Text)
 	chatID := update.Message.Chat.ID
 
-	if len(args) < 3 {
-		return "❌ 参数不足。登录需要邮箱和 Google Authenticator 验证码。\n示例: /login user@example.com 123456"
+	// 注意：telegram_webhook.go 在调用处理器前已经移除了命令部分，只保留了参数
+	// 所以 args 只包含邮箱和 OTP，不包含 /login 命令
+	if len(args) < 2 {
+		return "❌ 参数不足。登录需要邮箱和 Google Authenticator 验证码。\n\n📋 <b>使用方法：</b>\n/login [邮箱] [OTP码]\n\n💡 <b>示例：</b>\n/login user@example.com 123456\n\n📝 <b>说明：</b>\n- 邮箱：注册时使用的邮箱地址\n- OTP码：Google Authenticator 等 2FA 应用中的6位验证码"
 	}
 
 	// 第一个参数是邮箱，第二个参数是 OTP
-	email := args[1]
-	otpCode := args[2]
+	email := args[0]
+	otpCode := args[1]
+
+	// 验证邮箱格式（简单检查）
+	if !strings.Contains(email, "@") {
+		return "❌ 邮箱格式不正确。\n\n请提供有效的邮箱地址，例如：user@example.com"
+	}
+
+	// 验证 OTP 格式（应该是6位数字）
+	if len(otpCode) != 6 {
+		return fmt.Sprintf("❌ OTP 验证码格式不正确。\n\nOTP 应该是6位数字，您提供的是 %d 位。\n请使用 Google Authenticator 应用中的当前验证码。", len(otpCode))
+	}
+	if _, err := strconv.Atoi(otpCode); err != nil {
+		return "❌ OTP 验证码必须是数字。\n\n请使用 Google Authenticator 应用中的6位数字验证码。"
+	}
 
 	// 通过邮箱获取用户
 	user, err := ctx.UserStore.GetByEmail(email)
@@ -433,10 +448,11 @@ func handleCommandWithSessionOrOTP(ctx *CommandContext, update *tgbotapi.Update,
 		return "❌ 需要登录或提供账户信息。\n\n方式1: 先使用 /login email OTP 登录\n方式2: 在指令末尾提供邮箱和OTP\n示例: /account user@example.com 123456\n示例: /sl BTCUSDT 42000 user@example.com 123456"
 	}
 
-	// 移除命令本身（第一个参数），保留操作参数
-	// 如果使用了提供的账户，还需要移除邮箱和OTP（已经在前面移除了）
-	if len(args) > 1 {
-		update.Message.Text = strings.Join(args[1:], " ")
+	// 注意：telegram_webhook.go 在调用处理器前已经移除了命令部分，只保留了参数
+	// 如果使用了提供的账户，邮箱和OTP已经在前面移除了
+	// 所以这里直接使用所有剩余的参数（不需要再移除第一个参数）
+	if len(args) > 0 {
+		update.Message.Text = strings.Join(args, " ")
 	} else {
 		update.Message.Text = ""
 	}
