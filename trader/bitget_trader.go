@@ -1090,6 +1090,13 @@ func (t *BitgetTrader) clearCache() {
 	t.positionsCacheMutex.Unlock()
 }
 
+// InvalidateCache clears balance and position cache
+// Called after trade execution to ensure fresh data on next query
+func (t *BitgetTrader) InvalidateCache() {
+	t.clearCache()
+	logger.Infof("🗑️ Bitget cache invalidated (balance & positions)")
+}
+
 // genBitgetClientOid generates unique client order ID
 func genBitgetClientOid() string {
 	timestamp := time.Now().UnixNano() % 10000000000000

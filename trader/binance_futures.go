@@ -216,6 +216,20 @@ func (t *FuturesTrader) GetPositions() ([]map[string]interface{}, error) {
 	return result, nil
 }
 
+// InvalidateCache clears balance and position cache
+// Called after trade execution to ensure fresh data on next query
+func (t *FuturesTrader) InvalidateCache() {
+	t.balanceCacheMutex.Lock()
+	t.cachedBalance = nil
+	t.balanceCacheMutex.Unlock()
+
+	t.positionsCacheMutex.Lock()
+	t.cachedPositions = nil
+	t.positionsCacheMutex.Unlock()
+
+	logger.Infof("🗑️ Cache invalidated (balance & positions)")
+}
+
 // SetMarginMode sets margin mode
 func (t *FuturesTrader) SetMarginMode(symbol string, isCrossMargin bool) error {
 	var marginType futures.MarginType

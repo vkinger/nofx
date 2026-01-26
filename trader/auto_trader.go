@@ -2825,6 +2825,13 @@ func (at *AutoTrader) sendAccountSummary() {
 		return
 	}
 
+	// 清除缓存，确保获取最新数据
+	// 交易执行后，本地缓存可能还是旧数据
+	at.trader.InvalidateCache()
+
+	// 等待交易所端数据同步（交易所内部处理可能有延迟）
+	time.Sleep(1 * time.Second)
+
 	// 获取用户的 Telegram Chat ID（用于按用户推送）
 	var userChatID int64
 	if at.userID != "" && at.store != nil {
@@ -2834,7 +2841,7 @@ func (at *AutoTrader) sendAccountSummary() {
 		}
 	}
 
-	// 获取账户信息
+	// 获取账户信息（现在会从API获取最新数据）
 	accountInfo, err := at.GetAccountInfo()
 	if err != nil {
 		logger.Warnf("Failed to get account info for telegram: %v", err)

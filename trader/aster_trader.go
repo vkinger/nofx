@@ -1605,3 +1605,9 @@ func (t *AsterTrader) GetOrderBook(symbol string, depth int) (bids, asks [][]flo
 
 	return bids, asks, nil
 }
+
+// InvalidateCache clears balance and position cache
+// Aster doesn't use caching, so this is a no-op
+func (t *AsterTrader) InvalidateCache() {
+	// Aster queries data in real-time, no cache to invalidate
+}

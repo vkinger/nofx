@@ -447,6 +447,20 @@ func (t *OKXTrader) InvalidatePositionCache() {
 	t.positionsCacheMutex.Unlock()
 }
 
+// InvalidateCache clears balance and position cache
+// Called after trade execution to ensure fresh data on next query
+func (t *OKXTrader) InvalidateCache() {
+	t.balanceCacheMutex.Lock()
+	t.cachedBalance = nil
+	t.balanceCacheMutex.Unlock()
+
+	t.positionsCacheMutex.Lock()
+	t.cachedPositions = nil
+	t.positionsCacheMutex.Unlock()
+
+	logger.Infof("🗑️ OKX cache invalidated (balance & positions)")
+}
+
 // getInstrument gets instrument info
 func (t *OKXTrader) getInstrument(symbol string) (*OKXInstrument, error) {
 	instId := t.convertSymbol(symbol)

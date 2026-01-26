@@ -456,3 +456,9 @@ func (t *LighterTraderV2) GetOrderBook(symbol string, depth int) (bids, asks [][
 
 	return bids, asks, nil
 }
+
+// InvalidateCache clears balance and position cache
+// Lighter doesn't use caching, so this is a no-op
+func (t *LighterTraderV2) InvalidateCache() {
+	// Lighter queries data in real-time, no cache to invalidate
+}

@@ -2229,3 +2229,9 @@ func (t *HyperliquidTrader) GetOrderBook(symbol string, depth int) (bids, asks [
 
 	return bids, asks, nil
 }
+
+// InvalidateCache clears balance and position cache
+// Hyperliquid doesn't use caching, so this is a no-op
+func (t *HyperliquidTrader) InvalidateCache() {
+	// Hyperliquid queries data in real-time, no cache to invalidate
+}

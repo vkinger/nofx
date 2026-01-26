@@ -764,6 +764,13 @@ func (t *BybitTrader) clearCache() {
 	t.positionsCacheMutex.Unlock()
 }
 
+// InvalidateCache clears balance and position cache
+// Called after trade execution to ensure fresh data on next query
+func (t *BybitTrader) InvalidateCache() {
+	t.clearCache()
+	logger.Infof("🗑️ Bybit cache invalidated (balance & positions)")
+}
+
 func (t *BybitTrader) parseOrderResult(result *bybit.ServerResponse) (map[string]interface{}, error) {
 	if result.RetCode != 0 {
 		return nil, fmt.Errorf("order placement failed: %s", result.RetMsg)
