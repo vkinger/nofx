@@ -156,9 +156,8 @@ func CreateCommandHandlers(ctx *CommandContext) map[string]CommandHandler {
    /login [邮箱] [OTP码]
    示例: /login user@example.com 123456
 
-2️⃣ <b>查看账户</b>：
-   /account [邮箱] [OTP码]
-   或登录后直接: /account
+2️⃣ <b>查看账户</b>（需要先登录）：
+   /account
 
 3️⃣ <b>查看价格</b>（无需登录）：
    /price BTCUSDT
@@ -171,8 +170,8 @@ func CreateCommandHandlers(ctx *CommandContext) map[string]CommandHandler {
 
 💡 <b>提示：</b>
 - 首次使用请先执行 /login 命令进行登录
-- 登录成功后，您的 Telegram ChatID 会自动配置
-- 之后您将自动接收交易通知，无需手动查询
+- 登录成功后，30秒内可执行其他指令
+- 您的 Telegram ChatID 会自动配置，之后自动接收通知
 - 发送 /help 查看完整帮助信息`
 	}
 
@@ -195,37 +194,37 @@ func CreateCommandHandlers(ctx *CommandContext) map[string]CommandHandler {
 		return handlePriceCommand(ctx, args[0])
 	}
 
-	// /sl - 设置止损（支持session或邮箱+OTP）
+	// /sl - 设置止损
 	handlers["/sl"] = func(update *tgbotapi.Update) string {
 		return handleCommandWithSessionOrOTP(ctx, update, handleStopLossCommandWithOTP)
 	}
 
-	// /tp - 设置止盈（支持session或邮箱+OTP）
+	// /tp - 设置止盈
 	handlers["/tp"] = func(update *tgbotapi.Update) string {
 		return handleCommandWithSessionOrOTP(ctx, update, handleTakeProfitCommandWithOTP)
 	}
 
-	// /close - 平仓（支持session或邮箱+OTP）
+	// /close - 平仓
 	handlers["/close"] = func(update *tgbotapi.Update) string {
 		return handleCommandWithSessionOrOTP(ctx, update, handleCloseCommandWithOTP)
 	}
 
-	// /trades - 查看最近交易（支持session或邮箱+OTP）
+	// /trades - 查看最近交易
 	handlers["/trades"] = func(update *tgbotapi.Update) string {
 		return handleCommandWithSessionOrOTP(ctx, update, handleTradesCommandWithOTP)
 	}
 
-	// /trader - 查看交易员状态（支持session或邮箱+OTP）
+	// /trader - 查看交易员状态
 	handlers["/trader"] = func(update *tgbotapi.Update) string {
 		return handleCommandWithSessionOrOTP(ctx, update, handleTraderStatusCommandWithOTP)
 	}
 
-	// /start-trader - 启用交易员（支持session或邮箱+OTP）
+	// /start-trader - 启用交易员
 	handlers["/start-trader"] = func(update *tgbotapi.Update) string {
 		return handleCommandWithSessionOrOTP(ctx, update, handleStartTraderCommandWithOTP)
 	}
 
-	// /stop-trader - 停用交易员（支持session或邮箱+OTP）
+	// /stop-trader - 停用交易员
 	handlers["/stop-trader"] = func(update *tgbotapi.Update) string {
 		return handleCommandWithSessionOrOTP(ctx, update, handleStopTraderCommandWithOTP)
 	}
@@ -234,91 +233,86 @@ func CreateCommandHandlers(ctx *CommandContext) map[string]CommandHandler {
 	handlers["/help"] = func(update *tgbotapi.Update) string {
 		return `📋 <b>可用指令：</b>
 
-/price [币种] - 查看币种当前价格（无需验证）
+<b>无需登录：</b>
+/price [币种] - 查看币种当前价格
   示例: /price BTCUSDT
 
-/login [邮箱] [OTP码] - 登录并保存session（30秒免验证）
+/help - 显示帮助信息
+
+<b>登录认证：</b>
+/login [邮箱] [OTP码] - 登录（30秒有效期）
   示例: /login user@example.com 123456
 
-<b>需要认证的操作（支持session或邮箱+OTP）：</b>
-/account - 查看账户及持仓信息
-  有session: /account
-  无session: /account user@example.com 123456
-  覆盖session: /account user@example.com 123456
-
-/trades [币种] [数量] - 查看最近交易记录
-  有session: /trades BTCUSDT 10
-  无session: /trades BTCUSDT 10 user@example.com 123456
-
+<b>需要先登录的操作：</b>
+/account [交易员ID] - 查看账户及持仓
+/trades [币种] [数量] [交易员ID] - 查看交易记录
 /trader [交易员ID] - 查看交易员状态
-  有session: /trader trader_id_123
-  无session: /trader trader_id_123 user@example.com 123456
-
 /start-trader [交易员ID] - 启用交易员
-  有session: /start-trader trader_id_123
-  无session: /start-trader trader_id_123 user@example.com 123456
-
 /stop-trader [交易员ID] - 停用交易员
-  有session: /stop-trader trader_id_123
-  无session: /stop-trader trader_id_123 user@example.com 123456
-
-/sl [币种] [止损价] - 设置止损
-  有session: /sl BTCUSDT 42000
-  无session: /sl BTCUSDT 42000 user@example.com 123456
-
-/tp [币种] [止盈价] - 设置止盈
-  有session: /tp BTCUSDT 45000
-  无session: /tp BTCUSDT 45000 user@example.com 123456
-
-/close [币种] [方向] - 平仓
-  有session: /close BTCUSDT long
-  无session: /close BTCUSDT long user@example.com 123456
-
-/help - 显示帮助信息（无需验证）
+/sl [币种] [止损价] [交易员ID] - 设置止损
+/tp [币种] [止盈价] [交易员ID] - 设置止盈
+/close [币种] [方向] [交易员ID] - 平仓
 
 📢 <b>自动推送功能：</b>
-系统会自动推送以下交易信息到 Telegram：
-
-<b>交易决策通知：</b>
-📈 开仓通知 - 包含价格、数量、杠杆、仓位大小、止损、止盈、信心度
-📉 平仓通知 - 包含价格、数量、开仓价、盈亏
-🔄 持仓调整 - 包含调整详情
-
-<b>账户摘要：</b>
-📊 总权益、可用余额、已用保证金
-📈 总盈亏（含百分比）
-📋 持仓数量
-
-<b>持仓详情：</b>
-📋 每个持仓的符号、方向、数量、杠杆
-💰 开仓价、标记价、未实现盈亏
+登录后系统会自动推送交易信息：
+📈 开仓/平仓通知
+📊 账户摘要
 
 💡 <b>提示：</b>
-- 只有 /price 和 /help 指令无需验证
-- 使用 /login email OTP 登录后，30秒内其他指令无需输入邮箱和OTP
-- 也可以在指令末尾提供邮箱和OTP来操作（覆盖当前session）
-- 免验证时长与OTP有效期一致（30秒）
-- 邮箱应该是注册时使用的邮箱地址
-- OTP 码来自你的 Google Authenticator 等 2FA 应用
-- 交易通知会在 AI 交易员执行交易时自动推送，无需手动查询`
+- 首次使用请先执行 /login 命令登录
+- 登录后 30 秒内可执行需要认证的指令
+- 交易员ID可选，不传则使用第一个运行的交易员
+- 使用 /trader 查看您的所有交易员及ID`
 	}
 
 	return handlers
 }
 
-// getFirstTrader 获取第一个运行中的交易员
-func getFirstTrader(ctx *CommandContext) (TraderInterface, error) {
-	traders := ctx.TraderManager.GetAllTraders()
+// getUserTrader 获取用户自己的交易员
+// userID: 用户ID
+// traderID: 可选的交易员ID，如果为空则返回用户的第一个运行中的交易员
+func getUserTrader(ctx *CommandContext, userID string, traderID string) (TraderInterface, error) {
+	if ctx.Store == nil {
+		return nil, fmt.Errorf("无法访问交易员存储")
+	}
+
+	// 获取用户的所有交易员
+	traders, err := ctx.Store.Trader().List(userID)
+	if err != nil {
+		return nil, fmt.Errorf("获取交易员列表失败: %v", err)
+	}
+
 	if len(traders) == 0 {
-		return nil, fmt.Errorf("没有找到运行中的交易员")
+		return nil, fmt.Errorf("您还没有配置交易员，请先在 Web 界面创建交易员")
 	}
 
-	// 使用第一个交易员
+	// 如果指定了交易员ID，查找该交易员
+	if traderID != "" {
+		for _, t := range traders {
+			id := t.GetID()
+			if id == traderID || strings.HasPrefix(id, traderID) {
+				// 检查该交易员是否正在运行
+				if at, err := ctx.TraderManager.GetTrader(id); err == nil {
+					return at, nil
+				}
+				return nil, fmt.Errorf("交易员 %s 未运行，请先启动", t.GetName())
+			}
+		}
+		return nil, fmt.Errorf("未找到交易员: %s", traderID)
+	}
+
+	// 未指定交易员ID，查找用户的第一个运行中的交易员
 	for _, t := range traders {
-		return t, nil
+		if at, err := ctx.TraderManager.GetTrader(t.GetID()); err == nil {
+			return at, nil
+		}
 	}
 
-	return nil, fmt.Errorf("没有找到运行中的交易员")
+	// 没有运行中的交易员，提示用户
+	if len(traders) == 1 {
+		return nil, fmt.Errorf("您的交易员 %s 未运行，请先使用 /start-trader 启动", traders[0].GetName())
+	}
+	return nil, fmt.Errorf("您没有运行中的交易员，请先使用 /start-trader 启动")
 }
 
 // handleLoginCommand 处理登录指令，创建session
@@ -380,114 +374,69 @@ func handleLoginCommand(ctx *CommandContext, update *tgbotapi.Update) string {
 	return fmt.Sprintf("✅ 登录成功！\n\n账户: %s\nTelegram ChatID: %d\n免验证时长: 30秒\n\n💡 30秒内使用其他指令无需输入邮箱和OTP。\n💡 您的 Telegram ChatID 已自动配置，后续将只向您推送通知。", email, chatID)
 }
 
-// handleCommandWithSessionOrOTP 处理需要认证的指令（支持session或邮箱+OTP）
-// 如果session有效，直接使用；如果提供了邮箱和OTP（在参数最后），则使用提供的账户
+// handleCommandWithSession 处理需要认证的指令（只使用session验证）
+// 用户必须先使用 /login 命令登录，获取有效session后才能使用其他命令
 func handleCommandWithSessionOrOTP(ctx *CommandContext, update *tgbotapi.Update, handler func(*CommandContext, *tgbotapi.Update, UserInterface) string) string {
 	chatID := update.Message.Chat.ID
-	args := strings.Fields(update.Message.Text)
 
 	var user UserInterface
 	var err error
-	var useProvidedAccount bool
 
-	// 检查参数最后是否有邮箱和OTP（邮箱包含@，OTP是6位数字）
-	// 格式: /account email OTP
-	// 格式: /sl symbol price email OTP
-	// 格式: /close symbol side email OTP
-	if len(args) >= 2 {
-		lastArg := args[len(args)-1]
-		secondLastArg := args[len(args)-2]
-
-		// 检查最后一个参数是否是OTP（6位数字）
-		if len(lastArg) == 6 {
-			if _, parseErr := strconv.Atoi(lastArg); parseErr == nil {
-				// 检查倒数第二个参数是否是邮箱（包含@）
-				if strings.Contains(secondLastArg, "@") {
-					// 提供了邮箱和OTP，使用提供的账户
-					email := secondLastArg
-					otpCode := lastArg
-
-					user, err = ctx.UserStore.GetByEmail(email)
-					if err == nil {
-						// 检查用户是否已启用 OTP
-						if !user.IsOTPVerified() {
-							return "❌ 该账户尚未完成 2FA 设置。请先在 Web 界面完成 2FA 配置。"
-						}
-
-						// 验证 OTP
-						if !auth.VerifyOTP(user.GetOTPSecret(), otpCode) {
-							return "❌ OTP 验证码错误。请使用 Google Authenticator 应用中的当前验证码。"
-						}
-
-						// OTP验证成功，更新会话
-						ctx.setSession(chatID, user.GetID(), email)
-						useProvidedAccount = true
-
-						// 移除邮箱和OTP参数
-						args = args[:len(args)-2]
-					}
-				}
-			}
+	// 检查session是否有效
+	if session, valid := ctx.getSession(chatID); valid {
+		// 会话有效，使用session中的用户
+		user, err = ctx.UserStore.GetByID(session.UserID)
+		if err != nil {
+			// 用户不存在，清除会话
+			ctx.clearSession(chatID)
 		}
 	}
 
-	// 如果没有提供邮箱和OTP，尝试使用session
-	if !useProvidedAccount {
-		if session, valid := ctx.getSession(chatID); valid {
-			// 会话有效，使用session中的用户
-			user, err = ctx.UserStore.GetByID(session.UserID)
-			if err != nil {
-				// 用户不存在，清除会话
-				ctx.clearSession(chatID)
-			}
-		}
-	}
-
-	// 如果既没有提供账户，也没有有效session，返回错误
+	// 如果没有有效session，返回错误
 	if user == nil {
-		return "❌ 需要登录或提供账户信息。\n\n方式1: 先使用 /login email OTP 登录\n方式2: 在指令末尾提供邮箱和OTP\n示例: /account user@example.com 123456\n示例: /sl BTCUSDT 42000 user@example.com 123456"
-	}
-
-	// 注意：telegram_webhook.go 在调用处理器前已经移除了命令部分，只保留了参数
-	// 如果使用了提供的账户，邮箱和OTP已经在前面移除了
-	// 所以这里直接使用所有剩余的参数（不需要再移除第一个参数）
-	if len(args) > 0 {
-		update.Message.Text = strings.Join(args, " ")
-	} else {
-		update.Message.Text = ""
+		return "❌ 需要先登录。\n\n请使用 /login 命令登录：\n/login [邮箱] [OTP码]\n\n示例: /login user@example.com 123456\n\n💡 登录成功后，30秒内可以执行其他指令。"
 	}
 
 	return handler(ctx, update, user)
 }
 
 // handleAccountCommandWithOTP 处理账户查询指令（带用户 OTP 验证）
+// 格式: /account [交易员ID]（可选）
 func handleAccountCommandWithOTP(ctx *CommandContext, update *tgbotapi.Update, user UserInterface) string {
-	return handleAccountCommand(ctx)
+	args := strings.Fields(update.Message.Text)
+	
+	// 可选的交易员ID参数
+	traderID := ""
+	if len(args) > 0 {
+		traderID = args[0]
+	}
+	
+	return handleAccountCommand(ctx, user.GetID(), traderID)
 }
 
 // handleAccountCommand 处理账户查询指令（内部函数）
-func handleAccountCommand(ctx *CommandContext) string {
-	firstTrader, err := getFirstTrader(ctx)
+func handleAccountCommand(ctx *CommandContext, userID string, traderID string) string {
+	trader, err := getUserTrader(ctx, userID, traderID)
 	if err != nil {
 		return fmt.Sprintf("❌ %s", err.Error())
 	}
 
 	// 获取账户信息
-	accountInfo, err := firstTrader.GetAccountInfo()
+	accountInfo, err := trader.GetAccountInfo()
 	if err != nil {
 		return fmt.Sprintf("❌ 获取账户信息失败: %v", err)
 	}
 
 	// 获取持仓信息
-	positions, err := firstTrader.GetPositions()
+	positions, err := trader.GetPositions()
 	if err != nil {
 		return fmt.Sprintf("❌ 获取持仓信息失败: %v", err)
 	}
 
 	// 格式化消息
-	msg := FormatAccountInfoMessage(firstTrader.GetName(), accountInfo)
+	msg := FormatAccountInfoMessage(trader.GetName(), accountInfo)
 	if len(positions) > 0 {
-		msg += "\n\n" + FormatPositionsMessage(firstTrader.GetName(), positions)
+		msg += "\n\n" + FormatPositionsMessage(trader.GetName(), positions)
 	}
 
 	return msg
@@ -539,10 +488,11 @@ func handlePriceCommand(ctx *CommandContext, symbol string) string {
 }
 
 // handleStopLossCommandWithOTP 处理止损指令（带用户 OTP 验证）
+// 格式: /sl [币种] [止损价] [交易员ID]（可选）
 func handleStopLossCommandWithOTP(ctx *CommandContext, update *tgbotapi.Update, user UserInterface) string {
 	args := strings.Fields(update.Message.Text)
 	if len(args) < 2 {
-		return "❌ 请指定币种和止损价\n示例: /sl user_abc123 BTCUSDT 42000 123456"
+		return "❌ 请指定币种和止损价\n示例: /sl BTCUSDT 42000\n示例: /sl BTCUSDT 42000 trader_id（指定交易员）"
 	}
 
 	price, err := strconv.ParseFloat(args[1], 64)
@@ -550,20 +500,26 @@ func handleStopLossCommandWithOTP(ctx *CommandContext, update *tgbotapi.Update, 
 		return fmt.Sprintf("❌ 无效的价格: %s", args[1])
 	}
 
-	return handleStopLossCommand(ctx, args[0], price)
+	// 可选的交易员ID参数
+	traderID := ""
+	if len(args) > 2 {
+		traderID = args[2]
+	}
+
+	return handleStopLossCommand(ctx, user.GetID(), traderID, args[0], price)
 }
 
 // handleStopLossCommand 处理止损设置指令（内部函数）
-func handleStopLossCommand(ctx *CommandContext, symbol string, stopPrice float64) string {
+func handleStopLossCommand(ctx *CommandContext, userID string, traderID string, symbol string, stopPrice float64) string {
 	symbol = market.Normalize(symbol)
 
-	firstTrader, err := getFirstTrader(ctx)
+	trader, err := getUserTrader(ctx, userID, traderID)
 	if err != nil {
 		return fmt.Sprintf("❌ %s", err.Error())
 	}
 
 	// 获取持仓信息，找到该币种的持仓
-	positions, err := firstTrader.GetPositions()
+	positions, err := trader.GetPositions()
 	if err != nil {
 		return fmt.Sprintf("❌ 获取持仓信息失败: %v", err)
 	}
@@ -593,19 +549,20 @@ func handleStopLossCommand(ctx *CommandContext, symbol string, stopPrice float64
 	}
 
 	// 设置止损
-	traderInstance := firstTrader.GetTrader()
+	traderInstance := trader.GetTrader()
 	if err := traderInstance.SetStopLoss(symbol, positionSide, quantity, stopPrice); err != nil {
 		return fmt.Sprintf("❌ 设置止损失败: %v", err)
 	}
 
-	return fmt.Sprintf("✅ 已设置 %s %s 止损: $%.2f", symbol, side, stopPrice)
+	return fmt.Sprintf("✅ [%s] 已设置 %s %s 止损: $%.2f", trader.GetName(), symbol, side, stopPrice)
 }
 
 // handleTakeProfitCommandWithOTP 处理止盈指令（带用户 OTP 验证）
+// 格式: /tp [币种] [止盈价] [交易员ID]（可选）
 func handleTakeProfitCommandWithOTP(ctx *CommandContext, update *tgbotapi.Update, user UserInterface) string {
 	args := strings.Fields(update.Message.Text)
 	if len(args) < 2 {
-		return "❌ 请指定币种和止盈价\n示例: /tp user@example.com BTCUSDT 45000 123456"
+		return "❌ 请指定币种和止盈价\n示例: /tp BTCUSDT 45000\n示例: /tp BTCUSDT 45000 trader_id（指定交易员）"
 	}
 
 	price, err := strconv.ParseFloat(args[1], 64)
@@ -613,20 +570,26 @@ func handleTakeProfitCommandWithOTP(ctx *CommandContext, update *tgbotapi.Update
 		return fmt.Sprintf("❌ 无效的价格: %s", args[1])
 	}
 
-	return handleTakeProfitCommand(ctx, args[0], price)
+	// 可选的交易员ID参数
+	traderID := ""
+	if len(args) > 2 {
+		traderID = args[2]
+	}
+
+	return handleTakeProfitCommand(ctx, user.GetID(), traderID, args[0], price)
 }
 
 // handleTakeProfitCommand 处理止盈设置指令（内部函数）
-func handleTakeProfitCommand(ctx *CommandContext, symbol string, takeProfitPrice float64) string {
+func handleTakeProfitCommand(ctx *CommandContext, userID string, traderID string, symbol string, takeProfitPrice float64) string {
 	symbol = market.Normalize(symbol)
 
-	firstTrader, err := getFirstTrader(ctx)
+	trader, err := getUserTrader(ctx, userID, traderID)
 	if err != nil {
 		return fmt.Sprintf("❌ %s", err.Error())
 	}
 
 	// 获取持仓信息，找到该币种的持仓
-	positions, err := firstTrader.GetPositions()
+	positions, err := trader.GetPositions()
 	if err != nil {
 		return fmt.Sprintf("❌ 获取持仓信息失败: %v", err)
 	}
@@ -656,26 +619,33 @@ func handleTakeProfitCommand(ctx *CommandContext, symbol string, takeProfitPrice
 	}
 
 	// 设置止盈
-	traderInstance := firstTrader.GetTrader()
+	traderInstance := trader.GetTrader()
 	if err := traderInstance.SetTakeProfit(symbol, positionSide, quantity, takeProfitPrice); err != nil {
 		return fmt.Sprintf("❌ 设置止盈失败: %v", err)
 	}
 
-	return fmt.Sprintf("✅ 已设置 %s %s 止盈: $%.2f", symbol, side, takeProfitPrice)
+	return fmt.Sprintf("✅ [%s] 已设置 %s %s 止盈: $%.2f", trader.GetName(), symbol, side, takeProfitPrice)
 }
 
 // handleCloseCommandWithOTP 处理平仓指令（带用户 OTP 验证）
+// 格式: /close [币种] [方向] [交易员ID]（可选）
 func handleCloseCommandWithOTP(ctx *CommandContext, update *tgbotapi.Update, user UserInterface) string {
 	args := strings.Fields(update.Message.Text)
 	if len(args) < 2 {
-		return "❌ 请指定币种和方向\n示例: /close user@example.com BTCUSDT long 123456"
+		return "❌ 请指定币种和方向\n示例: /close BTCUSDT long\n示例: /close BTCUSDT short trader_id（指定交易员）"
 	}
 
-	return handleCloseCommand(ctx, args[0], args[1])
+	// 可选的交易员ID参数
+	traderID := ""
+	if len(args) > 2 {
+		traderID = args[2]
+	}
+
+	return handleCloseCommand(ctx, user.GetID(), traderID, args[0], args[1])
 }
 
 // handleCloseCommand 处理平仓指令（内部函数）
-func handleCloseCommand(ctx *CommandContext, symbol string, side string) string {
+func handleCloseCommand(ctx *CommandContext, userID string, traderID string, symbol string, side string) string {
 	symbol = market.Normalize(symbol)
 	side = strings.ToLower(side)
 
@@ -683,7 +653,7 @@ func handleCloseCommand(ctx *CommandContext, symbol string, side string) string 
 		return "❌ 方向必须是 long 或 short"
 	}
 
-	firstTrader, err := getFirstTrader(ctx)
+	trader, err := getUserTrader(ctx, userID, traderID)
 	if err != nil {
 		return fmt.Sprintf("❌ %s", err.Error())
 	}
@@ -694,36 +664,46 @@ func handleCloseCommand(ctx *CommandContext, symbol string, side string) string 
 		Action: fmt.Sprintf("close_%s", side),
 	}
 
-	if err := firstTrader.ExecuteDecision(decision); err != nil {
+	if err := trader.ExecuteDecision(decision); err != nil {
 		return fmt.Sprintf("❌ 平仓失败: %v", err)
 	}
 
-	return fmt.Sprintf("✅ 已平仓 %s %s", symbol, side)
+	return fmt.Sprintf("✅ [%s] 已平仓 %s %s", trader.GetName(), symbol, side)
 }
 
 // handleTradesCommandWithOTP 处理最近交易查询指令（带用户 OTP 验证）
+// 格式: /trades [币种] [数量] [交易员ID]（均可选）
 func handleTradesCommandWithOTP(ctx *CommandContext, update *tgbotapi.Update, user UserInterface) string {
 	args := strings.Fields(update.Message.Text)
 	
-	// 解析参数：symbol limit（可选）
+	// 解析参数：symbol limit traderID（均可选）
 	symbol := ""
 	limit := 10
+	traderID := ""
 	
-	if len(args) > 0 {
+	argIndex := 0
+	if len(args) > argIndex {
 		// 第一个参数可能是币种或数量
-		if limitVal, err := strconv.Atoi(args[0]); err == nil {
+		if limitVal, err := strconv.Atoi(args[argIndex]); err == nil {
 			limit = limitVal
+			argIndex++
 		} else {
-			symbol = market.Normalize(args[0])
+			symbol = market.Normalize(args[argIndex])
+			argIndex++
 		}
 	}
-	if len(args) > 1 {
-		// 如果有第二个参数，且第一个是币种，则第二个是数量
+	if len(args) > argIndex {
+		// 如果有第二个参数，且第一个是币种，则第二个可能是数量或交易员ID
 		if symbol != "" {
-			if limitVal, err := strconv.Atoi(args[1]); err == nil {
+			if limitVal, err := strconv.Atoi(args[argIndex]); err == nil {
 				limit = limitVal
+				argIndex++
 			}
 		}
+	}
+	// 剩余的参数作为交易员ID
+	if len(args) > argIndex {
+		traderID = args[argIndex]
 	}
 	
 	// 限制数量范围
@@ -734,18 +714,18 @@ func handleTradesCommandWithOTP(ctx *CommandContext, update *tgbotapi.Update, us
 		limit = 50
 	}
 	
-	return handleTradesCommand(ctx, symbol, limit)
+	return handleTradesCommand(ctx, user.GetID(), traderID, symbol, limit)
 }
 
 // handleTradesCommand 处理最近交易查询指令（内部函数）
-func handleTradesCommand(ctx *CommandContext, symbol string, limit int) string {
-	firstTrader, err := getFirstTrader(ctx)
+func handleTradesCommand(ctx *CommandContext, userID string, traderID string, symbol string, limit int) string {
+	trader, err := getUserTrader(ctx, userID, traderID)
 	if err != nil {
 		return fmt.Sprintf("❌ %s", err.Error())
 	}
 	
 	// 获取存储接口
-	store := firstTrader.GetStore()
+	store := trader.GetStore()
 	if store == nil {
 		return "❌ 无法访问交易记录存储"
 	}
@@ -756,13 +736,13 @@ func handleTradesCommand(ctx *CommandContext, symbol string, limit int) string {
 		return "❌ 无法访问交易记录存储"
 	}
 	
-	trades, err := positionStore.GetRecentTrades(firstTrader.GetID(), limit)
+	trades, err := positionStore.GetRecentTrades(trader.GetID(), limit)
 	if err != nil {
 		return fmt.Sprintf("❌ 获取交易记录失败: %v", err)
 	}
 	
 	if len(trades) == 0 {
-		msg := fmt.Sprintf("📊 <b>%s 最近交易记录</b>\n\n", firstTrader.GetName())
+		msg := fmt.Sprintf("📊 <b>%s 最近交易记录</b>\n\n", trader.GetName())
 		msg += "暂无交易记录"
 		return msg
 	}
@@ -783,7 +763,7 @@ func handleTradesCommand(ctx *CommandContext, symbol string, limit int) string {
 	}
 	
 	// 格式化消息
-	msg := fmt.Sprintf("📊 <b>%s 最近交易记录</b>\n\n", firstTrader.GetName())
+	msg := fmt.Sprintf("📊 <b>%s 最近交易记录</b>\n\n", trader.GetName())
 	if symbol != "" {
 		msg += fmt.Sprintf("币种: <b>%s</b>\n", symbol)
 	}
@@ -921,7 +901,7 @@ func handleStartTraderCommandWithOTP(ctx *CommandContext, update *tgbotapi.Updat
 	args := strings.Fields(update.Message.Text)
 	
 	if len(args) < 1 {
-		return "❌ 请指定交易员ID\n示例: /start-trader user@example.com trader_id_123 123456"
+		return "❌ 请指定交易员ID\n示例: /start-trader trader_id_123"
 	}
 	
 	traderID := args[0]
@@ -998,7 +978,7 @@ func handleStopTraderCommandWithOTP(ctx *CommandContext, update *tgbotapi.Update
 	args := strings.Fields(update.Message.Text)
 	
 	if len(args) < 1 {
-		return "❌ 请指定交易员ID\n示例: /stop-trader user@example.com trader_id_123 123456"
+		return "❌ 请指定交易员ID\n示例: /stop-trader trader_id_123"
 	}
 	
 	traderID := args[0]
