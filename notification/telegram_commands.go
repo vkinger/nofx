@@ -166,7 +166,7 @@ func CreateCommandHandlers(ctx *CommandContext) map[string]CommandHandler {
 登录成功后，系统会自动推送以下信息：
 - 📈 交易决策通知（开仓/平仓）
 - 📊 账户摘要和持仓详情
-- 🛡️ 风控系统通知（止损/回撤）
+- 🛡️ 风控系统通知（止损/止盈/回撤/平仓）
 
 💡 <b>提示：</b>
 - 首次使用请先执行 /login 命令进行登录
@@ -252,11 +252,6 @@ func CreateCommandHandlers(ctx *CommandContext) map[string]CommandHandler {
 /sl [币种] [止损价] [交易员ID] - 设置止损
 /tp [币种] [止盈价] [交易员ID] - 设置止盈
 /close [币种] [方向] [交易员ID] - 平仓
-
-📢 <b>自动推送功能：</b>
-登录后系统会自动推送交易信息：
-📈 开仓/平仓通知
-📊 账户摘要
 
 💡 <b>提示：</b>
 - 首次使用请先执行 /login 命令登录
