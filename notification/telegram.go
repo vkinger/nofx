@@ -82,56 +82,90 @@ func (tn *TelegramNotifier) GetChatID() int64 {
 // FormatDecisionMessage 格式化决策消息
 func FormatDecisionMessage(traderName, symbol, action string, details map[string]interface{}) string {
 	var emoji string
+	var actionText string
+	isOpenAction := false
 	switch action {
 	case "open_long":
 		emoji = "📈"
+		actionText = "开多"
+		isOpenAction = true
 	case "open_short":
 		emoji = "📉"
-	case "close_long", "close_short":
+		actionText = "开空"
+		isOpenAction = true
+	case "close_long":
 		emoji = "🔄"
+		actionText = "平多"
+	case "close_short":
+		emoji = "🔄"
+		actionText = "平空"
 	case "hold":
 		emoji = "⏸"
+		actionText = "持仓"
 	case "wait":
 		emoji = "⏳"
+		actionText = "等待"
 	default:
 		emoji = "ℹ️"
+		actionText = action
 	}
 
-	msg := fmt.Sprintf("%s <b>%s</b> - %s %s\n", emoji, traderName, symbol, action)
+	msg := fmt.Sprintf("%s <b>%s</b> - %s %s\n\n", emoji, traderName, symbol, actionText)
 
-	if price, ok := details["price"].(float64); ok && price > 0 {
-		msg += fmt.Sprintf("💰 价格: %s\n", market.FormatPriceWithDynamicPrecision(price))
+	// 账户信息（操作前）
+	if avail, ok := details["available_balance"].(float64); ok && avail > 0 {
+		msg += fmt.Sprintf("💰 可用余额: $%.2f\n", avail)
 	}
-	if quantity, ok := details["quantity"].(float64); ok && quantity > 0 {
-		msg += fmt.Sprintf("📊 数量: %.8f\n", quantity)
-	}
-	if leverage, ok := details["leverage"].(int); ok && leverage > 0 {
-		msg += fmt.Sprintf("⚡ 杠杆: %dx\n", leverage)
-	}
-	if positionSize, ok := details["position_size_usd"].(float64); ok && positionSize > 0 {
-		msg += fmt.Sprintf("💵 仓位: $%.2f\n", positionSize)
-	}
-	if stopLoss, ok := details["stop_loss"].(float64); ok && stopLoss > 0 {
-		msg += fmt.Sprintf("🛑 止损: %s\n", market.FormatPriceWithDynamicPrecision(stopLoss))
-	}
-	if takeProfit, ok := details["take_profit"].(float64); ok && takeProfit > 0 {
-		msg += fmt.Sprintf("🎯 止盈: %s\n", market.FormatPriceWithDynamicPrecision(takeProfit))
-	}
-	if confidence, ok := details["confidence"].(int); ok {
-		msg += fmt.Sprintf("🎲 信心度: %d%%\n", confidence)
-	}
-	if entryPrice, ok := details["entry_price"].(float64); ok && entryPrice > 0 {
-		msg += fmt.Sprintf("📥 开仓价: %s\n", market.FormatPriceWithDynamicPrecision(entryPrice))
-	}
-	if pnl, ok := details["pnl"].(float64); ok {
-		pnlEmoji := "📈"
-		if pnl < 0 {
-			pnlEmoji = "📉"
+
+	// 开仓操作：显示仓位信息
+	if isOpenAction {
+		if price, ok := details["price"].(float64); ok && price > 0 {
+			msg += fmt.Sprintf("📍 开仓价: %s\n", market.FormatPriceWithDynamicPrecision(price))
 		}
-		msg += fmt.Sprintf("%s 盈亏: $%.2f\n", pnlEmoji, pnl)
+		if quantity, ok := details["quantity"].(float64); ok && quantity > 0 {
+			msg += fmt.Sprintf("📊 数量: %.6f\n", quantity)
+		}
+		if leverage, ok := details["leverage"].(int); ok && leverage > 0 {
+			msg += fmt.Sprintf("⚡ 杠杆: %dx\n", leverage)
+		}
+		if positionSize, ok := details["position_size_usd"].(float64); ok && positionSize > 0 {
+			msg += fmt.Sprintf("💵 仓位价值: $%.2f\n", positionSize)
+		}
+		if stopLoss, ok := details["stop_loss"].(float64); ok && stopLoss > 0 {
+			msg += fmt.Sprintf("🛑 止损: %s\n", market.FormatPriceWithDynamicPrecision(stopLoss))
+		}
+		if takeProfit, ok := details["take_profit"].(float64); ok && takeProfit > 0 {
+			msg += fmt.Sprintf("🎯 止盈: %s\n", market.FormatPriceWithDynamicPrecision(takeProfit))
+		}
+		if confidence, ok := details["confidence"].(int); ok && confidence > 0 {
+			msg += fmt.Sprintf("🎲 信心度: %d%%\n", confidence)
+		}
+	} else {
+		// 平仓操作：显示盈亏信息
+		if entryPrice, ok := details["entry_price"].(float64); ok && entryPrice > 0 {
+			msg += fmt.Sprintf("📥 开仓价: %s\n", market.FormatPriceWithDynamicPrecision(entryPrice))
+		}
+		if price, ok := details["price"].(float64); ok && price > 0 {
+			msg += fmt.Sprintf("📤 平仓价: %s\n", market.FormatPriceWithDynamicPrecision(price))
+		}
+		if quantity, ok := details["quantity"].(float64); ok && quantity > 0 {
+			msg += fmt.Sprintf("📊 数量: %.6f\n", quantity)
+		}
+		if pnl, ok := details["pnl"].(float64); ok {
+			pnlEmoji := "📈"
+			if pnl < 0 {
+				pnlEmoji = "📉"
+			}
+			pnlStr := fmt.Sprintf("%s 盈亏: $%.2f", pnlEmoji, pnl)
+			if pnlPct, ok := details["pnl_pct"].(float64); ok {
+				pnlStr += fmt.Sprintf(" (%.2f%%)", pnlPct)
+			}
+			msg += pnlStr + "\n"
+		}
 	}
+
 	if errorMsg, ok := details["error"].(string); ok && errorMsg != "" {
-		msg += fmt.Sprintf("❌ 错误: %s\n", errorMsg)
+		msg += fmt.Sprintf("\n❌ 错误: %s\n", errorMsg)
 	}
 
 	return msg

@@ -1090,19 +1090,25 @@ func (at *AutoTrader) getExchangeCredentials() *market.ExchangeCredentials {
 func (at *AutoTrader) executeDecisionWithRecord(decision *kernel.Decision, actionRecord *store.DecisionAction) error {
 	var err error
 
+	// 获取操作前的账户余额快照
+	var preBalance map[string]interface{}
+	if balance, balanceErr := at.trader.GetBalance(); balanceErr == nil {
+		preBalance = balance
+	}
+
 	switch decision.Action {
 	case "open_long":
 		err = at.executeOpenLongWithRecord(decision, actionRecord)
-		at.sendDecisionNotification(decision, actionRecord, err)
+		at.sendDecisionNotificationWithBalance(decision, actionRecord, err, preBalance)
 	case "open_short":
 		err = at.executeOpenShortWithRecord(decision, actionRecord)
-		at.sendDecisionNotification(decision, actionRecord, err)
+		at.sendDecisionNotificationWithBalance(decision, actionRecord, err, preBalance)
 	case "close_long":
 		err = at.executeCloseLongWithRecord(decision, actionRecord)
-		at.sendDecisionNotification(decision, actionRecord, err)
+		at.sendDecisionNotificationWithBalance(decision, actionRecord, err, preBalance)
 	case "close_short":
 		err = at.executeCloseShortWithRecord(decision, actionRecord)
-		at.sendDecisionNotification(decision, actionRecord, err)
+		at.sendDecisionNotificationWithBalance(decision, actionRecord, err, preBalance)
 	case "hold", "wait":
 		// No execution needed, just record
 		return nil
@@ -2704,8 +2710,13 @@ func (at *AutoTrader) GetTrader() Trader {
 	return at.trader
 }
 
-// sendDecisionNotification 发送决策通知（按用户推送）
+// sendDecisionNotification 发送决策通知（按用户推送）- 向后兼容版本
 func (at *AutoTrader) sendDecisionNotification(decision *kernel.Decision, actionRecord *store.DecisionAction, execErr error) {
+	at.sendDecisionNotificationWithBalance(decision, actionRecord, execErr, nil)
+}
+
+// sendDecisionNotificationWithBalance 发送决策通知（按用户推送）- 带操作前余额
+func (at *AutoTrader) sendDecisionNotificationWithBalance(decision *kernel.Decision, actionRecord *store.DecisionAction, execErr error, preBalance map[string]interface{}) {
 	if at.telegramNotifier == nil {
 		return
 	}
@@ -2720,6 +2731,18 @@ func (at *AutoTrader) sendDecisionNotification(decision *kernel.Decision, action
 		"confidence":        actionRecord.Confidence,
 	}
 
+	// 添加操作前账户余额信息
+	if preBalance != nil {
+		if avail, ok := preBalance["availableBalance"].(float64); ok && avail > 0 {
+			details["available_balance"] = avail
+		}
+		if equity, ok := preBalance["totalEquity"].(float64); ok && equity > 0 {
+			details["total_equity"] = equity
+		} else if wallet, ok := preBalance["totalWalletBalance"].(float64); ok && wallet > 0 {
+			details["total_equity"] = wallet
+		}
+	}
+
 	// 对于平仓操作，添加开仓价和盈亏
 	if decision.Action == "close_long" || decision.Action == "close_short" {
 		if at.store != nil {
@@ -2730,14 +2753,30 @@ func (at *AutoTrader) sendDecisionNotification(decision *kernel.Decision, action
 			}
 			if openPos, err := at.store.Position().GetOpenPositionBySymbol(at.id, normalizedSymbol, side); err == nil && openPos != nil {
 				details["entry_price"] = openPos.EntryPrice
-				if actionRecord.Price > 0 {
+				// 使用本地记录的数量计算盈亏（更准确）
+				qty := actionRecord.Quantity
+				if qty == 0 {
+					qty = openPos.Quantity
+				}
+				if actionRecord.Price > 0 && qty > 0 {
 					var pnl float64
 					if decision.Action == "close_long" {
-						pnl = (actionRecord.Price - openPos.EntryPrice) * actionRecord.Quantity
+						pnl = (actionRecord.Price - openPos.EntryPrice) * qty
 					} else {
-						pnl = (openPos.EntryPrice - actionRecord.Price) * actionRecord.Quantity
+						pnl = (openPos.EntryPrice - actionRecord.Price) * qty
 					}
 					details["pnl"] = pnl
+					// 计算收益率（基于保证金）
+					// 保证金 = 持仓价值 / 杠杆
+					leverage := openPos.Leverage
+					if leverage <= 0 {
+						leverage = 1
+					}
+					margin := (openPos.Quantity * openPos.EntryPrice) / float64(leverage)
+					if margin > 0 {
+						pnlPct := (pnl / margin) * 100
+						details["pnl_pct"] = pnlPct
+					}
 				}
 			}
 		}
