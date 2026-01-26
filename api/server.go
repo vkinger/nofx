@@ -141,7 +141,9 @@ func (s *Server) setupRoutes() {
 		api.GET("/symbols", s.handleSymbols)
 
 		// Telegram Webhook (with IP whitelist and rate limiting)
-		api.POST("/telegram/webhook", s.telegramWebhookIPWhitelist(), s.telegramWebhookRateLimit(), s.handleTelegramWebhook)
+		// 支持动态路由：/telegram/webhook/:token_prefix - 每个 bot 使用独立 URL
+		// token_prefix 是 bot token 的前 10 位，用于识别不同的 bot
+		api.POST("/telegram/webhook/:token_prefix", s.telegramWebhookIPWhitelist(), s.telegramWebhookRateLimit(), s.handleTelegramWebhook)
 
 		// Public strategy market (no authentication required)
 		api.GET("/strategies/public", s.handlePublicStrategies)
@@ -3971,38 +3973,56 @@ func (s *Server) handleTelegramWebhook(c *gin.Context) {
 		return
 	}
 
+	// 从 URL 路径参数获取 token 前缀，用于识别是哪个 bot 收到的消息
+	tokenPrefix := c.Param("token_prefix")
+	logger.Infof("Telegram webhook received with token_prefix: %s", tokenPrefix)
+
 	// 优先使用多 webhook 管理器
 	if s.multiTelegramWebhook != nil {
-		// 根据消息的 chatID 找到对应的 webhook
-		var targetChatID int64
-		if update.Message != nil {
-			targetChatID = update.Message.Chat.ID
-		} else if update.ChannelPost != nil {
-			targetChatID = update.ChannelPost.Chat.ID
-		} else if update.EditedMessage != nil {
-			targetChatID = update.EditedMessage.Chat.ID
-		} else if update.EditedChannelPost != nil {
-			targetChatID = update.EditedChannelPost.Chat.ID
+		var webhook *notification.TelegramWebhook
+
+		// 通过 token 前缀查找对应的 webhook（推荐方式，每个 bot 有独立 URL）
+		if tokenPrefix != "" {
+			webhook = s.multiTelegramWebhook.GetWebhookByTokenPrefix(tokenPrefix)
+			if webhook != nil {
+				logger.Infof("Found webhook by token prefix: %s", tokenPrefix)
+			}
 		}
 
-		if targetChatID != 0 {
-			// 直接根据 chatID 获取对应的 webhook
-			webhook := s.multiTelegramWebhook.GetWebhookByChatID(targetChatID)
-			if webhook != nil {
-				webhook.HandleUpdate(&update)
-				logger.Debugf("Telegram webhook update handled by bot (ChatID: %d)", targetChatID)
-			} else {
-				// 如果找不到匹配的 webhook，使用第一个可用的 webhook 处理
-				// 这允许所有用户（无论 ChatID）使用所有命令
-				// 系统通过 session 或 OTP 验证用户身份，而不是通过 ChatID
-				firstWebhook := s.multiTelegramWebhook.GetFirstWebhook()
-				if firstWebhook != nil {
-					logger.Infof("Using first available webhook to handle command from ChatID: %d (no matching webhook found)", targetChatID)
-					firstWebhook.HandleUpdate(&update)
-				} else {
-					logger.Warnf("Telegram webhook update for ChatID %d not handled (no matching webhook found and no webhooks available)", targetChatID)
+		// 如果通过 token 前缀找不到，回退到 chatID 匹配（向后兼容）
+		if webhook == nil {
+			var targetChatID int64
+			if update.Message != nil {
+				targetChatID = update.Message.Chat.ID
+			} else if update.ChannelPost != nil {
+				targetChatID = update.ChannelPost.Chat.ID
+			} else if update.EditedMessage != nil {
+				targetChatID = update.EditedMessage.Chat.ID
+			} else if update.EditedChannelPost != nil {
+				targetChatID = update.EditedChannelPost.Chat.ID
+			}
+
+			if targetChatID != 0 {
+				webhook = s.multiTelegramWebhook.GetWebhookByChatID(targetChatID)
+				if webhook != nil {
+					logger.Debugf("Found webhook by ChatID: %d", targetChatID)
 				}
 			}
+		}
+
+		// 如果仍然找不到，使用第一个可用的 webhook
+		if webhook == nil {
+			webhook = s.multiTelegramWebhook.GetFirstWebhook()
+			if webhook != nil {
+				logger.Warnf("Using first available webhook (no matching webhook found for token_prefix=%s)", tokenPrefix)
+			}
+		}
+
+		// 处理更新
+		if webhook != nil {
+			webhook.HandleUpdate(&update)
+		} else {
+			logger.Warnf("Telegram webhook update not handled (no webhooks available)")
 		}
 	} else if s.telegramWebhook != nil {
 		// 向后兼容：使用单个 webhook

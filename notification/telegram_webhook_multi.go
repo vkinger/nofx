@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"nofx/config"
 	"nofx/logger"
+	"strings"
 	"sync"
 )
 
@@ -54,12 +55,16 @@ func NewMultiTelegramWebhook() (*MultiTelegramWebhook, error) {
 	return mtw, nil
 }
 
-// StartAllWebhooks 启动所有 webhook（使用统一的 webhook URL）
-// webhookURL: 统一的 webhook URL，所有 bot 都使用这个 URL
+// StartAllWebhooks 启动所有 webhook
+// webhookURL: 基础 webhook URL，每个 bot 会在此基础上添加 token 前缀
+// 例如: https://domain.com/api/telegram/webhook -> https://domain.com/api/telegram/webhook/8333151099
 func (mtw *MultiTelegramWebhook) StartAllWebhooks(webhookURL string) error {
 	if webhookURL == "" {
 		return fmt.Errorf("webhook URL is required")
 	}
+
+	// 移除末尾的斜杠（如果有）
+	webhookURL = strings.TrimSuffix(webhookURL, "/")
 
 	mtw.mu.Lock()
 	defer mtw.mu.Unlock()
@@ -67,20 +72,23 @@ func (mtw *MultiTelegramWebhook) StartAllWebhooks(webhookURL string) error {
 	var lastErr error
 	successCount := 0
 	for token, webhook := range mtw.webhooks {
-		// 所有 bot 使用同一个 webhook URL
-		if err := webhook.StartWebhook(webhookURL); err != nil {
+		// 为每个 bot 生成独立的 webhook URL，使用 token 前 10 位作为标识
+		tokenPrefix := token[:min(10, len(token))]
+		botWebhookURL := fmt.Sprintf("%s/%s", webhookURL, tokenPrefix)
+
+		if err := webhook.StartWebhook(botWebhookURL); err != nil {
 			logger.Warnf("⚠️ Failed to start webhook for bot %s... (ChatID: %d): %v",
-				token[:min(10, len(token))], webhook.GetChatID(), err)
+				tokenPrefix, webhook.GetChatID(), err)
 			lastErr = err
 		} else {
 			successCount++
-			logger.Infof("✓ Webhook started for bot %s... (ChatID: %d)",
-				token[:min(10, len(token))], webhook.GetChatID())
+			logger.Infof("✓ Webhook started for bot %s... (ChatID: %d) with URL: %s",
+				tokenPrefix, webhook.GetChatID(), botWebhookURL)
 		}
 	}
 
 	if successCount > 0 {
-		logger.Infof("✓ Total %d/%d webhooks started successfully (all using URL: %s)",
+		logger.Infof("✓ Total %d/%d webhooks started successfully (each bot has unique URL based on: %s)",
 			successCount, len(mtw.webhooks), webhookURL)
 	}
 
@@ -111,6 +119,24 @@ func (mtw *MultiTelegramWebhook) GetWebhookByToken(token string) *TelegramWebhoo
 	mtw.mu.RLock()
 	defer mtw.mu.RUnlock()
 	return mtw.webhooks[token]
+}
+
+// GetWebhookByTokenPrefix 根据 token 前缀获取 webhook
+// tokenPrefix 是 bot token 的前 N 位（通常是 10 位）
+func (mtw *MultiTelegramWebhook) GetWebhookByTokenPrefix(tokenPrefix string) *TelegramWebhook {
+	if tokenPrefix == "" {
+		return nil
+	}
+
+	mtw.mu.RLock()
+	defer mtw.mu.RUnlock()
+
+	for token, webhook := range mtw.webhooks {
+		if strings.HasPrefix(token, tokenPrefix) {
+			return webhook
+		}
+	}
+	return nil
 }
 
 // GetWebhookCount 获取配置的 webhook 数量
