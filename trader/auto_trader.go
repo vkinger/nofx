@@ -94,6 +94,25 @@ type AutoTraderConfig struct {
 	StrategyConfig *store.StrategyConfig // Strategy configuration (includes coin sources, indicators, risk control, prompts, etc.)
 }
 
+// MonitoringStats 监控统计信息
+type MonitoringStats struct {
+	TotalChecks        int64     // 总检查次数
+	FailedChecks       int64     // 失败检查次数
+	LastError          error     // 最后一次错误
+	LastErrorTime      time.Time // 最后一次错误时间
+	ConsecutiveErrors  int       // 连续错误次数
+	LastSuccessTime    time.Time // 最后一次成功时间
+	StopLossTriggered  int64     // 止损触发次数
+	DrawdownTriggered  int64     // 回撤平仓触发次数
+}
+
+// PositionCache 持仓数据缓存
+type PositionCache struct {
+	Positions []map[string]interface{}
+	CachedAt  time.Time
+	TTL       time.Duration
+}
+
 // AutoTrader automatic trader
 type AutoTrader struct {
 	id                    string // Trader unique identifier
@@ -131,6 +150,13 @@ type AutoTrader struct {
 	userID                string                              // User ID
 	gridState             *GridState                          // Grid trading state (only used when StrategyType == "grid_trading")
 	telegramNotifier      *notification.MultiTelegramNotifier // Telegram通知服务（支持多bot）
+	// 监控优化：统计和缓存
+	monitoringStats       MonitoringStats                     // 监控统计信息
+	monitoringStatsMutex  sync.RWMutex                        // 监控统计锁
+	positionCache         PositionCache                       // 持仓数据缓存
+	positionCacheMutex    sync.RWMutex                        // 持仓缓存锁
+	lastLoggedProfit      map[string]float64                  // 上次记录的利润（用于减少日志）
+	lastLoggedProfitMutex sync.RWMutex                        // 上次记录利润锁
 }
 
 // NewAutoTrader creates an automatic trader
@@ -386,6 +412,13 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 		lastBalanceSyncTime:   time.Now(),
 		userID:                userID,
 		telegramNotifier:      telegramNotifier,
+		// 监控优化：初始化统计和缓存
+		monitoringStats:       MonitoringStats{LastSuccessTime: time.Now()},
+		monitoringStatsMutex:  sync.RWMutex{},
+		positionCache:         PositionCache{TTL: 5 * time.Second}, // 缓存5秒
+		positionCacheMutex:    sync.RWMutex{},
+		lastLoggedProfit:      make(map[string]float64),
+		lastLoggedProfitMutex: sync.RWMutex{},
 	}, nil
 }
 
@@ -1104,11 +1137,17 @@ func (at *AutoTrader) executeDecisionWithRecord(decision *kernel.Decision, actio
 		err = at.executeOpenShortWithRecord(decision, actionRecord)
 		at.sendDecisionNotificationWithBalance(decision, actionRecord, err, preBalance)
 	case "close_long":
-		err = at.executeCloseLongWithRecord(decision, actionRecord)
-		at.sendDecisionNotificationWithBalance(decision, actionRecord, err, preBalance)
+// 		err = at.executeCloseLongWithRecord(decision, actionRecord)
+// 		at.sendDecisionNotificationWithBalance(decision, actionRecord, err, preBalance)
+		// AI不参与平仓，完全由监控系统决定
+		logger.Infof("⚠️  AI close_long decision for %s skipped: position closing is handled exclusively by monitoring system (stop-loss/drawdown)", decision.Symbol)
+		return nil
 	case "close_short":
-		err = at.executeCloseShortWithRecord(decision, actionRecord)
-		at.sendDecisionNotificationWithBalance(decision, actionRecord, err, preBalance)
+// 		err = at.executeCloseShortWithRecord(decision, actionRecord)
+// 		at.sendDecisionNotificationWithBalance(decision, actionRecord, err, preBalance)
+		// AI不参与平仓，完全由监控系统决定
+		logger.Infof("⚠️  AI close_short decision for %s skipped: position closing is handled exclusively by monitoring system (stop-loss/drawdown)", decision.Symbol)
+		return nil
 	case "hold", "wait":
 		// No execution needed, just record
 		return nil
@@ -1909,6 +1948,129 @@ func sortDecisionsByPriority(decisions []kernel.Decision) []kernel.Decision {
 	return sorted
 }
 
+// getPositionsWithRetry 带重试机制获取持仓数据
+// 指数退避重试：1s, 2s, 4s
+func (at *AutoTrader) getPositionsWithRetry(maxRetries int) ([]map[string]interface{}, error) {
+	var lastErr error
+	for i := 0; i < maxRetries; i++ {
+		positions, err := at.trader.GetPositions()
+		if err == nil {
+			// 成功：更新统计
+			at.monitoringStatsMutex.Lock()
+			at.monitoringStats.TotalChecks++
+			at.monitoringStats.ConsecutiveErrors = 0
+			at.monitoringStats.LastSuccessTime = time.Now()
+			at.monitoringStatsMutex.Unlock()
+			return positions, nil
+		}
+		lastErr = err
+
+		// 指数退避：1s, 2s, 4s
+		backoff := time.Duration(1<<uint(i)) * time.Second
+		if i < maxRetries-1 {
+			logger.Warnf("⚠️  [%s] Failed to get positions (attempt %d/%d), retrying in %v: %v",
+				at.name, i+1, maxRetries, backoff, err)
+			time.Sleep(backoff)
+		}
+	}
+
+	// 全部重试失败：更新统计
+	at.recordMonitoringError(lastErr)
+	return nil, fmt.Errorf("failed after %d retries: %w", maxRetries, lastErr)
+}
+
+// getCachedPositions 获取缓存的持仓数据（带自动刷新）
+func (at *AutoTrader) getCachedPositions() ([]map[string]interface{}, error) {
+	at.positionCacheMutex.RLock()
+	cached := at.positionCache
+	at.positionCacheMutex.RUnlock()
+
+	// 缓存有效且未过期
+	if cached.Positions != nil && time.Since(cached.CachedAt) < cached.TTL {
+		return cached.Positions, nil
+	}
+
+	// 缓存过期，重新获取（带重试）
+	positions, err := at.getPositionsWithRetry(3)
+	if err != nil {
+		// 如果获取失败但有旧缓存，返回旧数据
+		if cached.Positions != nil {
+			logger.Warnf("⚠️  [%s] Using stale position cache due to API error: %v", at.name, err)
+			return cached.Positions, nil
+		}
+		return nil, err
+	}
+
+	// 更新缓存
+	at.positionCacheMutex.Lock()
+	at.positionCache.Positions = positions
+	at.positionCache.CachedAt = time.Now()
+	at.positionCacheMutex.Unlock()
+
+	return positions, nil
+}
+
+// recordMonitoringError 记录监控错误并检查是否需要告警
+func (at *AutoTrader) recordMonitoringError(err error) {
+	at.monitoringStatsMutex.Lock()
+	defer at.monitoringStatsMutex.Unlock()
+
+	at.monitoringStats.TotalChecks++
+	at.monitoringStats.FailedChecks++
+	at.monitoringStats.LastError = err
+	at.monitoringStats.LastErrorTime = time.Now()
+	at.monitoringStats.ConsecutiveErrors++
+
+	// 连续错误超过5次，发送告警（每5次告警一次，避免刷屏）
+	if at.monitoringStats.ConsecutiveErrors == 5 || at.monitoringStats.ConsecutiveErrors%10 == 0 {
+		logger.Errorf("🚨 [%s] Monitoring system degraded: %d consecutive errors, last: %v",
+			at.name, at.monitoringStats.ConsecutiveErrors, err)
+		// 发送Telegram告警
+		if at.telegramNotifier != nil {
+			msg := fmt.Sprintf("🚨 *监控系统警告*\n\n"+
+				"交易员: %s\n"+
+				"连续错误: %d 次\n"+
+				"最后错误: %v\n\n"+
+				"请检查网络连接和API状态",
+				at.name, at.monitoringStats.ConsecutiveErrors, err)
+			at.telegramNotifier.SendMessage(msg)
+		}
+	}
+}
+
+// shouldLogMonitoring 判断是否应该记录监控日志（减少重复日志）
+func (at *AutoTrader) shouldLogMonitoring(symbol, side string, currentProfit float64) bool {
+	posKey := symbol + "_" + side
+
+	at.lastLoggedProfitMutex.RLock()
+	lastProfit, exists := at.lastLoggedProfit[posKey]
+	at.lastLoggedProfitMutex.RUnlock()
+
+	if !exists {
+		at.lastLoggedProfitMutex.Lock()
+		at.lastLoggedProfit[posKey] = currentProfit
+		at.lastLoggedProfitMutex.Unlock()
+		return true // 首次记录
+	}
+
+	// 利润变化超过2%才记录
+	if currentProfit-lastProfit >= 1.0 || lastProfit-currentProfit >= 1.0 {
+		at.lastLoggedProfitMutex.Lock()
+		at.lastLoggedProfit[posKey] = currentProfit
+		at.lastLoggedProfitMutex.Unlock()
+		return true
+	}
+
+	return false
+}
+
+// GetMonitoringStats 获取监控统计信息（供外部查询）
+func (at *AutoTrader) GetMonitoringStats() MonitoringStats {
+	at.monitoringStatsMutex.RLock()
+	defer at.monitoringStatsMutex.RUnlock()
+	return at.monitoringStats
+}
+
 // startDrawdownMonitor starts drawdown monitoring with dynamic frequency
 // 动态监控频率：根据持仓最大利润水平调整检查间隔
 func (at *AutoTrader) startDrawdownMonitor() {
@@ -1981,10 +2143,11 @@ func getDrawdownCheckInterval(maxProfitPct float64) time.Duration {
 // 优化：使用分级回撤策略 + 混合利润计算（价格变化实时监控 + 实际盈亏最终验证）
 // 返回：最大利润水平（用于动态调整检查频率）
 func (at *AutoTrader) checkPositionDrawdown() float64 {
-	// Get current positions (with cache for efficiency)
-	positions, err := at.trader.GetPositions()
+	// Get current positions (使用缓存和重试机制)
+	positions, err := at.getCachedPositions()
 	if err != nil {
-		logger.Infof("❌ Drawdown monitoring: failed to get positions: %v", err)
+		// 错误已在getCachedPositions中记录，这里只需返回
+		logger.Errorf("❌ [%s] Drawdown monitoring: failed to get positions after retries: %v", at.name, err)
 		return 0.0
 	}
 
@@ -2089,7 +2252,7 @@ func (at *AutoTrader) checkPositionDrawdown() float64 {
 							entryPrice := refreshPos["entryPrice"].(float64)
 							closeQuantity := refreshQuantity
 							
-							logger.Infof("🚨 Drawdown close position condition triggered (tiered): %s %s | Real profit: %.2f%% | Peak profit: %.2f%% | Drawdown: %.2f%% (threshold: %.2f%%)",
+							logger.Warnf("🚨 Drawdown close position condition triggered (tiered): %s %s | Real profit: %.2f%% | Peak profit: %.2f%% | Drawdown: %.2f%% (threshold: %.2f%%)",
 								symbol, side, realPnlPct, refreshPeakPnlPct, realDrawdownPct, realDrawdownThreshold)
 
 							// Execute close position (risk control has absolute priority)
@@ -2152,13 +2315,15 @@ func (at *AutoTrader) checkPositionDrawdown() float64 {
 				}
 			}
 		} else if currentPnLPct >= 6.0 {
-			// Record situations close to close position condition (for debugging)
-			// 注意：记录门槛从5%提高到6%，与触发门槛保持一致
-			logger.Infof("📊 Drawdown monitoring: %s %s | Profit: %.2f%% | Peak: %.2f%% | Drawdown: %.2f%% (threshold: %.2f%%)",
-				symbol, side, currentPnLPct, peakPnLPct, drawdownPct, drawdownThreshold)
+			// Record situations close to close position condition (只在利润变化显著时记录)
+			// 优化：使用shouldLogMonitoring减少重复日志
+			if at.shouldLogMonitoring(symbol, side, currentPnLPct) {
+				logger.Infof("📊 Drawdown monitoring: %s %s | Profit: %.2f%% | Peak: %.2f%% | Drawdown: %.2f%% (threshold: %.2f%%)",
+					symbol, side, currentPnLPct, peakPnLPct, drawdownPct, drawdownThreshold)
+			}
 			// Send Telegram notification for high profit monitoring (only if drawdown is significant)
 			// 只在回撤较大时发送通知，避免通知过于频繁
-			if drawdownPct > 0 && drawdownPct >= (drawdownThreshold*0.5) && drawdownThreshold > 0 {
+			if drawdownPct > 0 && drawdownPct >= (drawdownThreshold*0.3) && drawdownThreshold > 0 {
 				monitoringDetails := map[string]interface{}{
 					"warning_type": "回撤监控",
 					"current_profit": currentPnLPct,
@@ -2959,10 +3124,11 @@ func (at *AutoTrader) startStopLossMonitor() {
 // 多策略协同止损：固定止损、回撤止损、移动止损、时间止损、波动止损
 // 任一策略触发即止损，提供全方位保护
 func (at *AutoTrader) checkStopLoss() {
-	// Get current positions
-	positions, err := at.trader.GetPositions()
+	// Get current positions (使用缓存和重试机制)
+	positions, err := at.getCachedPositions()
 	if err != nil {
-		logger.Infof("❌ Stop-loss monitoring: failed to get positions: %v", err)
+		// 错误已在getCachedPositions中记录，这里只需返回
+		logger.Errorf("❌ [%s] Stop-loss monitoring: failed to get positions after retries: %v", at.name, err)
 		return
 	}
 
@@ -3005,7 +3171,7 @@ func (at *AutoTrader) checkStopLoss() {
 		if currentPnLPct <= -5.0 && realPnlPct <= -5.0 {
 			triggeredStrategy = "Fixed Stop-Loss"
 			shouldClose = true
-			logger.Infof("🚨 [%s] Fixed stop-loss triggered: %s %s | Loss: %.2f%% (threshold: -5.00%%)",
+			logger.Warnf("🚨 [%s] Fixed stop-loss triggered: %s %s | Loss: %.2f%% (threshold: -5.00%%)",
 				triggeredStrategy, symbol, side, realPnlPct)
 		}
 
@@ -3030,7 +3196,7 @@ func (at *AutoTrader) checkStopLoss() {
 				if markPrice <= trailingStop {
 					triggeredStrategy = "Trailing Stop-Loss"
 					shouldClose = true
-					logger.Infof("🚨 [%s] Trailing stop-loss triggered: %s %s | Price: %.6f | Trailing Stop: %.6f | Profit: %.2f%%",
+					logger.Warnf("🚨 [%s] Trailing stop-loss triggered: %s %s | Price: %.6f | Trailing Stop: %.6f | Profit: %.2f%%",
 						triggeredStrategy, symbol, side, markPrice, trailingStop, currentPnLPct)
 				}
 			} else {
@@ -3045,7 +3211,7 @@ func (at *AutoTrader) checkStopLoss() {
 				if markPrice >= trailingStop {
 					triggeredStrategy = "Trailing Stop-Loss"
 					shouldClose = true
-					logger.Infof("🚨 [%s] Trailing stop-loss triggered: %s %s | Price: %.6f | Trailing Stop: %.6f | Profit: %.2f%%",
+					logger.Warnf("🚨 [%s] Trailing stop-loss triggered: %s %s | Price: %.6f | Trailing Stop: %.6f | Profit: %.2f%%",
 						triggeredStrategy, symbol, side, markPrice, trailingStop, currentPnLPct)
 				}
 			}
@@ -3063,7 +3229,7 @@ func (at *AutoTrader) checkStopLoss() {
 				if positionDuration >= maxHoldTime {
 					triggeredStrategy = "Time-based Stop-Loss"
 					shouldClose = true
-					logger.Infof("🚨 [%s] Time-based stop-loss triggered: %s %s | Hold time: %.1fh (max: %.1fh) | Profit: %.2f%%",
+					logger.Warnf("🚨 [%s] Time-based stop-loss triggered: %s %s | Hold time: %.1fh (max: %.1fh) | Profit: %.2f%%",
 						triggeredStrategy, symbol, side, positionDuration.Hours(), maxHoldTime.Hours(), currentPnLPct)
 				}
 			}
@@ -3093,7 +3259,7 @@ func (at *AutoTrader) checkStopLoss() {
 						if markPrice <= volatilityStopPrice {
 							triggeredStrategy = "Volatility Stop-Loss"
 							shouldClose = true
-							logger.Infof("🚨 [%s] Volatility stop-loss triggered: %s %s | Price: %.6f | ATR Stop: %.6f (ATR14: %.6f) | Profit: %.2f%%",
+							logger.Warnf("🚨 [%s] Volatility stop-loss triggered: %s %s | Price: %.6f | ATR Stop: %.6f (ATR14: %.6f) | Profit: %.2f%%",
 								triggeredStrategy, symbol, side, markPrice, volatilityStopPrice, atr14, currentPnLPct)
 						}
 					} else {
@@ -3102,7 +3268,7 @@ func (at *AutoTrader) checkStopLoss() {
 						if markPrice >= volatilityStopPrice {
 							triggeredStrategy = "Volatility Stop-Loss"
 							shouldClose = true
-							logger.Infof("🚨 [%s] Volatility stop-loss triggered: %s %s | Price: %.6f | ATR Stop: %.6f (ATR14: %.6f) | Profit: %.2f%%",
+							logger.Warnf("🚨 [%s] Volatility stop-loss triggered: %s %s | Price: %.6f | ATR Stop: %.6f (ATR14: %.6f) | Profit: %.2f%%",
 								triggeredStrategy, symbol, side, markPrice, volatilityStopPrice, atr14, currentPnLPct)
 						}
 					}
@@ -3153,7 +3319,7 @@ func (at *AutoTrader) checkStopLoss() {
 				if realPnlPct >= 6.0 && realDrawdownPct >= realDrawdownThreshold && realDrawdownThreshold > 0 {
 					triggeredStrategy = "Drawdown Stop-Loss"
 					shouldClose = true
-					logger.Infof("🚨 [%s] Drawdown stop-loss triggered: %s %s | Real profit: %.2f%% | Peak profit: %.2f%% | Drawdown: %.2f%% (threshold: %.2f%%)",
+					logger.Warnf("🚨 [%s] Drawdown stop-loss triggered: %s %s | Real profit: %.2f%% | Peak profit: %.2f%% | Drawdown: %.2f%% (threshold: %.2f%%)",
 						triggeredStrategy, symbol, side, realPnlPct, refreshPeakPnlPct, realDrawdownPct, realDrawdownThreshold)
 				}
 			}
