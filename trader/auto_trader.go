@@ -2071,6 +2071,83 @@ func (at *AutoTrader) GetMonitoringStats() MonitoringStats {
 	return at.monitoringStats
 }
 
+// syncExchangeStopLoss 同步更新交易所止损单
+// 确保即使程序崩溃，交易所也有止损单保护
+func (at *AutoTrader) syncExchangeStopLoss(symbol, side string, quantity, stopPrice float64) {
+	positionSide := "LONG"
+	if side == "short" {
+		positionSide = "SHORT"
+	}
+
+	// 先取消现有止损单
+	if err := at.trader.CancelStopLossOrders(symbol); err != nil {
+		// 取消失败不影响设置新止损单（可能原本就没有止损单）
+		logger.Infof("  ℹ️ Cancel existing stop-loss orders for %s: %v", symbol, err)
+	}
+
+	// 设置新止损单
+	if err := at.trader.SetStopLoss(symbol, positionSide, quantity, stopPrice); err != nil {
+		logger.Warnf("⚠️  [%s] Failed to sync exchange stop-loss for %s %s @ %.6f: %v",
+			at.name, symbol, side, stopPrice, err)
+	} else {
+		logger.Infof("✅ [%s] Synced exchange stop-loss: %s %s @ %.6f (trailing)",
+			at.name, symbol, side, stopPrice)
+	}
+}
+
+// ensureExchangeStopLoss 确保持仓有交易所止损单保护（兜底止损）
+// 在监控系统启动时调用，为所有持仓设置兜底止损
+func (at *AutoTrader) ensureExchangeStopLoss(symbol, side string, entryPrice, quantity float64, leverage int) {
+	positionSide := "LONG"
+	var stopPrice float64
+
+	// 计算固定止损价格（-15% 对应的价格）
+	// 公式：对于10x杠杆，-15%利润 = 价格变化 -1.5%
+	// stopLossPct / leverage = priceChangePct
+	priceChangePct := 15.0 / float64(leverage) / 100.0 // 15% / leverage
+
+	if side == "long" {
+		positionSide = "LONG"
+		stopPrice = entryPrice * (1 - priceChangePct)
+	} else {
+		positionSide = "SHORT"
+		stopPrice = entryPrice * (1 + priceChangePct)
+	}
+
+	// 设置交易所止损单
+	if err := at.trader.SetStopLoss(symbol, positionSide, quantity, stopPrice); err != nil {
+		logger.Warnf("⚠️  [%s] Failed to set exchange stop-loss for %s %s @ %.6f: %v",
+			at.name, symbol, side, stopPrice, err)
+	} else {
+		logger.Infof("✅ [%s] Set exchange stop-loss (fallback): %s %s @ %.6f (-15%% at %dx)",
+			at.name, symbol, side, stopPrice, leverage)
+	}
+}
+
+// syncExchangeTakeProfit 同步更新交易所止盈单（移动止盈）
+// 确保即使程序崩溃，交易所也有止盈单保护利润
+func (at *AutoTrader) syncExchangeTakeProfit(symbol, side string, quantity, takeProfitPrice float64) {
+	positionSide := "LONG"
+	if side == "short" {
+		positionSide = "SHORT"
+	}
+
+	// 先取消现有止盈单
+	if err := at.trader.CancelTakeProfitOrders(symbol); err != nil {
+		// 取消失败不影响设置新止盈单（可能原本就没有止盈单）
+		logger.Infof("  ℹ️ Cancel existing take-profit orders for %s: %v", symbol, err)
+	}
+
+	// 设置新止盈单
+	if err := at.trader.SetTakeProfit(symbol, positionSide, quantity, takeProfitPrice); err != nil {
+		logger.Warnf("⚠️  [%s] Failed to sync exchange take-profit for %s %s @ %.6f: %v",
+			at.name, symbol, side, takeProfitPrice, err)
+	} else {
+		logger.Infof("✅ [%s] Synced exchange take-profit: %s %s @ %.6f (trailing)",
+			at.name, symbol, side, takeProfitPrice)
+	}
+}
+
 // startDrawdownMonitor starts drawdown monitoring with dynamic frequency
 // 动态监控频率：根据持仓最大利润水平调整检查间隔
 func (at *AutoTrader) startDrawdownMonitor() {
@@ -2127,6 +2204,24 @@ func getTieredDrawdownThreshold(profitPct float64) float64 {
      	return 50.0 // 利润3-6%，回撤50%（保守保护）
     }
 	return 0.0 // 利润<3%，不触发回撤保护
+}
+
+// getProfitLockRatio 返回基于峰值利润的锁定比例
+// 利润锁定策略：利润越高，锁定比例越高，确保保底收益
+// 返回值：锁定比例（0.0-1.0），最低保证利润 = 峰值利润 × 锁定比例
+func getProfitLockRatio(peakProfitPct float64) float64 {
+	if peakProfitPct >= 30.0 {
+		return 0.80 // 峰值>=30%，锁定80%（保证>=24%利润）
+	} else if peakProfitPct >= 20.0 {
+		return 0.70 // 峰值20-30%，锁定70%（保证>=14%利润）
+	} else if peakProfitPct >= 15.0 {
+		return 0.60 // 峰值15-20%，锁定60%（保证>=9%利润）
+	} else if peakProfitPct >= 10.0 {
+		return 0.50 // 峰值10-15%，锁定50%（保证>=5%利润）
+	} else if peakProfitPct >= 5.0 {
+		return 0.40 // 峰值5-10%，锁定40%（保证>=2%利润）
+	}
+	return 0.0 // 峰值<5%，不触发利润锁定
 }
 
 // getDrawdownCheckInterval returns dynamic check interval based on maximum profit level
@@ -3170,7 +3265,7 @@ func (at *AutoTrader) checkStopLoss() {
 
 		// 1. Check fixed stop-loss (-5%)
 		// 固定止损：亏损达到-5%时立即止损
-		if currentPnLPct <= -5.0 && realPnlPct <= -5.0 {
+		if currentPnLPct <= -10.0 && realPnlPct <= -10.0 {
 			triggeredStrategy = "Fixed Stop-Loss"
 			shouldClose = true
 			logger.Warnf("🚨 [%s] Fixed stop-loss triggered: %s %s | Loss: %.2f%% (threshold: -5.00%%)",
