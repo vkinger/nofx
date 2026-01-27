@@ -1137,16 +1137,16 @@ func (at *AutoTrader) executeDecisionWithRecord(decision *kernel.Decision, actio
 		err = at.executeOpenShortWithRecord(decision, actionRecord)
 		at.sendDecisionNotificationWithBalance(decision, actionRecord, err, preBalance)
 	case "close_long":
-// 		err = at.executeCloseLongWithRecord(decision, actionRecord)
-// 		at.sendDecisionNotificationWithBalance(decision, actionRecord, err, preBalance)
+		err = at.executeCloseLongWithRecord(decision, actionRecord)
+		at.sendDecisionNotificationWithBalance(decision, actionRecord, err, preBalance)
 		// AI不参与平仓，完全由监控系统决定
-		logger.Infof("⚠️  AI close_long decision for %s skipped: position closing is handled exclusively by monitoring system (stop-loss/drawdown)", decision.Symbol)
+		//logger.Infof("⚠️  AI close_long decision for %s skipped: position closing is handled exclusively by monitoring system (stop-loss/drawdown)", decision.Symbol)
 		return nil
 	case "close_short":
-// 		err = at.executeCloseShortWithRecord(decision, actionRecord)
-// 		at.sendDecisionNotificationWithBalance(decision, actionRecord, err, preBalance)
+		err = at.executeCloseShortWithRecord(decision, actionRecord)
+		at.sendDecisionNotificationWithBalance(decision, actionRecord, err, preBalance)
 		// AI不参与平仓，完全由监控系统决定
-		logger.Infof("⚠️  AI close_short decision for %s skipped: position closing is handled exclusively by monitoring system (stop-loss/drawdown)", decision.Symbol)
+		//logger.Infof("⚠️  AI close_short decision for %s skipped: position closing is handled exclusively by monitoring system (stop-loss/drawdown)", decision.Symbol)
 		return nil
 	case "hold", "wait":
 		// No execution needed, just record
