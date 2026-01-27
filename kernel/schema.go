@@ -1502,22 +1502,63 @@ func CheckModelSupportsJSONSchema(provider, modelName string) bool {
 	providerLower := strings.ToLower(provider)
 	modelNameLower := strings.ToLower(modelName)
 
+	// 1. 优先通过 modelName 判断（更准确，支持自定义 API 场景）
+	if modelNameLower != "" {
+		// OpenAI 模型（gpt-*, o1-*, o3-*）
+		if strings.HasPrefix(modelNameLower, "gpt-") ||
+			strings.HasPrefix(modelNameLower, "o1-") ||
+			strings.HasPrefix(modelNameLower, "o3-") {
+			return checkOpenAISupportsJSONSchema(modelNameLower)
+		}
+		// Claude 模型（claude-*、opus、sonnet、haiku）
+		if strings.HasPrefix(modelNameLower, "claude-") ||
+			strings.Contains(modelNameLower, "opus") ||
+			strings.Contains(modelNameLower, "sonnet") ||
+			strings.Contains(modelNameLower, "haiku") {
+			return checkClaudeSupportsJSONSchema(modelNameLower)
+		}
+		// Qwen 模型（qwen-*, qwq-*）
+		if strings.HasPrefix(modelNameLower, "qwen") ||
+			strings.HasPrefix(modelNameLower, "qwq") {
+			return checkQwenSupportsJSONSchema(modelNameLower)
+		}
+		// Kimi 模型（moonshot-*, kimi-*）
+		if strings.HasPrefix(modelNameLower, "moonshot") ||
+			strings.HasPrefix(modelNameLower, "kimi") {
+			return checkKimiSupportsJSONSchema(modelNameLower)
+		}
+		// DeepSeek 模型（deepseek-*）
+		if strings.HasPrefix(modelNameLower, "deepseek") {
+			return checkDeepSeekSupportsJSONSchema(modelNameLower)
+		}
+		// Gemini 模型（gemini-*）
+		if strings.HasPrefix(modelNameLower, "gemini") {
+			return false
+		}
+		// Grok 模型（grok-*）
+		if strings.HasPrefix(modelNameLower, "grok") {
+			return false
+		}
+	}
+
+	// 2. modelName 无法识别时，通过 provider 判断
 	if strings.Contains(providerLower, "openai") {
 		return checkOpenAISupportsJSONSchema(modelNameLower)
 	} else if strings.Contains(providerLower, "claude") {
 		return checkClaudeSupportsJSONSchema(modelNameLower)
 	} else if strings.Contains(providerLower, "qwen") {
-		// Qwen 支持基础 JSON Schema
-		return true
+		return checkQwenSupportsJSONSchema(modelNameLower)
 	} else if strings.Contains(providerLower, "kimi") {
-		// Kimi 支持基础 JSON Schema
-		return true
+		return checkKimiSupportsJSONSchema(modelNameLower)
 	} else if strings.Contains(providerLower, "deepseek") {
-		// DeepSeek 支持基础 JSON Schema
-		return true
+		return checkDeepSeekSupportsJSONSchema(modelNameLower)
+	} else if strings.Contains(providerLower, "gemini") {
+		return false // Gemini 目前不支持 JSON Schema
+	} else if strings.Contains(providerLower, "grok") {
+		return false // Grok 目前不支持 JSON Schema
 	}
 
-	// 其他Provider（Gemini, Grok等）目前不支持JSON Schema
+	// 3. 其他未识别的模型，保守策略返回 false
 	return false
 }
 
@@ -1683,6 +1724,108 @@ func checkClaudeSupportsJSONSchema(modelNameLower string) bool {
 	return false
 }
 
+// checkQwenSupportsJSONSchema 检查Qwen模型是否支持JSON Schema
+// 支持的模型：qwen-turbo, qwen-plus, qwen-max, qwen2.5 系列, qwq 系列
+// 不支持的模型：qwen-vl（视觉模型）, qwen-audio（音频模型）
+func checkQwenSupportsJSONSchema(modelNameLower string) bool {
+	// 排除不支持的模型类型
+	unsupportedPatterns := []string{
+		"qwen-vl",    // 视觉模型，不支持结构化输出
+		"qwen-audio", // 音频模型，不支持结构化输出
+		"qwen-coder", // 代码模型，JSON Schema 支持待确认
+	}
+	for _, pattern := range unsupportedPatterns {
+		if strings.Contains(modelNameLower, pattern) {
+			return false
+		}
+	}
+
+	// 支持的模型系列
+	supportedPatterns := []string{
+		"qwen-turbo",  // Qwen Turbo 系列
+		"qwen-plus",   // Qwen Plus 系列
+		"qwen-max",    // Qwen Max 系列
+		"qwen-long",   // Qwen Long 系列
+		"qwen2.5",     // Qwen 2.5 系列
+		"qwen2-",      // Qwen 2 系列
+		"qwen1.5",     // Qwen 1.5 系列
+		"qwq",         // QwQ 推理模型
+	}
+	for _, pattern := range supportedPatterns {
+		if strings.Contains(modelNameLower, pattern) {
+			return true
+		}
+	}
+
+	// 通用 qwen 模型（无明确版本号），假设支持
+	if strings.HasPrefix(modelNameLower, "qwen") {
+		return true
+	}
+
+	return false
+}
+
+// checkKimiSupportsJSONSchema 检查Kimi模型是否支持JSON Schema
+// 支持的模型：moonshot-v1 系列, kimi 系列
+func checkKimiSupportsJSONSchema(modelNameLower string) bool {
+	// 支持的模型系列
+	supportedPatterns := []string{
+		"moonshot-v1-8k",    // Moonshot v1 8K
+		"moonshot-v1-32k",   // Moonshot v1 32K
+		"moonshot-v1-128k",  // Moonshot v1 128K
+		"moonshot-v1",       // Moonshot v1 系列
+		"kimi-",             // Kimi 系列
+	}
+	for _, pattern := range supportedPatterns {
+		if strings.Contains(modelNameLower, pattern) {
+			return true
+		}
+	}
+
+	// 通用 moonshot/kimi 模型，假设支持
+	if strings.HasPrefix(modelNameLower, "moonshot") || strings.HasPrefix(modelNameLower, "kimi") {
+		return true
+	}
+
+	return false
+}
+
+// checkDeepSeekSupportsJSONSchema 检查DeepSeek模型是否支持JSON Schema
+// 支持的模型：deepseek-chat, deepseek-coder, deepseek-reasoner
+// 不支持的模型：deepseek-vl（视觉模型）
+func checkDeepSeekSupportsJSONSchema(modelNameLower string) bool {
+	// 排除不支持的模型类型
+	unsupportedPatterns := []string{
+		"deepseek-vl", // 视觉模型，不支持结构化输出
+	}
+	for _, pattern := range unsupportedPatterns {
+		if strings.Contains(modelNameLower, pattern) {
+			return false
+		}
+	}
+
+	// 支持的模型系列
+	supportedPatterns := []string{
+		"deepseek-chat",     // DeepSeek Chat
+		"deepseek-coder",    // DeepSeek Coder
+		"deepseek-reasoner", // DeepSeek Reasoner (R1)
+		"deepseek-v2",       // DeepSeek V2 系列
+		"deepseek-v3",       // DeepSeek V3 系列
+	}
+	for _, pattern := range supportedPatterns {
+		if strings.Contains(modelNameLower, pattern) {
+			return true
+		}
+	}
+
+	// 通用 deepseek 模型，假设支持
+	if strings.HasPrefix(modelNameLower, "deepseek") {
+		return true
+	}
+
+	return false
+}
+
 // ============================================================================
 // 根据模型类型动态选择 JSON Schema 版本
 // ============================================================================
@@ -1712,10 +1855,43 @@ func CheckModelSupportsAdvancedJSONSchemaFeatures(provider, modelName string) bo
 	}
 
 	providerLower := strings.ToLower(provider)
+	modelNameLower := strings.ToLower(modelName)
 
-	// 只有 OpenAI 和 Claude 支持高级 JSON Schema 特性
+	// 1. 优先通过 modelName 判断（更准确）
+	if modelNameLower != "" {
+		// OpenAI 模型（gpt-*, o1-*, o3-*）支持高级特性
+		if strings.HasPrefix(modelNameLower, "gpt-") ||
+			strings.HasPrefix(modelNameLower, "o1-") ||
+			strings.HasPrefix(modelNameLower, "o3-") {
+			return true
+		}
+		// Claude 模型（claude-*、opus、sonnet）
+		if strings.HasPrefix(modelNameLower, "claude-") ||
+			strings.Contains(modelNameLower, "opus") ||
+			strings.Contains(modelNameLower, "sonnet") {
+			// Claude 3.x 不支持高级特性
+			if strings.Contains(modelNameLower, "claude-3") {
+				return false
+			}
+			return true
+		}
+		// Qwen, Kimi, DeepSeek 等明确不支持高级特性
+		if strings.HasPrefix(modelNameLower, "qwen") ||
+			strings.HasPrefix(modelNameLower, "qwq") ||
+			strings.HasPrefix(modelNameLower, "moonshot") ||
+			strings.HasPrefix(modelNameLower, "kimi") ||
+			strings.HasPrefix(modelNameLower, "deepseek") {
+			return false
+		}
+	}
+
+	// 2. modelName 无法识别时，通过 provider 判断
+	if strings.Contains(providerLower, "openai") || strings.Contains(providerLower, "claude") {
+		return true
+	}
+
 	// Qwen, Kimi, DeepSeek 等仅支持基础 JSON Schema，不支持高级特性
-	return strings.Contains(providerLower, "openai") || strings.Contains(providerLower, "claude")
+	return false
 }
 
 // GetDecisionJSONSchemaForModel 根据模型类型获取合适的 JSON Schema 版本
