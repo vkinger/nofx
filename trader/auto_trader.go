@@ -3265,12 +3265,12 @@ func (at *AutoTrader) checkStopLoss() {
 
 		// 1. Check fixed stop-loss (-5%)
 		// 固定止损：亏损达到-5%时立即止损
-		if currentPnLPct <= -10.0 && realPnlPct <= -10.0 {
-			triggeredStrategy = "Fixed Stop-Loss"
-			shouldClose = true
-			logger.Warnf("🚨 [%s] Fixed stop-loss triggered: %s %s | Loss: %.2f%% (threshold: -5.00%%)",
-				triggeredStrategy, symbol, side, realPnlPct)
-		}
+// 		if currentPnLPct <= -10.0 && realPnlPct <= -10.0 {
+// 			triggeredStrategy = "Fixed Stop-Loss"
+// 			shouldClose = true
+// 			logger.Warnf("🚨 [%s] Fixed stop-loss triggered: %s %s | Loss: %.2f%% (threshold: -5.00%%)",
+// 				triggeredStrategy, symbol, side, realPnlPct)
+// 		}
 
 		// 2. Check trailing stop-loss (移动止损)
 		// 移动止损：价格上升时止损价跟随上升，让利润奔跑
@@ -3317,20 +3317,20 @@ func (at *AutoTrader) checkStopLoss() {
 
 		// 3. Check time-based stop-loss (时间止损)
 		// 时间止损：持仓时间过长自动止损，避免长期持仓
-		if !shouldClose {
-			positionStartTime, exists := at.positionFirstSeenTime[posKey]
-			if exists {
-				positionDuration := time.Since(time.UnixMilli(positionStartTime))
-				maxHoldTime := 24 * time.Hour // Maximum hold time: 24 hours
-				
-				if positionDuration >= maxHoldTime {
-					triggeredStrategy = "Time-based Stop-Loss"
-					shouldClose = true
-					logger.Warnf("🚨 [%s] Time-based stop-loss triggered: %s %s | Hold time: %.1fh (max: %.1fh) | Profit: %.2f%%",
-						triggeredStrategy, symbol, side, positionDuration.Hours(), maxHoldTime.Hours(), currentPnLPct)
-				}
-			}
-		}
+// 		if !shouldClose {
+// 			positionStartTime, exists := at.positionFirstSeenTime[posKey]
+// 			if exists {
+// 				positionDuration := time.Since(time.UnixMilli(positionStartTime))
+// 				maxHoldTime := 24 * time.Hour // Maximum hold time: 24 hours
+//
+// 				if positionDuration >= maxHoldTime {
+// 					triggeredStrategy = "Time-based Stop-Loss"
+// 					shouldClose = true
+// 					logger.Warnf("🚨 [%s] Time-based stop-loss triggered: %s %s | Hold time: %.1fh (max: %.1fh) | Profit: %.2f%%",
+// 						triggeredStrategy, symbol, side, positionDuration.Hours(), maxHoldTime.Hours(), currentPnLPct)
+// 				}
+// 			}
+// 		}
 
 		// 4. Check volatility stop-loss (波动止损)
 		// 波动止损：基于ATR的动态止损，适应市场波动
