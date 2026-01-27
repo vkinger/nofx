@@ -120,7 +120,7 @@ func (ctx *CommandContext) getSession(chatID int64) (*TelegramSession, bool) {
 	return session, true
 }
 
-// setSession 设置会话（有效期30秒，与OTP有效期一致）
+// setSession 设置会话（有效期1小时）
 func (ctx *CommandContext) setSession(chatID int64, userID, email string) {
 	ctx.initSessions()
 	ctx.sessionsMutex.Lock()
@@ -129,7 +129,7 @@ func (ctx *CommandContext) setSession(chatID int64, userID, email string) {
 	ctx.sessions[chatID] = &TelegramSession{
 		UserID:    userID,
 		Email:     email,
-		ExpiresAt: time.Now().Add(30 * time.Second), // OTP有效期30秒
+		ExpiresAt: time.Now().Add(1 * time.Hour), // 登录后1小时免验证
 	}
 }
 
@@ -170,7 +170,7 @@ func CreateCommandHandlers(ctx *CommandContext) map[string]CommandHandler {
 
 💡 <b>提示：</b>
 - 首次使用请先执行 /login 命令进行登录
-- 登录成功后，30秒内可执行其他指令
+- 登录成功后，1小时内可执行其他指令
 - 您的 Telegram ChatID 会自动配置，之后自动接收通知
 - 发送 /help 查看完整帮助信息`
 	}
@@ -363,10 +363,10 @@ func handleLoginCommand(ctx *CommandContext, update *tgbotapi.Update) string {
 		logger.Infof("✓ Updated Telegram ChatID for user %s (email: %s) to %d", userID, email, chatID)
 	}
 
-	// 创建会话（有效期30秒，与OTP有效期一致）
+	// 创建会话（有效期1小时）
 	ctx.setSession(chatID, userID, email)
 
-	return fmt.Sprintf("✅ 登录成功！\n\n账户: %s\nTelegram ChatID: %d\n免验证时长: 30秒\n\n💡 30秒内使用其他指令无需输入邮箱和OTP。\n💡 您的 Telegram ChatID 已自动配置，后续将只向您推送通知。", email, chatID)
+	return fmt.Sprintf("✅ 登录成功！\n\n账户: %s\nTelegram ChatID: %d\n免验证时长: 1小时\n\n💡 1小时内使用其他指令无需输入邮箱和OTP。\n💡 您的 Telegram ChatID 已自动配置，后续将只向您推送通知。", email, chatID)
 }
 
 // handleCommandWithSession 处理需要认证的指令（只使用session验证）
