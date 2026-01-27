@@ -2118,24 +2118,26 @@ func (at *AutoTrader) startDrawdownMonitor() {
 // 但峰值越高，阈值应该更严格（百分比更小），以保护高利润
 func getTieredDrawdownThreshold(profitPct float64) float64 {
 	if profitPct >= 25.0 {
-		return 30.0 // 利润>=25%，回撤30%（严格：峰值越高，阈值越严格，保护高利润）
+		return 10.0 // 利润>=25%，回撤10%（严格：峰值越高，阈值越严格，保护高利润）
 	} else if profitPct >= 12.0 {
-		return 30.0 // 利润12-25%，回撤30%（标准保护）
+		return 20.0 // 利润12-25%，回撤20%（标准保护）
 	} else if profitPct >= 6.0 {
-		return 25.0 // 利润6-12%，回撤25%（保守保护）
-	}
-	return 0.0 // 利润<6%，不触发回撤保护
+		return 30.0 // 利润6-12%，回撤30%（保守保护）
+	} else if profitPct >= 3.0 {
+     	return 50.0 // 利润3-6%，回撤50%（保守保护）
+    }
+	return 0.0 // 利润<3%，不触发回撤保护
 }
 
 // getDrawdownCheckInterval returns dynamic check interval based on maximum profit level
 // 动态监控频率：利润越高，检查越频繁（降低回撤风险）
 func getDrawdownCheckInterval(maxProfitPct float64) time.Duration {
 	if maxProfitPct >= 20.0 {
-		return 30 * time.Second // 高利润（≥20%）：30秒检查（更频繁，及时保护）
+		return 5 * time.Second // 高利润（≥20%）：5秒检查（更频繁，及时保护）
 	} else if maxProfitPct >= 10.0 {
-		return 45 * time.Second // 中等利润（10-20%）：45秒检查（平衡）
+		return 10 * time.Second // 中等利润（10-20%）：10秒检查（平衡）
 	} else {
-		return 1 * time.Minute // 低利润（<10%）：1分钟检查（标准频率）
+		return 20 * time.Minute // 低利润（<10%）：20秒分钟检查（标准频率）
 	}
 }
 
@@ -2206,8 +2208,8 @@ func (at *AutoTrader) checkPositionDrawdown() float64 {
 
 		// Check if close to trigger threshold (using price-based calculation for real-time monitoring)
 		// 使用价格变化进行实时监控，如果接近触发阈值，再用实际盈亏验证
-		// 注意：触发门槛从4.5%提高到5.5%，与getTieredDrawdownThreshold的6%门槛保持一致
-		needsVerification := currentPnLPct >= 5.5 && drawdownPct >= (drawdownThreshold-2.0) && drawdownThreshold > 0
+		// 注意：触发门槛从2.5%，与getTieredDrawdownThreshold的3%门槛保持一致
+		needsVerification := currentPnLPct >= 2.5 && drawdownPct >= (drawdownThreshold-1.0) && drawdownThreshold > 0
 
 		if needsVerification {
 			// 接近触发阈值，强制刷新缓存获取最新实际盈亏进行验证
