@@ -217,10 +217,10 @@ export function IndicatorEditor({
                 <Zap className="w-4 h-4 text-white" />
               </div>
               <div>
-                <h3 className="text-sm font-semibold" style={{ color: '#EAECEF' }}>
+                <h3 className="text-sm font-semibold text-nofx-text">
                   {t('nofxosTitle')}
                 </h3>
-                <span className="text-[10px]" style={{ color: '#848E9C' }}>
+                <span className="text-[10px] text-nofx-text-muted">
                   {t('nofxosFeatures')}
                 </span>
               </div>
@@ -258,18 +258,16 @@ export function IndicatorEditor({
           {/* API Key Input */}
           <div className="flex items-center gap-2">
             <div className="flex-1 relative">
-              <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: '#848E9C' }} />
+              <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-nofx-text-muted" />
               <input
                 type="text"
                 value={config.nofxos_api_key || ''}
                 onChange={(e) => !disabled && onChange({ ...config, nofxos_api_key: e.target.value })}
                 disabled={disabled}
                 placeholder={t('apiKeyPlaceholder')}
-                className="w-full pl-9 pr-3 py-2 rounded-lg text-sm font-mono"
+                className="w-full pl-9 pr-3 py-2 rounded-lg text-sm font-mono bg-nofx-bg-lighter text-nofx-text"
                 style={{
-                  background: 'rgba(30, 35, 41, 0.8)',
                   border: hasApiKey ? '1px solid rgba(14, 203, 129, 0.3)' : '1px solid rgba(139, 92, 246, 0.3)',
-                  color: '#EAECEF',
                 }}
               />
             </div>
@@ -290,24 +288,23 @@ export function IndicatorEditor({
 
           {/* NofxOS Data Sources Grid */}
           <div className="mt-4">
-            <div className="text-[10px] font-medium mb-2" style={{ color: '#848E9C' }}>
+            <div className="text-[10px] font-medium mb-2 text-nofx-text-muted">
               {t('nofxosDataSources')}
             </div>
             <div className="grid grid-cols-2 gap-2">
               {/* Quant Data */}
               <div
-                className="p-2.5 rounded-lg transition-all cursor-pointer"
+                className={`p-2.5 rounded-lg transition-all cursor-pointer ${disabled ? 'opacity-50' : ''}`}
                 style={{
-                  background: config.enable_quant_data ? 'rgba(96, 165, 250, 0.1)' : 'rgba(30, 35, 41, 0.5)',
-                  border: config.enable_quant_data ? '1px solid rgba(96, 165, 250, 0.3)' : '1px solid rgba(43, 49, 57, 0.5)',
-                  opacity: disabled ? 0.5 : 1,
+                  background: config.enable_quant_data ? 'rgba(96, 165, 250, 0.1)' : 'var(--panel-bg)',
+                  border: config.enable_quant_data ? '1px solid rgba(96, 165, 250, 0.3)' : '1px solid var(--panel-border)',
                 }}
                 onClick={() => !disabled && onChange({ ...config, enable_quant_data: !config.enable_quant_data })}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full" style={{ background: '#60a5fa' }} />
-                    <span className="text-xs font-medium" style={{ color: '#EAECEF' }}>{t('quantData')}</span>
+                    <span className="text-xs font-medium text-nofx-text">{t('quantData')}</span>
                   </div>
                   <input
                     type="checkbox"
@@ -317,7 +314,7 @@ export function IndicatorEditor({
                     className="w-3.5 h-3.5 rounded accent-blue-500"
                   />
                 </div>
-                <p className="text-[10px] mt-1" style={{ color: '#5E6673' }}>{t('quantDataDesc')}</p>
+                <p className="text-[10px] mt-1 text-[var(--text-tertiary)]">{t('quantDataDesc')}</p>
                 {config.enable_quant_data && (
                   <div className="flex gap-3 mt-2">
                     <label className="flex items-center gap-1.5 cursor-pointer">
@@ -328,7 +325,7 @@ export function IndicatorEditor({
                         disabled={disabled}
                         className="w-3 h-3 rounded accent-blue-500"
                       />
-                      <span className="text-[10px]" style={{ color: '#EAECEF' }}>OI</span>
+                      <span className="text-[10px] text-nofx-text">OI</span>
                     </label>
                     <label className="flex items-center gap-1.5 cursor-pointer">
                       <input
@@ -338,7 +335,7 @@ export function IndicatorEditor({
                         disabled={disabled}
                         className="w-3 h-3 rounded accent-blue-500"
                       />
-                      <span className="text-[10px]" style={{ color: '#EAECEF' }}>Netflow</span>
+                      <span className="text-[10px] text-nofx-text">Netflow</span>
                     </label>
                   </div>
                 )}
@@ -346,11 +343,10 @@ export function IndicatorEditor({
 
               {/* OI Ranking */}
               <div
-                className="p-2.5 rounded-lg transition-all cursor-pointer"
+                className={`p-2.5 rounded-lg transition-all cursor-pointer ${disabled ? 'opacity-50' : ''}`}
                 style={{
-                  background: config.enable_oi_ranking ? 'rgba(34, 197, 94, 0.1)' : 'rgba(30, 35, 41, 0.5)',
-                  border: config.enable_oi_ranking ? '1px solid rgba(34, 197, 94, 0.3)' : '1px solid rgba(43, 49, 57, 0.5)',
-                  opacity: disabled ? 0.5 : 1,
+                  background: config.enable_oi_ranking ? 'rgba(34, 197, 94, 0.1)' : 'var(--panel-bg)',
+                  border: config.enable_oi_ranking ? '1px solid rgba(34, 197, 94, 0.3)' : '1px solid var(--panel-border)',
                 }}
                 onClick={() => !disabled && onChange({
                   ...config,
@@ -362,7 +358,7 @@ export function IndicatorEditor({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full" style={{ background: '#22c55e' }} />
-                    <span className="text-xs font-medium" style={{ color: '#EAECEF' }}>{t('oiRanking')}</span>
+                    <span className="text-xs font-medium text-nofx-text">{t('oiRanking')}</span>
                   </div>
                   <input
                     type="checkbox"
@@ -377,15 +373,14 @@ export function IndicatorEditor({
                     className="w-3.5 h-3.5 rounded accent-green-500"
                   />
                 </div>
-                <p className="text-[10px] mt-1" style={{ color: '#5E6673' }}>{t('oiRankingDesc')}</p>
+                <p className="text-[10px] mt-1 text-[var(--text-tertiary)]">{t('oiRankingDesc')}</p>
                 {config.enable_oi_ranking && (
                   <div className="flex gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
                     <select
                       value={config.oi_ranking_duration || '1h'}
                       onChange={(e) => !disabled && onChange({ ...config, oi_ranking_duration: e.target.value })}
                       disabled={disabled}
-                      className="flex-1 px-2 py-1 rounded text-[10px]"
-                      style={{ background: '#1E2329', border: '1px solid #2B3139', color: '#EAECEF' }}
+                      className="flex-1 px-2 py-1 rounded text-[10px] bg-nofx-bg-lighter border border-[var(--panel-border)] text-nofx-text"
                     >
                       <option value="1h">1h</option>
                       <option value="4h">4h</option>
@@ -395,8 +390,7 @@ export function IndicatorEditor({
                       value={config.oi_ranking_limit || 10}
                       onChange={(e) => !disabled && onChange({ ...config, oi_ranking_limit: parseInt(e.target.value) })}
                       disabled={disabled}
-                      className="w-14 px-2 py-1 rounded text-[10px]"
-                      style={{ background: '#1E2329', border: '1px solid #2B3139', color: '#EAECEF' }}
+                      className="w-14 px-2 py-1 rounded text-[10px] bg-nofx-bg-lighter border border-[var(--panel-border)] text-nofx-text"
                     >
                       {[5, 10, 15, 20].map(n => <option key={n} value={n}>{n}</option>)}
                     </select>
@@ -406,11 +400,10 @@ export function IndicatorEditor({
 
               {/* NetFlow Ranking */}
               <div
-                className="p-2.5 rounded-lg transition-all cursor-pointer"
+                className={`p-2.5 rounded-lg transition-all cursor-pointer ${disabled ? 'opacity-50' : ''}`}
                 style={{
-                  background: config.enable_netflow_ranking ? 'rgba(245, 158, 11, 0.1)' : 'rgba(30, 35, 41, 0.5)',
-                  border: config.enable_netflow_ranking ? '1px solid rgba(245, 158, 11, 0.3)' : '1px solid rgba(43, 49, 57, 0.5)',
-                  opacity: disabled ? 0.5 : 1,
+                  background: config.enable_netflow_ranking ? 'rgba(245, 158, 11, 0.1)' : 'var(--panel-bg)',
+                  border: config.enable_netflow_ranking ? '1px solid rgba(245, 158, 11, 0.3)' : '1px solid var(--panel-border)',
                 }}
                 onClick={() => !disabled && onChange({
                   ...config,
@@ -422,7 +415,7 @@ export function IndicatorEditor({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full" style={{ background: '#f59e0b' }} />
-                    <span className="text-xs font-medium" style={{ color: '#EAECEF' }}>{t('netflowRanking')}</span>
+                    <span className="text-xs font-medium text-nofx-text">{t('netflowRanking')}</span>
                   </div>
                   <input
                     type="checkbox"
@@ -437,15 +430,14 @@ export function IndicatorEditor({
                     className="w-3.5 h-3.5 rounded accent-amber-500"
                   />
                 </div>
-                <p className="text-[10px] mt-1" style={{ color: '#5E6673' }}>{t('netflowRankingDesc')}</p>
+                <p className="text-[10px] mt-1 text-[var(--text-tertiary)]">{t('netflowRankingDesc')}</p>
                 {config.enable_netflow_ranking && (
                   <div className="flex gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
                     <select
                       value={config.netflow_ranking_duration || '1h'}
                       onChange={(e) => !disabled && onChange({ ...config, netflow_ranking_duration: e.target.value })}
                       disabled={disabled}
-                      className="flex-1 px-2 py-1 rounded text-[10px]"
-                      style={{ background: '#1E2329', border: '1px solid #2B3139', color: '#EAECEF' }}
+                      className="flex-1 px-2 py-1 rounded text-[10px] bg-nofx-bg-lighter border border-[var(--panel-border)] text-nofx-text"
                     >
                       <option value="1h">1h</option>
                       <option value="4h">4h</option>
@@ -455,8 +447,7 @@ export function IndicatorEditor({
                       value={config.netflow_ranking_limit || 10}
                       onChange={(e) => !disabled && onChange({ ...config, netflow_ranking_limit: parseInt(e.target.value) })}
                       disabled={disabled}
-                      className="w-14 px-2 py-1 rounded text-[10px]"
-                      style={{ background: '#1E2329', border: '1px solid #2B3139', color: '#EAECEF' }}
+                      className="w-14 px-2 py-1 rounded text-[10px] bg-nofx-bg-lighter border border-[var(--panel-border)] text-nofx-text"
                     >
                       {[5, 10, 15, 20].map(n => <option key={n} value={n}>{n}</option>)}
                     </select>
@@ -466,11 +457,10 @@ export function IndicatorEditor({
 
               {/* Price Ranking */}
               <div
-                className="p-2.5 rounded-lg transition-all cursor-pointer"
+                className={`p-2.5 rounded-lg transition-all cursor-pointer ${disabled ? 'opacity-50' : ''}`}
                 style={{
-                  background: config.enable_price_ranking ? 'rgba(236, 72, 153, 0.1)' : 'rgba(30, 35, 41, 0.5)',
-                  border: config.enable_price_ranking ? '1px solid rgba(236, 72, 153, 0.3)' : '1px solid rgba(43, 49, 57, 0.5)',
-                  opacity: disabled ? 0.5 : 1,
+                  background: config.enable_price_ranking ? 'rgba(236, 72, 153, 0.1)' : 'var(--panel-bg)',
+                  border: config.enable_price_ranking ? '1px solid rgba(236, 72, 153, 0.3)' : '1px solid var(--panel-border)',
                 }}
                 onClick={() => !disabled && onChange({
                   ...config,
@@ -482,7 +472,7 @@ export function IndicatorEditor({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full" style={{ background: '#ec4899' }} />
-                    <span className="text-xs font-medium" style={{ color: '#EAECEF' }}>{t('priceRanking')}</span>
+                    <span className="text-xs font-medium text-nofx-text">{t('priceRanking')}</span>
                   </div>
                   <input
                     type="checkbox"
@@ -497,15 +487,14 @@ export function IndicatorEditor({
                     className="w-3.5 h-3.5 rounded accent-pink-500"
                   />
                 </div>
-                <p className="text-[10px] mt-1" style={{ color: '#5E6673' }}>{t('priceRankingDesc')}</p>
+                <p className="text-[10px] mt-1 text-[var(--text-tertiary)]">{t('priceRankingDesc')}</p>
                 {config.enable_price_ranking && (
                   <div className="flex gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
                     <select
                       value={config.price_ranking_duration || '1h,4h,24h'}
                       onChange={(e) => !disabled && onChange({ ...config, price_ranking_duration: e.target.value })}
                       disabled={disabled}
-                      className="flex-1 px-2 py-1 rounded text-[10px]"
-                      style={{ background: '#1E2329', border: '1px solid #2B3139', color: '#EAECEF' }}
+                      className="flex-1 px-2 py-1 rounded text-[10px] bg-nofx-bg-lighter border border-[var(--panel-border)] text-nofx-text"
                     >
                       <option value="1h">1h</option>
                       <option value="4h">4h</option>
@@ -516,8 +505,7 @@ export function IndicatorEditor({
                       value={config.price_ranking_limit || 10}
                       onChange={(e) => !disabled && onChange({ ...config, price_ranking_limit: parseInt(e.target.value) })}
                       disabled={disabled}
-                      className="w-14 px-2 py-1 rounded text-[10px]"
-                      style={{ background: '#1E2329', border: '1px solid #2B3139', color: '#EAECEF' }}
+                      className="w-14 px-2 py-1 rounded text-[10px] bg-nofx-bg-lighter border border-[var(--panel-border)] text-nofx-text"
                     >
                       {[5, 10, 15, 20].map(n => <option key={n} value={n}>{n}</option>)}
                     </select>
@@ -542,29 +530,29 @@ export function IndicatorEditor({
       {/* ============================================ */}
       {/* Section 1: Market Data (Required)           */}
       {/* ============================================ */}
-      <div className="rounded-lg overflow-hidden" style={{ background: '#0B0E11', border: '1px solid #2B3139' }}>
-        <div className="px-3 py-2 flex items-center gap-2" style={{ background: '#1E2329', borderBottom: '1px solid #2B3139' }}>
-          <BarChart2 className="w-4 h-4" style={{ color: '#F0B90B' }} />
-          <span className="text-sm font-medium" style={{ color: '#EAECEF' }}>{t('marketData')}</span>
-          <span className="text-xs" style={{ color: '#848E9C' }}>- {t('marketDataDesc')}</span>
+      <div className="rounded-lg overflow-hidden bg-nofx-bg border border-[var(--panel-border)]">
+        <div className="px-3 py-2 flex items-center gap-2 bg-nofx-bg-lighter border-b border-[var(--panel-border)]">
+          <BarChart2 className="w-4 h-4 text-nofx-gold" />
+          <span className="text-sm font-medium text-nofx-text">{t('marketData')}</span>
+          <span className="text-xs text-nofx-text-muted">- {t('marketDataDesc')}</span>
         </div>
 
         <div className="p-3 space-y-4">
           {/* Raw Klines - Required, Always On */}
-          <div className="flex items-center justify-between p-3 rounded-lg" style={{ background: 'rgba(240, 185, 11, 0.08)', border: '1px solid rgba(240, 185, 11, 0.2)' }}>
+          <div className="flex items-center justify-between p-3 rounded-lg bg-nofx-gold/10 border border-nofx-gold/20">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(240, 185, 11, 0.15)' }}>
-                <TrendingUp className="w-4 h-4" style={{ color: '#F0B90B' }} />
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-nofx-gold/15">
+                <TrendingUp className="w-4 h-4 text-nofx-gold" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium" style={{ color: '#EAECEF' }}>{t('rawKlines')}</span>
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium flex items-center gap-1" style={{ background: 'rgba(240, 185, 11, 0.2)', color: '#F0B90B' }}>
+                  <span className="text-sm font-medium text-nofx-text">{t('rawKlines')}</span>
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium flex items-center gap-1 bg-nofx-gold/20 text-nofx-gold">
                     <Lock className="w-2.5 h-2.5" />
                     {t('required')}
                   </span>
                 </div>
-                <p className="text-xs mt-0.5" style={{ color: '#848E9C' }}>{t('rawKlinesDesc')}</p>
+                <p className="text-xs mt-0.5 text-nofx-text-muted">{t('rawKlinesDesc')}</p>
               </div>
             </div>
             <input
@@ -579,11 +567,11 @@ export function IndicatorEditor({
           <div>
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                <Clock className="w-3.5 h-3.5" style={{ color: '#848E9C' }} />
-                <span className="text-xs font-medium" style={{ color: '#EAECEF' }}>{t('timeframes')}</span>
+                <Clock className="w-3.5 h-3.5 text-nofx-text-muted" />
+                <span className="text-xs font-medium text-nofx-text">{t('timeframes')}</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-[10px]" style={{ color: '#848E9C' }}>{t('klineCount')}:</span>
+                <span className="text-[10px] text-nofx-text-muted">{t('klineCount')}:</span>
                 <input
                   type="number"
                   value={config.klines.primary_count}
@@ -597,12 +585,11 @@ export function IndicatorEditor({
                   disabled={disabled}
                   min={10}
                   max={200}
-                  className="w-16 px-2 py-1 rounded text-xs text-center"
-                  style={{ background: '#1E2329', border: '1px solid #2B3139', color: '#EAECEF' }}
+                  className="w-16 px-2 py-1 rounded text-xs text-center bg-nofx-bg-lighter border border-[var(--panel-border)] text-nofx-text"
                 />
               </div>
             </div>
-            <p className="text-[10px] mb-2" style={{ color: '#5E6673' }}>{t('timeframesDesc')}</p>
+            <p className="text-[10px] mb-2 text-[var(--text-tertiary)]">{t('timeframesDesc')}</p>
 
             {/* Timeframe Grid */}
             <div className="space-y-1.5">
@@ -651,18 +638,18 @@ export function IndicatorEditor({
       {/* ============================================ */}
       {/* Section 2: Technical Indicators (Optional)  */}
       {/* ============================================ */}
-      <div className="rounded-lg overflow-hidden" style={{ background: '#0B0E11', border: '1px solid #2B3139' }}>
-        <div className="px-3 py-2 flex items-center gap-2" style={{ background: '#1E2329', borderBottom: '1px solid #2B3139' }}>
-          <Activity className="w-4 h-4" style={{ color: '#0ECB81' }} />
-          <span className="text-sm font-medium" style={{ color: '#EAECEF' }}>{t('technicalIndicators')}</span>
-          <span className="text-xs" style={{ color: '#848E9C' }}>- {t('technicalIndicatorsDesc')}</span>
+      <div className="rounded-lg overflow-hidden bg-nofx-bg border border-[var(--panel-border)]">
+        <div className="px-3 py-2 flex items-center gap-2 bg-nofx-bg-lighter border-b border-[var(--panel-border)]">
+          <Activity className="w-4 h-4 text-nofx-success" />
+          <span className="text-sm font-medium text-nofx-text">{t('technicalIndicators')}</span>
+          <span className="text-xs text-nofx-text-muted">- {t('technicalIndicatorsDesc')}</span>
         </div>
 
         <div className="p-3">
           {/* Tip */}
-          <div className="flex items-start gap-2 mb-3 p-2 rounded" style={{ background: 'rgba(14, 203, 129, 0.05)' }}>
-            <Info className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: '#0ECB81' }} />
-            <p className="text-[10px]" style={{ color: '#848E9C' }}>{t('aiCanCalculate')}</p>
+          <div className="flex items-start gap-2 mb-3 p-2 rounded bg-nofx-success/5">
+            <Info className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-nofx-success" />
+            <p className="text-[10px] text-nofx-text-muted">{t('aiCanCalculate')}</p>
           </div>
 
           {/* Indicator Grid */}
@@ -685,7 +672,7 @@ export function IndicatorEditor({
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full" style={{ background: color }} />
-                    <span className="text-xs font-medium" style={{ color: '#EAECEF' }}>{t(label)}</span>
+                    <span className="text-xs font-medium text-nofx-text">{t(label)}</span>
                   </div>
                   <input
                     type="checkbox"
@@ -695,7 +682,7 @@ export function IndicatorEditor({
                     className="w-4 h-4 rounded accent-yellow-500"
                   />
                 </div>
-                <p className="text-[10px] mb-1.5" style={{ color: '#5E6673' }}>{t(desc)}</p>
+                <p className="text-[10px] mb-1.5 text-[var(--text-tertiary)]">{t(desc)}</p>
                 {periodKey && config[key as keyof IndicatorConfig] && (
                   <input
                     type="text"
@@ -710,8 +697,7 @@ export function IndicatorEditor({
                     }}
                     disabled={disabled}
                     placeholder={defaultPeriods}
-                    className="w-full px-2 py-1 rounded text-[10px] text-center"
-                    style={{ background: '#1E2329', border: '1px solid #2B3139', color: '#EAECEF' }}
+                    className="w-full px-2 py-1 rounded text-[10px] text-center bg-nofx-bg-lighter border border-[var(--panel-border)] text-nofx-text"
                   />
                 )}
               </div>
@@ -723,11 +709,11 @@ export function IndicatorEditor({
       {/* ============================================ */}
       {/* Section 3: Market Sentiment                 */}
       {/* ============================================ */}
-      <div className="rounded-lg overflow-hidden" style={{ background: '#0B0E11', border: '1px solid #2B3139' }}>
-        <div className="px-3 py-2 flex items-center gap-2" style={{ background: '#1E2329', borderBottom: '1px solid #2B3139' }}>
-          <TrendingUp className="w-4 h-4" style={{ color: '#22c55e' }} />
-          <span className="text-sm font-medium" style={{ color: '#EAECEF' }}>{t('marketSentiment')}</span>
-          <span className="text-xs" style={{ color: '#848E9C' }}>- {t('marketSentimentDesc')}</span>
+      <div className="rounded-lg overflow-hidden bg-nofx-bg border border-[var(--panel-border)]">
+        <div className="px-3 py-2 flex items-center gap-2 bg-nofx-bg-lighter border-b border-[var(--panel-border)]">
+          <TrendingUp className="w-4 h-4 text-green-500" />
+          <span className="text-sm font-medium text-nofx-text">{t('marketSentiment')}</span>
+          <span className="text-xs text-nofx-text-muted">- {t('marketSentimentDesc')}</span>
         </div>
 
         <div className="p-3">
@@ -741,14 +727,14 @@ export function IndicatorEditor({
                 key={key}
                 className="p-2.5 rounded-lg transition-all"
                 style={{
-                  background: config[key as keyof IndicatorConfig] ? `${color}08` : 'transparent',
-                  border: `1px solid ${config[key as keyof IndicatorConfig] ? `${color}30` : '#2B3139'}`,
+                  background: config[key as keyof IndicatorConfig] ? `${color}08` : 'var(--panel-bg)',
+                  border: `1px solid ${config[key as keyof IndicatorConfig] ? `${color}30` : 'var(--panel-border)'}`,
                 }}
               >
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full" style={{ background: color }} />
-                    <span className="text-xs font-medium" style={{ color: '#EAECEF' }}>{t(label)}</span>
+                    <span className="text-xs font-medium text-nofx-text">{t(label)}</span>
                   </div>
                   <input
                     type="checkbox"
@@ -758,7 +744,7 @@ export function IndicatorEditor({
                     className="w-4 h-4 rounded accent-yellow-500"
                   />
                 </div>
-                <p className="text-[10px]" style={{ color: '#5E6673' }}>{t(desc)}</p>
+                <p className="text-[10px] text-[var(--text-tertiary)]">{t(desc)}</p>
               </div>
             ))}
           </div>

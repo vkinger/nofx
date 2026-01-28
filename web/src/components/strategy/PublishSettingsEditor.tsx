@@ -39,8 +39,8 @@ export function PublishSettingsEditor({
         style={{
           background: isPublic
             ? 'linear-gradient(135deg, rgba(14, 203, 129, 0.15) 0%, rgba(14, 203, 129, 0.05) 100%)'
-            : 'linear-gradient(135deg, #1E2329 0%, #0B0E11 100%)',
-          border: isPublic ? '1px solid rgba(14, 203, 129, 0.4)' : '1px solid #2B3139',
+            : 'linear-gradient(135deg, var(--panel-bg) 0%, var(--nofx-bg) 100%)',
+          border: isPublic ? '1px solid rgba(14, 203, 129, 0.4)' : '1px solid var(--panel-border)',
           boxShadow: isPublic ? '0 0 20px rgba(14, 203, 129, 0.1)' : 'none',
         }}
         onClick={() => !disabled && onIsPublicChange(!isPublic)}
@@ -51,7 +51,7 @@ export function PublishSettingsEditor({
           style={{
             background: isPublic
               ? 'linear-gradient(90deg, transparent, #0ECB81, transparent)'
-              : 'linear-gradient(90deg, transparent, #2B3139, transparent)',
+              : 'linear-gradient(90deg, transparent, var(--panel-border), transparent)',
             opacity: isPublic ? 1 : 0.5
           }}
         />
@@ -61,21 +61,21 @@ export function PublishSettingsEditor({
             <div
               className="p-2.5 rounded-lg transition-all duration-300"
               style={{
-                background: isPublic ? 'rgba(14, 203, 129, 0.2)' : '#0B0E11',
-                border: isPublic ? '1px solid rgba(14, 203, 129, 0.3)' : '1px solid #2B3139'
+                background: isPublic ? 'rgba(14, 203, 129, 0.2)' : 'var(--nofx-bg)',
+                border: isPublic ? '1px solid rgba(14, 203, 129, 0.3)' : '1px solid var(--panel-border)'
               }}
             >
               {isPublic ? (
-                <Globe className="w-5 h-5" style={{ color: '#0ECB81' }} />
+                <Globe className="w-5 h-5 text-nofx-success" />
               ) : (
-                <Lock className="w-5 h-5" style={{ color: '#848E9C' }} />
+                <Lock className="w-5 h-5 text-nofx-text-muted" />
               )}
             </div>
             <div>
-              <div className="text-sm font-medium" style={{ color: '#EAECEF' }}>
+              <div className="text-sm font-medium text-nofx-text">
                 {t('publishToMarket')}
               </div>
-              <div className="text-xs mt-0.5" style={{ color: '#848E9C' }}>
+              <div className="text-xs mt-0.5 text-nofx-text-muted">
                 {t('publishDesc')}
               </div>
             </div>
@@ -84,8 +84,7 @@ export function PublishSettingsEditor({
           {/* Toggle with status */}
           <div className="flex items-center gap-3">
             <span
-              className="text-[10px] font-mono font-bold tracking-wider"
-              style={{ color: isPublic ? '#0ECB81' : '#848E9C' }}
+              className={`text-[10px] font-mono font-bold tracking-wider ${isPublic ? 'text-nofx-success' : 'text-nofx-text-muted'}`}
             >
               {isPublic ? t('public') : t('private')}
             </span>
@@ -94,14 +93,13 @@ export function PublishSettingsEditor({
               style={{
                 background: isPublic
                   ? 'linear-gradient(90deg, #0ECB81, #4ade80)'
-                  : '#2B3139',
+                  : 'var(--panel-border)',
                 boxShadow: isPublic ? '0 0 10px rgba(14, 203, 129, 0.4)' : 'none'
               }}
             >
               <div
-                className="absolute top-1 w-4 h-4 rounded-full transition-all duration-300"
+                className="absolute top-1 w-4 h-4 rounded-full transition-all duration-300 bg-nofx-text"
                 style={{
-                  background: '#EAECEF',
                   left: isPublic ? '28px' : '4px',
                   boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
                 }}
@@ -118,8 +116,8 @@ export function PublishSettingsEditor({
           style={{
             background: configVisible
               ? 'linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(168, 85, 247, 0.05) 100%)'
-              : 'linear-gradient(135deg, #1E2329 0%, #0B0E11 100%)',
-            border: configVisible ? '1px solid rgba(168, 85, 247, 0.4)' : '1px solid #2B3139',
+              : 'linear-gradient(135deg, var(--panel-bg) 0%, var(--nofx-bg) 100%)',
+            border: configVisible ? '1px solid rgba(168, 85, 247, 0.4)' : '1px solid var(--panel-border)',
             boxShadow: configVisible ? '0 0 20px rgba(168, 85, 247, 0.1)' : 'none',
           }}
           onClick={() => !disabled && onConfigVisibleChange(!configVisible)}
@@ -130,7 +128,7 @@ export function PublishSettingsEditor({
             style={{
               background: configVisible
                 ? 'linear-gradient(90deg, transparent, #a855f7, transparent)'
-                : 'linear-gradient(90deg, transparent, #2B3139, transparent)',
+                : 'linear-gradient(90deg, transparent, var(--panel-border), transparent)',
               opacity: configVisible ? 1 : 0.5
             }}
           />
@@ -140,21 +138,21 @@ export function PublishSettingsEditor({
               <div
                 className="p-2.5 rounded-lg transition-all duration-300"
                 style={{
-                  background: configVisible ? 'rgba(168, 85, 247, 0.2)' : '#0B0E11',
-                  border: configVisible ? '1px solid rgba(168, 85, 247, 0.3)' : '1px solid #2B3139'
+                  background: configVisible ? 'rgba(168, 85, 247, 0.2)' : 'var(--nofx-bg)',
+                  border: configVisible ? '1px solid rgba(168, 85, 247, 0.3)' : '1px solid var(--panel-border)'
                 }}
               >
                 {configVisible ? (
-                  <Eye className="w-5 h-5" style={{ color: '#a855f7' }} />
+                  <Eye className="w-5 h-5 text-purple-500" />
                 ) : (
-                  <EyeOff className="w-5 h-5" style={{ color: '#848E9C' }} />
+                  <EyeOff className="w-5 h-5 text-nofx-text-muted" />
                 )}
               </div>
               <div>
-                <div className="text-sm font-medium" style={{ color: '#EAECEF' }}>
+                <div className="text-sm font-medium text-nofx-text">
                   {t('showConfig')}
                 </div>
-                <div className="text-xs mt-0.5" style={{ color: '#848E9C' }}>
+                <div className="text-xs mt-0.5 text-nofx-text-muted">
                   {t('showConfigDesc')}
                 </div>
               </div>
@@ -163,8 +161,7 @@ export function PublishSettingsEditor({
             {/* Toggle with status */}
             <div className="flex items-center gap-3">
               <span
-                className="text-[10px] font-mono font-bold tracking-wider"
-                style={{ color: configVisible ? '#a855f7' : '#848E9C' }}
+                className={`text-[10px] font-mono font-bold tracking-wider ${configVisible ? 'text-purple-500' : 'text-nofx-text-muted'}`}
               >
                 {configVisible ? t('visible') : t('hidden')}
               </span>
@@ -173,14 +170,13 @@ export function PublishSettingsEditor({
                 style={{
                   background: configVisible
                     ? 'linear-gradient(90deg, #a855f7, #c084fc)'
-                    : '#2B3139',
+                    : 'var(--panel-border)',
                   boxShadow: configVisible ? '0 0 10px rgba(168, 85, 247, 0.4)' : 'none'
                 }}
               >
                 <div
-                  className="absolute top-1 w-4 h-4 rounded-full transition-all duration-300"
+                  className="absolute top-1 w-4 h-4 rounded-full transition-all duration-300 bg-nofx-text"
                   style={{
-                    background: '#EAECEF',
                     left: configVisible ? '28px' : '4px',
                     boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
                   }}
