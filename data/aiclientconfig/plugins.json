@@ -1,5 +1,9 @@
 {
   "plugins": {
+    "ai-monitor": {
+      "enabled": true,
+      "description": "AI 接口监控插件 - 捕获请求和响应参数（全链路协议转换监控，流式聚合输出，用于调试和分析）"
+    },
     "api-potluck": {
       "enabled": true,
       "description": "API 大锅饭 - Key 管理和用量统计插件<br>管理端：<a href=\"potluck.html\" target=\"_blank\">potluck.html</a><br>用户端：<a href=\"potluck-user.html\" target=\"_blank\">potluck-user.html</a>"
