@@ -1,9 +1,3 @@
 {
-  "tokens": {
-    "7ad3a1577bda6640bb8a4c757e1fb4156fab58137d4852f1d02fc121db50a928": {
-      "username": "admin",
-      "loginTime": 1769615478314,
-      "expiryTime": 1769619078314
-    }
-  }
+  "tokens": {}
 }
