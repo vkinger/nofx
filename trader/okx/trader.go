@@ -1486,7 +1486,7 @@ func (t *OKXTrader) GetOpenOrders(symbol string) ([]types.OpenOrder, error) {
 				if order.SlTriggerPx != "" {
 					slPrice, _ := strconv.ParseFloat(order.SlTriggerPx, 64)
 					if slPrice > 0 {
-						result = append(result, types.OpenOrder{
+						result = append(result, OpenOrder{
 							OrderID:      order.AlgoId + "_sl",
 							Symbol:       symbol,
 							Side:         side,
@@ -1504,7 +1504,7 @@ func (t *OKXTrader) GetOpenOrders(symbol string) ([]types.OpenOrder, error) {
 				if order.TpTriggerPx != "" {
 					tpPrice, _ := strconv.ParseFloat(order.TpTriggerPx, 64)
 					if tpPrice > 0 {
-						result = append(result, types.OpenOrder{
+						result = append(result, OpenOrder{
 							OrderID:      order.AlgoId + "_tp",
 							Symbol:       symbol,
 							Side:         side,
@@ -1522,7 +1522,7 @@ func (t *OKXTrader) GetOpenOrders(symbol string) ([]types.OpenOrder, error) {
 				if order.TriggerPx != "" && order.SlTriggerPx == "" && order.TpTriggerPx == "" {
 					triggerPrice, _ := strconv.ParseFloat(order.TriggerPx, 64)
 					if triggerPrice > 0 {
-						result = append(result, types.OpenOrder{
+						result = append(result, OpenOrder{
 							OrderID:      order.AlgoId,
 							Symbol:       symbol,
 							Side:         side,
