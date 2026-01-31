@@ -1216,7 +1216,7 @@ func (t *BitgetTrader) GetOpenOrders(symbol string) ([]types.OpenOrder, error) {
 				side := strings.ToUpper(order.Side)
 				positionSide := strings.ToUpper(order.PosSide)
 
-				result = append(result, OpenOrder{
+				result = append(result, types.OpenOrder{
 					OrderID:      order.OrderId,
 					Symbol:       order.Symbol,
 					Side:         side,

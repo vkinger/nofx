@@ -551,10 +551,10 @@ func (t *GateTrader) SetStopLoss(symbol string, positionSide string, quantity, s
 			Close:      true,
 		},
 		Trigger: gateapi.FuturesPriceTrigger{
-			StrategyType: 0, // Close position
-			PriceType:    0, // Latest price
+			StrategyType: 0,            // Close position
+			PriceType:    0,            // Latest price
 			Price:        fmt.Sprintf("%.8f", stopPrice),
-			Rule:         1, // Price <= trigger price
+			Rule:         1,            // Price <= trigger price
 		},
 	}
 
@@ -602,10 +602,10 @@ func (t *GateTrader) SetTakeProfit(symbol string, positionSide string, quantity,
 			Close:      true,
 		},
 		Trigger: gateapi.FuturesPriceTrigger{
-			StrategyType: 0, // Close position
-			PriceType:    0, // Latest price
+			StrategyType: 0,            // Close position
+			PriceType:    0,            // Latest price
 			Price:        fmt.Sprintf("%.8f", takeProfitPrice),
-			Rule:         2, // Price >= trigger price for long take profit
+			Rule:         2,            // Price >= trigger price for long take profit
 		},
 	}
 

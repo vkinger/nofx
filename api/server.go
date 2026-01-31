@@ -666,6 +666,11 @@ func (s *Server) handleCreateTrader(c *gin.Context) {
 				string(exchangeCfg.SecretKey),
 				string(exchangeCfg.Passphrase),
 			)
+		case "gate":
+			tempTrader = gate.NewGateTrader(
+				string(exchangeCfg.APIKey),
+				string(exchangeCfg.SecretKey),
+			)
 		case "lighter":
 			if exchangeCfg.LighterWalletAddr != "" && string(exchangeCfg.LighterAPIKeyPrivateKey) != "" {
 				// Lighter only supports mainnet
@@ -1309,6 +1314,11 @@ func (s *Server) handleSyncBalance(c *gin.Context) {
 			string(exchangeCfg.APIKey),
 			string(exchangeCfg.SecretKey),
 			string(exchangeCfg.Passphrase),
+		)
+	case "gate":
+		tempTrader = gate.NewGateTrader(
+			string(exchangeCfg.APIKey),
+			string(exchangeCfg.SecretKey),
 		)
 	case "lighter":
 		if exchangeCfg.LighterWalletAddr != "" && string(exchangeCfg.LighterAPIKeyPrivateKey) != "" {
