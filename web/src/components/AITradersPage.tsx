@@ -905,7 +905,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* AI Models Card */}
           <div className="nofx-glass rounded-lg border border-white/5 overflow-hidden">
-            <div 
+            <div
               className="px-4 py-3 border-b flex items-center gap-2 backdrop-blur-sm"
               style={{
                 borderColor: 'var(--panel-border)',
@@ -928,7 +928,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                     key={model.id}
                     className={`group relative flex items-center justify-between p-3 rounded-md transition-all border ${inUse ? 'opacity-80' : 'cursor-pointer'} ${isSelected ? 'ring-2 ring-orange-500/60' : ''}`}
                     style={{
-                      background: isSelected 
+                      background: isSelected
                         ? (isDark ? 'rgba(249, 115, 22, 0.15)' : 'rgba(249, 115, 22, 0.1)')
                         : (isDark ? 'rgba(0, 0, 0, 0.2)' : 'var(--panel-bg)'),
                       borderColor: isSelected ? '#f97316' : (inUse ? 'var(--panel-border)' : 'var(--panel-border)'),
@@ -960,7 +960,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                     <div className="flex items-center gap-4">
                       <div className="relative">
                         <div className="absolute inset-0 bg-indigo-500/20 rounded-full blur-sm group-hover:bg-indigo-500/30 transition-all"></div>
-                        <div 
+                        <div
                           className="w-10 h-10 rounded-full flex items-center justify-center relative z-10"
                           style={{
                             background: isDark ? 'rgba(0, 0, 0, 0.4)' : 'var(--panel-bg-hover)',
@@ -1002,7 +1002,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
               })}
 
               {configuredModels.length === 0 && (
-                <div 
+                <div
                   className="text-center py-10 border border-dashed rounded-lg"
                   style={{
                     borderColor: 'var(--panel-border)',
@@ -1018,7 +1018,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
 
           {/* Exchanges Card */}
           <div className="nofx-glass rounded-lg border border-white/5 overflow-hidden">
-            <div 
+            <div
               className="px-4 py-3 border-b flex items-center gap-2 backdrop-blur-sm"
               style={{
                 borderColor: 'var(--panel-border)',
@@ -1058,7 +1058,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                     <div className="flex items-center gap-4 min-w-0">
                       <div className="relative">
                         <div className="absolute inset-0 bg-yellow-500/20 rounded-full blur-sm group-hover:bg-yellow-500/30 transition-all"></div>
-                        <div 
+                        <div
                           className="w-10 h-10 rounded-full flex items-center justify-center relative z-10"
                           style={{
                             background: isDark ? 'rgba(0, 0, 0, 0.4)' : 'var(--panel-bg-hover)',
@@ -1072,7 +1072,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                       <div className="min-w-0">
                         <div className="font-mono text-sm transition-colors truncate" style={{ color: 'var(--text-primary)' }} onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--nofx-gold)' }} onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-primary)' }}>
                           {exchange.exchange_type?.toUpperCase() || getShortName(exchange.name)}
-                          <span 
+                          <span
                             className="text-[10px] ml-2 border px-1 rounded"
                             style={{
                               color: 'var(--text-secondary)',
@@ -1098,7 +1098,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
 
                         return (
                           <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                            <span 
+                            <span
                               className="text-[10px] font-mono px-1.5 py-0.5 rounded border"
                               style={{
                                 color: 'var(--text-secondary)',
@@ -1145,7 +1145,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                 )
               })}
               {configuredExchanges.length === 0 && (
-                <div 
+                <div
                   className="text-center py-10 border border-dashed rounded-lg"
                   style={{
                     borderColor: 'var(--panel-border)',
@@ -1205,17 +1205,17 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                 <div
                   key={trader.trader_id}
                   className="flex flex-col md:flex-row md:items-center justify-between p-3 md:p-4 rounded transition-all hover:translate-y-[-1px] gap-3 md:gap-4"
-                  style={{ 
-                    background: isDark 
+                  style={{
+                    background: isDark
                       ? 'linear-gradient(135deg, rgba(30, 36, 42, 0.95) 0%, rgba(24, 28, 33, 0.95) 100%)'
-                      : 'var(--panel-bg)', 
-                    border: '1px solid var(--panel-border)' 
+                      : 'var(--panel-bg)',
+                    border: '1px solid var(--panel-border)'
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.background = 'var(--panel-bg-hover)'
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = isDark 
+                    e.currentTarget.style.background = isDark
                       ? 'linear-gradient(135deg, rgba(30, 36, 42, 0.95) 0%, rgba(24, 28, 33, 0.95) 100%)'
                       : 'var(--panel-bg)'
                   }}
@@ -1544,6 +1544,99 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
   )
 }
 
+// Step indicator component for Model Config
+function ModelStepIndicator({ currentStep, labels }: { currentStep: number; labels: string[] }) {
+  return (
+    <div className="flex items-center justify-center gap-2 mb-6">
+      {labels.map((label, index) => (
+        <React.Fragment key={index}>
+          <div className="flex items-center gap-2">
+            <div
+              className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all"
+              style={{
+                background: index < currentStep ? '#0ECB81' : index === currentStep ? '#8B5CF6' : '#2B3139',
+                color: index <= currentStep ? '#000' : '#848E9C',
+              }}
+            >
+              {index < currentStep ? <Check className="w-4 h-4" /> : index + 1}
+            </div>
+            <span
+              className="text-xs font-medium hidden sm:block"
+              style={{ color: index === currentStep ? '#EAECEF' : '#848E9C' }}
+            >
+              {label}
+            </span>
+          </div>
+          {index < labels.length - 1 && (
+            <div
+              className="w-8 h-0.5 mx-1"
+              style={{ background: index < currentStep ? '#0ECB81' : '#2B3139' }}
+            />
+          )}
+        </React.Fragment>
+      ))}
+    </div>
+  )
+}
+
+// Model card component
+function ModelCard({
+  model,
+  selected,
+  onClick,
+  configured,
+}: {
+  model: AIModel
+  selected: boolean
+  onClick: () => void
+  configured?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex flex-col items-center gap-2 p-4 rounded-xl transition-all hover:scale-105"
+      style={{
+        background: selected ? 'rgba(139, 92, 246, 0.15)' : '#0B0E11',
+        border: selected ? '2px solid #8B5CF6' : '2px solid #2B3139',
+      }}
+    >
+      <div className="relative">
+        <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-black border border-white/10">
+          {getModelIcon(model.provider || model.id, { width: 32, height: 32 }) || (
+            <span className="text-lg font-bold" style={{ color: '#A78BFA' }}>{model.name[0]}</span>
+          )}
+        </div>
+        {selected && (
+          <div
+            className="absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center"
+            style={{ background: '#0ECB81' }}
+          >
+            <Check className="w-3 h-3 text-black" />
+          </div>
+        )}
+        {configured && !selected && (
+          <div
+            className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center"
+            style={{ background: '#F0B90B' }}
+          >
+            <Check className="w-2.5 h-2.5 text-black" />
+          </div>
+        )}
+      </div>
+      <span className="text-sm font-semibold" style={{ color: '#EAECEF' }}>
+        {getShortName(model.name)}
+      </span>
+      <span
+        className="text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wide"
+        style={{ background: 'rgba(139, 92, 246, 0.2)', color: '#A78BFA' }}
+      >
+        {model.provider}
+      </span>
+    </button>
+  )
+}
+
 // Model Configuration Modal Component
 function ModelConfigModal({
   allModels,
@@ -1567,17 +1660,16 @@ function ModelConfigModal({
   onClose: () => void
   language: Language
 }) {
+  const [currentStep, setCurrentStep] = useState(editingModelId ? 1 : 0)
   const [selectedModelId, setSelectedModelId] = useState(editingModelId || '')
   const [apiKey, setApiKey] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
   const [modelName, setModelName] = useState('')
 
-  // 获取当前编辑的模型信息 - 编辑时从已配置的模型中查找，新建时从所有支持的模型中查找
   const selectedModel = editingModelId
     ? configuredModels?.find((m) => m.id === selectedModelId)
     : allModels?.find((m) => m.id === selectedModelId)
 
-  // 如果是编辑现有模型，初始化API Key、Base URL和Model Name
   useEffect(() => {
     if (editingModelId && selectedModel) {
       setApiKey(selectedModel.apiKey || '')
@@ -1586,30 +1678,39 @@ function ModelConfigModal({
     }
   }, [editingModelId, selectedModel])
 
+  const handleSelectModel = (modelId: string) => {
+    setSelectedModelId(modelId)
+    setCurrentStep(1)
+  }
+
+  const handleBack = () => {
+    if (editingModelId) {
+      onClose()
+    } else {
+      setCurrentStep(0)
+      setSelectedModelId('')
+    }
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedModelId || !apiKey.trim()) return
-
-    onSave(
-      selectedModelId,
-      apiKey.trim(),
-      baseUrl.trim() || undefined,
-      modelName.trim() || undefined
-    )
+    onSave(selectedModelId, apiKey.trim(), baseUrl.trim() || undefined, modelName.trim() || undefined)
   }
 
-  // 可选择的模型列表（所有支持的模型）
   const availableModels = allModels || []
+  const configuredIds = new Set(configuredModels?.map(m => m.id) || [])
+  const stepLabels = language === 'zh' ? ['选择模型', '配置 API'] : ['Select Model', 'Configure API']
 
   const { theme } = useTheme()
   const isDark = theme === 'dark'
-  
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
       <div
         className="rounded-lg w-full max-w-lg relative my-8"
         style={{
-          background: isDark 
+          background: isDark
             ? 'linear-gradient(135deg, rgba(30, 36, 42, 0.95) 0%, rgba(24, 28, 33, 0.95) 100%)'
             : 'var(--panel-bg)',
           border: '1px solid var(--panel-border)',
@@ -1618,8 +1719,8 @@ function ModelConfigModal({
       >
         <div
           className="flex items-center justify-between p-6 pb-4 sticky top-0 z-10"
-          style={{ 
-            background: isDark 
+          style={{
+            background: isDark
               ? 'linear-gradient(135deg, rgba(30, 36, 42, 0.95) 0%, rgba(37, 43, 53, 0.95) 100%)'
               : 'var(--panel-bg)',
           }}
@@ -1685,7 +1786,7 @@ function ModelConfigModal({
             {selectedModel && (
               <div
                 className="p-4 rounded"
-                style={{ 
+                style={{
                   background: isDark ? 'rgba(11, 14, 17, 0.6)' : 'var(--panel-bg)',
                   border: '1px solid var(--panel-border)',
                 }}
@@ -1719,31 +1820,33 @@ function ModelConfigModal({
                     </div>
                   </div>
                 </div>
-                {/* Default model info and API link */}
                 {AI_PROVIDER_CONFIG[selectedModel.provider] && (
-                  <div className="mt-3 pt-3" style={{ borderTop: '1px solid #2B3139' }}>
-                    <div className="text-xs mb-2" style={{ color: '#848E9C' }}>
-                      {t('defaultModel', language)}: <span style={{ color: '#F0B90B' }}>{AI_PROVIDER_CONFIG[selectedModel.provider].defaultModel}</span>
-                    </div>
-                    <a
-                      href={AI_PROVIDER_CONFIG[selectedModel.provider].apiUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-xs hover:underline"
-                      style={{ color: '#F0B90B' }}
-                    >
-                      <ExternalLink className="w-3 h-3" />
-                      {t('applyApiKey', language)} → {AI_PROVIDER_CONFIG[selectedModel.provider].apiName}
-                    </a>
-                    {selectedModel.provider === 'kimi' && (
-                      <div className="mt-2 text-xs p-2 rounded" style={{ background: 'rgba(246, 70, 93, 0.1)', color: '#F6465D' }}>
-                        ⚠️ {t('kimiApiNote', language)}
-                      </div>
-                    )}
-                  </div>
+                  <a
+                    href={AI_PROVIDER_CONFIG[selectedModel.provider].apiUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all hover:scale-105"
+                    style={{ background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.3)' }}
+                  >
+                    <ExternalLink className="w-4 h-4" style={{ color: '#A78BFA' }} />
+                    <span className="text-sm font-medium" style={{ color: '#A78BFA' }}>
+                      {language === 'zh' ? '获取 API Key' : 'Get API Key'}
+                    </span>
+                  </a>
                 )}
               </div>
-            )}
+
+              {/* Kimi Warning */}
+              {selectedModel.provider === 'kimi' && (
+                <div className="p-4 rounded-xl" style={{ background: 'rgba(246, 70, 93, 0.1)', border: '1px solid rgba(246, 70, 93, 0.3)' }}>
+                  <div className="flex items-start gap-2">
+                    <span style={{ fontSize: '16px' }}>⚠️</span>
+                    <div className="text-sm" style={{ color: '#F6465D' }}>
+                      {t('kimiApiNote', language)}
+                    </div>
+                  </div>
+                </div>
+              )}
 
             {selectedModel && (
               <>
@@ -1863,8 +1966,8 @@ function ModelConfigModal({
 
           <div
             className="flex gap-3 mt-6 pt-4 sticky bottom-0"
-            style={{ 
-              background: isDark 
+            style={{
+              background: isDark
                 ? 'linear-gradient(135deg, rgba(30, 36, 42, 0.95) 0%, rgba(37, 43, 53, 0.95) 100%)'
                 : 'var(--panel-bg)',
             }}
@@ -1873,8 +1976,8 @@ function ModelConfigModal({
               type="button"
               onClick={onClose}
               className="flex-1 px-4 py-2 rounded text-sm font-semibold transition-colors"
-              style={{ 
-                background: 'var(--panel-bg-hover)', 
+              style={{
+                background: 'var(--panel-bg-hover)',
                 color: 'var(--text-primary)',
                 border: '1px solid var(--panel-border)',
               }}
@@ -1891,8 +1994,8 @@ function ModelConfigModal({
               type="submit"
               disabled={!selectedModel || !apiKey.trim()}
               className="flex-1 px-4 py-2 rounded text-sm font-semibold disabled:opacity-50 transition-colors"
-              style={{ 
-                background: (!selectedModel || !apiKey.trim()) ? 'var(--text-disabled)' : 'var(--nofx-gold)', 
+              style={{
+                background: (!selectedModel || !apiKey.trim()) ? 'var(--text-disabled)' : 'var(--nofx-gold)',
                 color: '#000',
               }}
               onMouseEnter={(e) => {
