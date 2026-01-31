@@ -3218,6 +3218,7 @@ func extractDecisions(response string) ([]Decision, error) {
 	s := removeInvisibleRunes(response)
 	s = strings.TrimSpace(s)
 	s = fixMissingQuotes(s)
+	logger.Info("AI call Response: %s", s)
 
 	// ========== 优先尝试新格式：JSON对象（包含reasoning和decisions字段）==========
 	type newFormatResponse struct {
