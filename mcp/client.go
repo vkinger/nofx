@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"strings"
 	"time"
@@ -20,7 +21,7 @@ const (
 var (
 	DefaultTimeout = 240 * time.Second
 
-	MaxRetryTimes = 3
+	MaxRetryTimes = 10
 
 	retryableErrors = []string{
 		"EOF",
@@ -254,12 +255,15 @@ func (client *Client) CallWithMessages(systemPrompt, userPrompt string) (string,
 	// Fixed retry flow
 	var lastErr error
 	maxRetries := client.config.MaxRetries
+	modelList := strings.Split(client.Model, ",")
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		if attempt > 1 {
 			client.logger.Warnf("⚠️  AI API call failed, retrying (%d/%d)...", attempt, maxRetries)
 		}
-
+		selectedModel := rand.Intn(len(modelList))
+		client.logger.Infof("🔧 [MCP] Trying model: %s", modelList[selectedModel])
+		client.Model = modelList[selectedModel]
 		// Call the fixed single-call flow
 		result, err := client.hooks.call(systemPrompt, userPrompt)
 		if err == nil {
