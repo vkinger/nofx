@@ -31,6 +31,14 @@ var (
 		"no such host",
 		"stream error",   // HTTP/2 stream error
 		"INTERNAL_ERROR", // Server internal error
+
+		"stream error",
+		"429",
+		// ⭐ 配额 / Free tier（关键）
+		"AllocationQuota",
+		"FreeTier",
+		"quota",
+		"exhausted",
 	}
 
 	// TokenUsageCallback is called after each AI request with token usage info
@@ -255,27 +263,35 @@ func (client *Client) CallWithMessages(systemPrompt, userPrompt string) (string,
 	var lastErr error
 	maxRetries := client.config.MaxRetries
 	modelList := strings.Split(client.Model, ",")
-	lastSelectedModel := 0
+	client.logger.Infof("✓ AI API candidate models: %v", modelList)
+	originalModel := client.Model
+	defer func() { client.Model = originalModel }()
 	for attempt := 1; attempt <= maxRetries; attempt++ {
-		if attempt > 1 {
-			client.logger.Warnf("⚠️  AI API call failed, retrying (%d/%d)...", attempt, maxRetries)
-		}
 		// model failover
-		selectedModel := 0
-		if len(modelList) > 1 && lastSelectedModel != 0 {
-			selectedModel = (lastSelectedModel + 1) % len(modelList)
-			lastSelectedModel = selectedModel
-		}
-		client.logger.Infof("✓  AI API call retrying model[%d/%d]: %s", selectedModel, len(modelList), modelList[selectedModel])
+		selectedModel := (attempt - 1) % len(modelList)
 		client.Model = modelList[selectedModel]
+		if attempt == 1 {
+			client.logger.Infof("✓ AI API calling model[%d]: %s", selectedModel, client.Model)
+		} else {
+			client.logger.Warnf(
+				"⚠️ AI API call failed, retrying (%d/%d) with model[%d]: %s",
+				attempt, maxRetries, selectedModel, client.Model,
+			)
+		}
 		// Call the fixed single-call flow
 		result, err := client.hooks.call(systemPrompt, userPrompt)
+		client.logger.Infof("✓ AI API calling response: %s", result)
+
 		if err == nil {
 			if attempt > 1 {
 				client.logger.Infof("✓ AI API retry succeeded")
 			}
 			return result, nil
 		}
+		client.logger.Warnf(
+			"⚠️ AI API call retry check: attempt=%d, err=%v, retryable=%v",
+			attempt, err, client.hooks.isRetryableError(err),
+		)
 
 		lastErr = err
 		// Check if error is retryable via hooks (supports custom retry strategy in subclass)
