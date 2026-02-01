@@ -1890,13 +1890,13 @@ func (e *StrategyEngine) BuildUserPrompt(ctx *Context) string {
 	if maxPositions <= 0 {
 		maxPositions = 3 // 默认值
 	}
-	
+
 	// 计算动态上限
 	dynamicLimit := maxPositions*2 + 1
-	
+
 	// 设置绝对上限（防止配置过大）
 	absoluteMaxLimit := 10
-	
+
 	// 取三者最小值：用户配置、动态上限、绝对上限
 	if maxCandidateCoins > dynamicLimit {
 		maxCandidateCoins = dynamicLimit
@@ -2387,8 +2387,8 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 
 			// 吞没形态 (Engulfing) - 优化：更严格的判断条件
 			// 看涨吞没：前一根阴线，后一根阳线完全吞没前一根
-			if body1 < 0 && body2 > 0 && 
-				k2.Open < k1.Close && k2.Close > k1.Open && 
+			if body1 < 0 && body2 > 0 &&
+				k2.Open < k1.Close && k2.Close > k1.Open &&
 				math.Abs(body2) > math.Abs(body1)*1.2 {
 				// 检查是否真正吞没（高点更高，低点更低）
 				if k2.High > k1.High && k2.Low < k1.Low {
@@ -2396,8 +2396,8 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 				} else {
 					patterns = append(patterns, "BULLISH_ENGULFING")
 				}
-			} else if body1 > 0 && body2 < 0 && 
-				k2.Open > k1.Close && k2.Close < k1.Open && 
+			} else if body1 > 0 && body2 < 0 &&
+				k2.Open > k1.Close && k2.Close < k1.Open &&
 				math.Abs(body2) > math.Abs(body1)*1.2 {
 				// 看跌吞没：前一根阳线，后一根阴线完全吞没前一根
 				if k2.High > k1.High && k2.Low < k1.Low {
@@ -3080,6 +3080,7 @@ func formatFloatSlice(values []float64) string {
 // ============================================================================
 
 func parseFullDecisionResponse(aiResponse string, accountEquity float64, btcEthLeverage, altcoinLeverage int, btcEthPosRatio, altcoinPosRatio float64, excludedCoins []string) (*FullDecision, error) {
+	logger.Infof("AI call Response: %s", aiResponse)
 	cotTrace := extractCoTTrace(aiResponse)
 
 	decisions, err := extractDecisions(aiResponse)
@@ -3218,7 +3219,6 @@ func extractDecisions(response string) ([]Decision, error) {
 	s := removeInvisibleRunes(response)
 	s = strings.TrimSpace(s)
 	s = fixMissingQuotes(s)
-	logger.Info("AI call Response: %s", s)
 
 	// ========== 优先尝试新格式：JSON对象（包含reasoning和decisions字段）==========
 	type newFormatResponse struct {

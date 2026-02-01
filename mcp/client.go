@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/rand"
 	"net/http"
 	"strings"
 	"time"
@@ -256,13 +255,18 @@ func (client *Client) CallWithMessages(systemPrompt, userPrompt string) (string,
 	var lastErr error
 	maxRetries := client.config.MaxRetries
 	modelList := strings.Split(client.Model, ",")
-
+	lastSelectedModel := 0
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		if attempt > 1 {
 			client.logger.Warnf("⚠️  AI API call failed, retrying (%d/%d)...", attempt, maxRetries)
 		}
-		selectedModel := rand.Intn(len(modelList))
-		client.logger.Infof("🔧 [MCP] Trying model: %s", modelList[selectedModel])
+		// model failover
+		selectedModel := 0
+		if len(modelList) > 1 && lastSelectedModel != 0 {
+			selectedModel = (lastSelectedModel + 1) % len(modelList)
+			lastSelectedModel = selectedModel
+		}
+		client.logger.Infof("✓  AI API call retrying model[%d/%d]: %s", selectedModel, len(modelList), modelList[selectedModel])
 		client.Model = modelList[selectedModel]
 		// Call the fixed single-call flow
 		result, err := client.hooks.call(systemPrompt, userPrompt)
