@@ -205,7 +205,7 @@ func (t *KuCoinTrader) doRequest(method, path string, body interface{}) ([]byte,
 		}
 	}
 
-	timestamp := strconv.FormatInt(time.Now().UnixMilli(), 10)
+	timestamp := t.getTimestamp()
 	signature := t.sign(timestamp, method, path, string(bodyBytes))
 	signedPassphrase := t.signPassphrase(t.passphrase)
 
