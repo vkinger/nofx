@@ -262,9 +262,10 @@ func (client *Client) CallWithMessages(systemPrompt, userPrompt string) (string,
 	// Fixed retry flow
 	var lastErr error
 	maxRetries := client.config.MaxRetries
-	modelList := strings.Split(client.Model, ",")
-	client.logger.Infof("✓ AI API candidate models: %v", modelList)
 	originalModel := client.Model
+	modelList := strings.Split(originalModel, ",") // ❗ 永远用 original
+	client.logger.Infof("✓ AI API candidate models: %v", modelList)
+
 	defer func() { client.Model = originalModel }()
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		// model failover
