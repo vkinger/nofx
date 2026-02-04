@@ -3,7 +3,7 @@ package trader
 import (
 	"fmt"
 	"nofx/logger"
-	"time"
+	"nofx/trader/types"
 )
 
 // ClosedPnLRecord represents a single closed position record from exchange
@@ -162,6 +162,16 @@ type GridTrader interface {
 	// Returns best bid/ask prices
 	GetOrderBook(symbol string, depth int) (bids, asks [][]float64, err error)
 }
+// Re-export types for backward compatibility
+type (
+	ClosedPnLRecord   = types.ClosedPnLRecord
+	TradeRecord       = types.TradeRecord
+	Trader            = types.Trader
+	OpenOrder         = types.OpenOrder
+	LimitOrderRequest = types.LimitOrderRequest
+	LimitOrderResult  = types.LimitOrderResult
+	GridTrader        = types.GridTrader
+)
 
 // GridTraderAdapter wraps a basic Trader to provide GridTrader interface
 // Uses stop orders as a fallback when limit orders aren't directly available
