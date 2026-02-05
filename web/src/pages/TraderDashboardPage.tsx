@@ -6,6 +6,7 @@ import { DecisionCard } from '../components/DecisionCard'
 import { PositionHistory } from '../components/PositionHistory'
 import { PunkAvatar, getTraderAvatar } from '../components/PunkAvatar'
 import { confirmToast, notify } from '../lib/notify'
+import { formatPrice, formatQuantity } from '../utils/format'
 import { t, type Language } from '../i18n/translations'
 import { LogOut, Loader2, Eye, EyeOff, Copy, Check } from 'lucide-react'
 import { DeepVoidBackground } from '../components/DeepVoidBackground'
@@ -558,7 +559,7 @@ export function TraderDashboardPage({
 
                 {/* Debug Info */}
                 {account && (
-                    <div 
+                    <div
                         className="mb-4 px-3 py-1.5 rounded text-[10px] font-mono flex justify-between items-center opacity-60 hover:opacity-100 transition-opacity"
                         style={{
                             background: isDark ? 'rgba(0, 0, 0, 0.4)' : 'var(--panel-bg)',
@@ -694,7 +695,7 @@ export function TraderDashboardPage({
                                                             }
                                                         }}
                                                     >
-                                                        <td 
+                                                        <td
                                                             className="px-1 py-3 font-mono font-semibold whitespace-nowrap text-left transition-colors"
                                                             style={{ color: 'var(--text-primary)' }}
                                                             onMouseEnter={(e) => {
@@ -750,10 +751,10 @@ export function TraderDashboardPage({
                                                                 {language === 'zh' ? '平仓' : 'Close'}
                                                             </button>
                                                         </td>
-                                                        <td className="px-1 py-3 font-mono whitespace-nowrap text-right hidden md:table-cell" style={{ color: 'var(--text-primary)' }}>{pos.entry_price.toFixed(4)}</td>
-                                                        <td className="px-1 py-3 font-mono whitespace-nowrap text-right hidden md:table-cell" style={{ color: 'var(--text-primary)' }}>{pos.mark_price.toFixed(4)}</td>
-                                                        <td className="px-1 py-3 font-mono whitespace-nowrap text-right" style={{ color: 'var(--text-primary)' }}>{pos.quantity.toFixed(4)}</td>
-                                                        <td className="px-1 py-3 font-mono font-bold whitespace-nowrap text-right hidden md:table-cell" style={{ color: 'var(--text-primary)' }}>{(pos.quantity * pos.mark_price).toFixed(2)}</td>
+                                                        <td className="px-1 py-3 font-mono whitespace-nowrap text-right text-nofx-text-main hidden md:table-cell">{formatPrice(pos.entry_price)}</td>
+                                                        <td className="px-1 py-3 font-mono whitespace-nowrap text-right text-nofx-text-main hidden md:table-cell">{formatPrice(pos.mark_price)}</td>
+                                                        <td className="px-1 py-3 font-mono whitespace-nowrap text-right text-nofx-text-main">{formatQuantity(pos.quantity)}</td>
+                                                        <td className="px-1 py-3 font-mono font-bold whitespace-nowrap text-right text-nofx-text-main hidden md:table-cell">{(pos.quantity * pos.mark_price).toFixed(2)}</td>
                                                         <td className="px-1 py-3 font-mono whitespace-nowrap text-center text-nofx-gold hidden md:table-cell">{pos.leverage}x</td>
                                                         <td className="px-1 py-3 font-mono whitespace-nowrap text-right">
                                                             <span
@@ -764,7 +765,7 @@ export function TraderDashboardPage({
                                                                 {pos.unrealized_pnl.toFixed(2)}
                                                             </span>
                                                         </td>
-                                                        <td className="px-1 py-3 font-mono whitespace-nowrap text-right text-nofx-text-muted hidden md:table-cell">{pos.liquidation_price.toFixed(4)}</td>
+                                                        <td className="px-1 py-3 font-mono whitespace-nowrap text-right text-nofx-text-muted hidden md:table-cell">{formatPrice(pos.liquidation_price)}</td>
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -1035,30 +1036,30 @@ function StatCard({
 }) {
     const { theme } = useTheme()
     const isDark = theme === 'dark'
-    
+
     return (
-        <div 
+        <div
             className="group p-5 rounded-lg transition-all duration-300 hover:translate-y-[-2px] relative overflow-hidden"
             style={{
-                background: isDark 
+                background: isDark
                     ? 'linear-gradient(135deg, rgba(30, 36, 42, 0.6) 0%, rgba(24, 28, 33, 0.6) 100%)'
                     : 'var(--panel-bg)',
                 border: '1px solid var(--panel-border)',
             }}
             onMouseEnter={(e) => {
                 e.currentTarget.style.borderColor = 'var(--nofx-gold)'
-                e.currentTarget.style.background = isDark 
+                e.currentTarget.style.background = isDark
                     ? 'linear-gradient(135deg, rgba(30, 36, 42, 0.8) 0%, rgba(24, 28, 33, 0.8) 100%)'
                     : 'var(--panel-bg-hover)'
             }}
             onMouseLeave={(e) => {
                 e.currentTarget.style.borderColor = 'var(--panel-border)'
-                e.currentTarget.style.background = isDark 
+                e.currentTarget.style.background = isDark
                     ? 'linear-gradient(135deg, rgba(30, 36, 42, 0.6) 0%, rgba(24, 28, 33, 0.6) 100%)'
                     : 'var(--panel-bg)'
             }}
         >
-            <div 
+            <div
                 className="absolute top-0 right-0 p-4 text-4xl transition-all duration-300"
                 style={{
                     opacity: isDark ? 0.15 : 0.25,
