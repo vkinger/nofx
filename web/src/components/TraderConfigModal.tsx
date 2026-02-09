@@ -148,7 +148,7 @@ export function TraderConfigModal({
 
   const handleFetchCurrentBalance = async () => {
     if (!isEditMode || !traderData?.trader_id) {
-      setBalanceFetchError('只有在编辑模式下才能获取当前余额')
+       setBalanceFetchError(t('fetchBalanceEditModeOnly', language))
       return
     }
 
