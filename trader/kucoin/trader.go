@@ -439,6 +439,15 @@ func (t *KuCoinTrader) InvalidatePositionCache() {
 	t.positionsCacheMutex.Unlock()
 }
 
+// InvalidateCache clears balance and position cache (implements types.Trader)
+func (t *KuCoinTrader) InvalidateCache() {
+	t.balanceCacheMutex.Lock()
+	t.cachedBalance = nil
+	t.balanceCacheTime = time.Time{}
+	t.balanceCacheMutex.Unlock()
+	t.InvalidatePositionCache()
+}
+
 // getContract gets contract info
 func (t *KuCoinTrader) getContract(symbol string) (*KuCoinContract, error) {
 	kcSymbol := t.convertSymbol(symbol)

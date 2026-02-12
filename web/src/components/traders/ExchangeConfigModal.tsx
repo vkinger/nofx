@@ -347,7 +347,7 @@ export function ExchangeConfigModal({
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 overflow-y-auto backdrop-blur-sm">
       <div
-        className="rounded-lg w-full max-w-lg relative my-8"
+        className="rounded-2xl w-full max-w-2xl relative my-8 shadow-2xl"
         style={{
           background: isDark
             ? 'linear-gradient(135deg, rgba(30, 36, 42, 0.95) 0%, rgba(24, 28, 33, 0.95) 100%)'
@@ -355,24 +355,15 @@ export function ExchangeConfigModal({
           border: '1px solid var(--panel-border)',
           maxHeight: 'calc(100vh - 4rem)',
         }}
-        className="rounded-2xl w-full max-w-2xl relative my-8 shadow-2xl"
-        style={{ background: 'linear-gradient(180deg, #1E2329 0%, #181A20 100%)', maxHeight: 'calc(100vh - 4rem)' }}
       >
-        <div
-          className="flex items-center justify-between p-6 pb-4 sticky top-0 z-10"
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 pb-2 sticky top-0 z-10"
           style={{
             background: isDark
               ? 'linear-gradient(135deg, rgba(30, 36, 42, 0.95) 0%, rgba(37, 43, 53, 0.95) 100%)'
               : 'var(--panel-bg)',
           }}
         >
-          <h3 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
-            {editingExchangeId
-              ? t('editExchange', language)
-              : t('addExchange', language)}
-          </h3>
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 pb-2">
           <div className="flex items-center gap-3">
             {currentStep > 0 && !editingExchangeId && (
               <button type="button" onClick={handleBack} className="p-2 rounded-lg hover:bg-white/10 transition-colors">

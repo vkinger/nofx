@@ -894,5 +894,10 @@ func (t *GateTrader) clearCache() {
 	t.positionsCacheMutex.Unlock()
 }
 
+// InvalidateCache clears balance and position cache (implements types.Trader)
+func (t *GateTrader) InvalidateCache() {
+	t.clearCache()
+}
+
 // Ensure GateTrader implements Trader interface
 var _ types.Trader = (*GateTrader)(nil)

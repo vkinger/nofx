@@ -77,6 +77,9 @@ type Trader interface {
 	// CancelStopLossOrders Cancel only stop-loss orders (BUG fix: don't delete take-profit when adjusting stop-loss)
 	CancelStopLossOrders(symbol string) error
 
+	// InvalidateCache Invalidate balance and position cache (called after trade execution)
+	InvalidateCache()
+
 	// CancelTakeProfitOrders Cancel only take-profit orders (BUG fix: don't delete stop-loss when adjusting take-profit)
 	CancelTakeProfitOrders(symbol string) error
 
