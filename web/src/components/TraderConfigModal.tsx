@@ -195,7 +195,7 @@ export function TraderConfigModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm p-4 overflow-y-auto">
       <div
-        className="rounded-xl shadow-2xl max-w-2xl w-full my-8 trader-config-modal"
+        className="rounded-xl shadow-2xl max-w-2xl w-full my-8 trader-config-modal flex flex-col"
         style={{ 
           maxHeight: 'calc(100vh - 4rem)',
           background: isDark 
@@ -251,10 +251,9 @@ export function TraderConfigModal({
           </button>
         </div>
 
-        {/* Content */}
+        {/* Content - flex-1 min-h-0 确保可滚动且底部按钮始终可见 */}
         <div
-          className="p-6 space-y-6 overflow-y-auto"
-          style={{ maxHeight: 'calc(100vh - 16rem)' }}
+          className="p-6 space-y-6 overflow-y-auto flex-1 min-h-0"
         >
           <style>{`
             .trader-config-modal input::placeholder,
@@ -788,9 +787,9 @@ export function TraderConfigModal({
 
         </div>
 
-        {/* Footer */}
+        {/* Footer - flex-shrink-0 确保保存按钮始终可见 */}
         <div 
-          className="flex justify-end gap-3 p-6 border-t sticky bottom-0 z-10 rounded-b-xl"
+          className="flex justify-end gap-3 p-6 border-t flex-shrink-0 rounded-b-xl"
           style={{
             borderTop: '1px solid var(--panel-border)',
             background: isDark 
