@@ -25,6 +25,10 @@ services:
     environment:
       - TZ=${TZ:-Asia/Shanghai}
       - AI_MAX_TOKENS=8000
+    # 使用公共 DNS，避免容器内 127.0.0.11 解析外网域名失败（server misbehaving）
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     networks:
       - nofx-network
     healthcheck:

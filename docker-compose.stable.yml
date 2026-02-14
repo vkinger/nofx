@@ -17,6 +17,9 @@ services:
     environment:
       - TZ=${TZ:-Asia/Shanghai}
       - AI_MAX_TOKENS=8000
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     networks:
       - nofx-network
     healthcheck:
