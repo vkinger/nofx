@@ -68,7 +68,7 @@ type CreateDebateRequest struct {
 	Participants    []ParticipantConfig `json:"participants" binding:"required,min=2"`
 	// OI Ranking data options
 	EnableOIRanking bool   `json:"enable_oi_ranking"` // Whether to include OI ranking data
-	OIRankingLimit  int    `json:"oi_ranking_limit"`  // Number of OI ranking entries (default 10)
+	OIRankingLimit  int    `json:"oi_ranking_limit"`  // Number of OI ranking entries (default 15)
 	OIDuration      string `json:"oi_duration"`       // Duration for OI data (1h, 4h, 24h, etc.)
 }
 

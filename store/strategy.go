@@ -172,7 +172,7 @@ type IndicatorConfig struct {
 	// OI ranking data (market-wide open interest increase/decrease rankings)
 	EnableOIRanking   bool   `json:"enable_oi_ranking"`             // whether to enable OI ranking data
 	OIRankingDuration string `json:"oi_ranking_duration,omitempty"` // duration: 1h, 4h, 24h
-	OIRankingLimit    int    `json:"oi_ranking_limit,omitempty"`    // number of entries (default 10)
+	OIRankingLimit    int    `json:"oi_ranking_limit,omitempty"`    // number of entries (default 15)
 
 	// NetFlow ranking data (market-wide fund flow rankings - institution/personal)
 	EnableNetFlowRanking   bool   `json:"enable_netflow_ranking"`             // whether to enable NetFlow ranking data
@@ -275,7 +275,7 @@ func GetDefaultStrategyConfig(lang string) StrategyConfig {
 		Indicators: IndicatorConfig{
 			Klines: KlineConfig{
 				PrimaryTimeframe:     "5m",
-				PrimaryCount:         30,
+				PrimaryCount:         50,
 				LongerTimeframe:      "4h",
 				LongerCount:          10,
 				EnableMultiTimeframe: true,
@@ -303,15 +303,15 @@ func GetDefaultStrategyConfig(lang string) StrategyConfig {
 			// OI ranking data
 			EnableOIRanking:   true,
 			OIRankingDuration: "1h",
-			OIRankingLimit:    10,
+			OIRankingLimit:    15,
 			// NetFlow ranking data
 			EnableNetFlowRanking:   true,
 			NetFlowRankingDuration: "1h",
-			NetFlowRankingLimit:    10,
+			NetFlowRankingLimit:    15,
 			// Price ranking data
 			EnablePriceRanking:   true,
 			PriceRankingDuration: "1h,4h,24h",
-			PriceRankingLimit:    10,
+			PriceRankingLimit:    15,
 		},
 		RiskControl: RiskControlConfig{
 			MaxPositions:                    3,   // Max 3 coins simultaneously (CODE ENFORCED)

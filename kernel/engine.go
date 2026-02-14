@@ -457,7 +457,7 @@ func fetchMarketDataWithStrategy(ctx *Context, engine *StrategyEngine) error {
 		primaryTimeframe = timeframes[0]
 	}
 	if klineCount <= 0 {
-		klineCount = 30
+		klineCount = 50
 	}
 
 	logger.Infof("📊 Strategy timeframes: %v, Primary: %s, Kline count: %d", timeframes, primaryTimeframe, klineCount)
@@ -950,7 +950,7 @@ func (e *StrategyEngine) FetchOIRankingData() *nofxos.OIRankingData {
 
 	limit := indicators.OIRankingLimit
 	if limit <= 0 {
-		limit = 10
+		limit = 15
 	}
 
 	logger.Infof("📊 Fetching OI ranking data (duration: %s, limit: %d)", duration, limit)
@@ -981,7 +981,7 @@ func (e *StrategyEngine) FetchNetFlowRankingData() *nofxos.NetFlowRankingData {
 
 	limit := indicators.NetFlowRankingLimit
 	if limit <= 0 {
-		limit = 10
+		limit = 15
 	}
 
 	logger.Infof("💰 Fetching NetFlow ranking data (duration: %s, limit: %d)", duration, limit)
@@ -1013,7 +1013,7 @@ func (e *StrategyEngine) FetchPriceRankingData() *nofxos.PriceRankingData {
 
 	limit := indicators.PriceRankingLimit
 	if limit <= 0 {
-		limit = 10
+		limit = 15
 	}
 
 	logger.Infof("📈 Fetching Price ranking data (durations: %s, limit: %d)", durations, limit)

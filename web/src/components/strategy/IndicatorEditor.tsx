@@ -352,7 +352,7 @@ export function IndicatorEditor({
                   ...config,
                   enable_oi_ranking: !config.enable_oi_ranking,
                   ...(!config.enable_oi_ranking && !config.oi_ranking_duration ? { oi_ranking_duration: '1h' } : {}),
-                  ...(!config.enable_oi_ranking && !config.oi_ranking_limit ? { oi_ranking_limit: 10 } : {}),
+                  ...(!config.enable_oi_ranking && !config.oi_ranking_limit ? { oi_ranking_limit: 15 } : {}),
                 })}
               >
                 <div className="flex items-center justify-between">
@@ -367,7 +367,7 @@ export function IndicatorEditor({
                       ...config,
                       enable_oi_ranking: e.target.checked,
                       ...(e.target.checked && !config.oi_ranking_duration ? { oi_ranking_duration: '1h' } : {}),
-                      ...(e.target.checked && !config.oi_ranking_limit ? { oi_ranking_limit: 10 } : {}),
+                      ...(e.target.checked && !config.oi_ranking_limit ? { oi_ranking_limit: 15 } : {}),
                     }) }}
                     disabled={disabled}
                     className="w-3.5 h-3.5 rounded accent-green-500"
@@ -387,7 +387,7 @@ export function IndicatorEditor({
                       <option value="24h">24h</option>
                     </select>
                     <select
-                      value={config.oi_ranking_limit || 10}
+                      value={config.oi_ranking_limit || 15}
                       onChange={(e) => !disabled && onChange({ ...config, oi_ranking_limit: parseInt(e.target.value) })}
                       disabled={disabled}
                       className="w-14 px-2 py-1 rounded text-[10px] bg-nofx-bg-lighter border border-[var(--panel-border)] text-nofx-text"
@@ -409,7 +409,7 @@ export function IndicatorEditor({
                   ...config,
                   enable_netflow_ranking: !config.enable_netflow_ranking,
                   ...(!config.enable_netflow_ranking && !config.netflow_ranking_duration ? { netflow_ranking_duration: '1h' } : {}),
-                  ...(!config.enable_netflow_ranking && !config.netflow_ranking_limit ? { netflow_ranking_limit: 10 } : {}),
+                  ...(!config.enable_netflow_ranking && !config.netflow_ranking_limit ? { netflow_ranking_limit: 15 } : {}),
                 })}
               >
                 <div className="flex items-center justify-between">
@@ -424,7 +424,7 @@ export function IndicatorEditor({
                       ...config,
                       enable_netflow_ranking: e.target.checked,
                       ...(e.target.checked && !config.netflow_ranking_duration ? { netflow_ranking_duration: '1h' } : {}),
-                      ...(e.target.checked && !config.netflow_ranking_limit ? { netflow_ranking_limit: 10 } : {}),
+                      ...(e.target.checked && !config.netflow_ranking_limit ? { netflow_ranking_limit: 15 } : {}),
                     }) }}
                     disabled={disabled}
                     className="w-3.5 h-3.5 rounded accent-amber-500"
@@ -444,7 +444,7 @@ export function IndicatorEditor({
                       <option value="24h">24h</option>
                     </select>
                     <select
-                      value={config.netflow_ranking_limit || 10}
+                      value={config.netflow_ranking_limit || 15}
                       onChange={(e) => !disabled && onChange({ ...config, netflow_ranking_limit: parseInt(e.target.value) })}
                       disabled={disabled}
                       className="w-14 px-2 py-1 rounded text-[10px] bg-nofx-bg-lighter border border-[var(--panel-border)] text-nofx-text"
@@ -466,7 +466,7 @@ export function IndicatorEditor({
                   ...config,
                   enable_price_ranking: !config.enable_price_ranking,
                   ...(!config.enable_price_ranking && !config.price_ranking_duration ? { price_ranking_duration: '1h,4h,24h' } : {}),
-                  ...(!config.enable_price_ranking && !config.price_ranking_limit ? { price_ranking_limit: 10 } : {}),
+                  ...(!config.enable_price_ranking && !config.price_ranking_limit ? { price_ranking_limit: 15 } : {}),
                 })}
               >
                 <div className="flex items-center justify-between">
@@ -481,7 +481,7 @@ export function IndicatorEditor({
                       ...config,
                       enable_price_ranking: e.target.checked,
                       ...(e.target.checked && !config.price_ranking_duration ? { price_ranking_duration: '1h,4h,24h' } : {}),
-                      ...(e.target.checked && !config.price_ranking_limit ? { price_ranking_limit: 10 } : {}),
+                      ...(e.target.checked && !config.price_ranking_limit ? { price_ranking_limit: 15 } : {}),
                     }) }}
                     disabled={disabled}
                     className="w-3.5 h-3.5 rounded accent-pink-500"
@@ -502,7 +502,7 @@ export function IndicatorEditor({
                       <option value="1h,4h,24h">{t('priceRankingMulti')}</option>
                     </select>
                     <select
-                      value={config.price_ranking_limit || 10}
+                      value={config.price_ranking_limit || 15}
                       onChange={(e) => !disabled && onChange({ ...config, price_ranking_limit: parseInt(e.target.value) })}
                       disabled={disabled}
                       className="w-14 px-2 py-1 rounded text-[10px] bg-nofx-bg-lighter border border-[var(--panel-border)] text-nofx-text"
@@ -579,7 +579,7 @@ export function IndicatorEditor({
                     !disabled &&
                     onChange({
                       ...config,
-                      klines: { ...config.klines, primary_count: parseInt(e.target.value) || 30 },
+                      klines: { ...config.klines, primary_count: parseInt(e.target.value) || 50 },
                     })
                   }
                   disabled={disabled}

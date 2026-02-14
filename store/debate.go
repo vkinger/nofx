@@ -85,7 +85,7 @@ type DebateSession struct {
 	TraderID        string            `json:"trader_id,omitempty"` // Trader to use for auto-execute
 	// OI Ranking data options
 	EnableOIRanking bool      `json:"enable_oi_ranking"` // Whether to include OI ranking data
-	OIRankingLimit  int       `json:"oi_ranking_limit"`  // Number of OI ranking entries (default 10)
+	OIRankingLimit  int       `json:"oi_ranking_limit"`  // Number of OI ranking entries (default 15)
 	OIDuration      string    `json:"oi_duration"`       // Duration for OI data (1h, 4h, 24h, etc.)
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
@@ -107,7 +107,7 @@ type DebateSessionDB struct {
 	AutoExecute     bool         `gorm:"column:auto_execute;default:false"`
 	TraderID        string       `gorm:"column:trader_id"`
 	EnableOIRanking bool         `gorm:"column:enable_oi_ranking;default:false"`
-	OIRankingLimit  int          `gorm:"column:oi_ranking_limit;default:10"`
+	OIRankingLimit  int          `gorm:"column:oi_ranking_limit;default:15"`
 	OIDuration      string       `gorm:"column:oi_duration;default:1h"`
 	CreatedAt       time.Time    `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt       time.Time    `gorm:"column:updated_at;autoUpdateTime"`
@@ -146,7 +146,7 @@ func (db *DebateSessionDB) toSession() *DebateSession {
 		s.PromptVariant = "balanced"
 	}
 	if s.OIRankingLimit == 0 {
-		s.OIRankingLimit = 10
+		s.OIRankingLimit = 15
 	}
 	if s.OIDuration == "" {
 		s.OIDuration = "1h"
@@ -258,7 +258,7 @@ func (s *DebateStore) CreateSession(session *DebateSession) error {
 		session.PromptVariant = "balanced"
 	}
 	if session.OIRankingLimit == 0 {
-		session.OIRankingLimit = 10
+		session.OIRankingLimit = 15
 	}
 	if session.OIDuration == "" {
 		session.OIDuration = "1h"
