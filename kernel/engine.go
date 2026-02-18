@@ -2359,37 +2359,11 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 			sb.WriteString(fmt.Sprintf("Patterns: %s\n", strings.Join(patterns, ", ")))
 		}
 
-		// === 量价配合分析 ===
-		if len(klines) >= 5 {
-			var upVolSum, downVolSum float64
-			var upCount, downCount int
-			for _, k := range klines[len(klines)-5:] {
-				if k.Close > k.Open {
-					upVolSum += k.Volume
-					upCount++
-				} else if k.Close < k.Open {
-					downVolSum += k.Volume
-					downCount++
-				}
-			}
-			vpSignal := ""
-			if upCount > 0 && downCount > 0 {
-				avgUpVol := upVolSum / float64(upCount)
-				avgDownVol := downVolSum / float64(downCount)
-				if avgUpVol > avgDownVol*1.5 {
-					vpSignal = "HEALTHY_UPTREND (up candles have higher volume)"
-				} else if avgDownVol > avgUpVol*1.5 {
-					vpSignal = "DISTRIBUTION (down candles have higher volume)"
-				} else {
-					vpSignal = "NEUTRAL (balanced volume)"
-				}
-			} else if upCount > 0 && downCount == 0 {
-				vpSignal = "STRONG_BUY (all up candles)"
-			} else if downCount > 0 && upCount == 0 {
-				vpSignal = "STRONG_SELL (all down candles)"
-			}
-			if vpSignal != "" {
-				sb.WriteString(fmt.Sprintf("Volume-Price: %s\n", vpSignal))
+		// === 量价配合分析（全部量价类型，参考量价交易宝典）===
+		if len(klines) >= 3 {
+			vpSignals := DetectVolumePriceSignals(klines)
+			if len(vpSignals) > 0 {
+				sb.WriteString(fmt.Sprintf("Volume-Price: %s\n", strings.Join(vpSignals, ", ")))
 			}
 		}
 

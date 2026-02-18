@@ -756,12 +756,24 @@ var SignalDictionary = map[string]map[string]BilingualFieldDef{
 		"BEARISH_DIVERGENCE": {NameZH: "看跌背离", NameEN: "Bearish Divergence", DescZH: "价格创新高但RSI未创新高，潜在回调", DescEN: "Price makes higher high but RSI doesn't, potential pullback"},
 	},
 	"VolumePriceSignals": {
-		"HEALTHY_UPTREND":   {NameZH: "健康上涨", NameEN: "Healthy Uptrend", DescZH: "价涨量增，趋势健康可持续", DescEN: "Price up with volume increase, healthy sustainable trend"},
-		"HEALTHY_DOWNTREND": {NameZH: "健康下跌", NameEN: "Healthy Downtrend", DescZH: "价跌量增，下跌趋势确认", DescEN: "Price down with volume increase, downtrend confirmed"},
-		"DISTRIBUTION":      {NameZH: "派发", NameEN: "Distribution", DescZH: "价涨量缩，上涨动能减弱", DescEN: "Price up but volume decreasing, weakening momentum"},
-		"ACCUMULATION":      {NameZH: "吸筹", NameEN: "Accumulation", DescZH: "价跌量缩，抛压减弱", DescEN: "Price down but volume decreasing, selling pressure fading"},
+		// 基础四象（价涨/跌 × 量增/缩）
+		"HEALTHY_UPTREND":   {NameZH: "价涨量增/健康上涨", NameEN: "Healthy Uptrend", DescZH: "价涨量增、量价齐升，多方进攻，吸筹或趋势延续；若爆巨量需防见顶", DescEN: "Price up with volume increase, bullish continuation or accumulation; watch for climax volume"},
+		"HEALTHY_DOWNTREND": {NameZH: "价跌量增/放量大跌", NameEN: "Heavy Selling", DescZH: "价跌量增，放量大跌多为高位出货或下跌确认，抛压大", DescEN: "Price down with volume increase, distribution or downtrend confirmation"},
+		"DISTRIBUTION":      {NameZH: "价涨量缩/派发或量价背离", NameEN: "Distribution", DescZH: "价涨量缩，越涨量越小=买方动能减弱、短期回调；或高位量价背离", DescEN: "Price up volume down, weakening buying or topping divergence"},
+		"ACCUMULATION":      {NameZH: "价跌量缩/吸筹或洗盘", NameEN: "Accumulation", DescZH: "价跌量缩，抛压减弱；洗盘阶段缩量小跌后多延续涨势，止跌可择机进场", DescEN: "Price down volume down, selling fading; washout then often resume uptrend"},
 		"STRONG_BUY":        {NameZH: "强力买入", NameEN: "Strong Buy", DescZH: "价涨伴随成交量激增(>2倍)", DescEN: "Price up with volume surge (>2x average)"},
 		"STRONG_SELL":       {NameZH: "强力卖出", NameEN: "Strong Sell", DescZH: "价跌伴随成交量激增(>2倍)", DescEN: "Price down with volume surge (>2x average)"},
+		// 量价交易宝典：上涨阶段
+		"STAGNATION_WITH_VOLUME": {NameZH: "放量滞涨", NameEN: "Stagnation on Volume", DescZH: "价涨但越涨越慢、量却放大，对手盘增大、见顶信号，减仓或清仓", DescEN: "Price up but slowing with volume up, topping signal, reduce or exit"},
+		"SHRINK_UP_LOCK":         {NameZH: "缩量大涨/主力锁仓", NameEN: "Shrink Up Lock", DescZH: "价涨量缩，主力高控盘、锁仓，无抛压，趋势中段可持有；巨量不涨时再考虑减仓", DescEN: "Price up volume down, lock-in rally, hold until climax volume"},
+		// 量价交易宝典：下跌阶段
+		"BOTTOM_WITH_VOLUME":     {NameZH: "放量小跌/见底承接", NameEN: "Bottom with Volume", DescZH: "价跌但越跌越慢、量放大，买方进场承接，见底信号，可考虑开仓", DescEN: "Price down but slowing with volume up, buyers stepping in, bottoming signal"},
+		"SHRINK_DOWN_CONTINUE":   {NameZH: "缩量大跌/下跌中继", NameEN: "Shrink Down Continue", DescZH: "价跌量缩，一致恐慌、无人接盘，下跌中继，缩量下跌还要跌", DescEN: "Price down volume down, panic consensus, downtrend continuation"},
+		// 量价交易宝典：平量阶段
+		"FLAT_VOLUME_STAGNATION": {NameZH: "平量滞涨", NameEN: "Flat Volume Stagnation", DescZH: "价涨越涨越慢、量平，同样代价涨不动=对手盘增大，小心见顶", DescEN: "Price up slowing with flat volume, topping risk"},
+		"FLAT_VOLUME_RALLY":      {NameZH: "平量大涨", NameEN: "Flat Volume Rally", DescZH: "价涨越涨越快、量平或缩，一致看涨、主力锁仓，后市持续拉高", DescEN: "Price up accelerating with flat/shrink volume, lock-in, continuation"},
+		"FLAT_VOLUME_DECLINE":    {NameZH: "平量价缩/平量大跌", NameEN: "Flat Volume Decline", DescZH: "价跌量平或缩，一致看空或下跌中继半山腰，不可抄底", DescEN: "Price down with flat/shrink volume, downtrend continuation, do not catch knife"},
+		"NEUTRAL":                {NameZH: "量价均衡", NameEN: "Neutral", DescZH: "阳线与阴线对应量能相当，多空均衡", DescEN: "Balanced volume on up/down candles"},
 	},
 	"OIPriceSignals": {
 		"LONG_BUILD":  {NameZH: "多头建仓", NameEN: "Long Build", DescZH: "OI↑+价格↑，新多头入场，看涨延续", DescEN: "OI up + Price up, new longs entering, bullish continuation"},
@@ -824,6 +836,10 @@ func getSignalExplanationZH(modelSize ModelSize) string {
 		sb.WriteString("上升: THREE_WHITE_SOLDIERS 三白兵 | HIGH_SIDE_COIL 高位盘旋 | FIVE_YANG_LINEUP 五阳上阵 | CONSECUTIVE_GAP_UP 连续跳高\n")
 		sb.WriteString("单根类型: DOJI LONG_LEGGED_DOJI T_LINE INVERTED_T_LINE HAMMER INVERTED_HAMMER SHOOTING_STAR SPINNING_TOP STRONG_BULL STRONG_BEAR MARUBOZU_BULL MARUBOZU_BEAR BALD_BULL BALD_BEAR FOOTLESS_BULL FOOTLESS_BEAR SMALL_BULL SMALL_BEAR LIMIT_UP LIMIT_DOWN（见 SingleCandleTypes 字典）\n\n")
 
+		sb.WriteString("#### 量价关系（参考量价交易宝典）\n")
+		sb.WriteString("上涨阶段: 价涨量增=健康上涨/吸筹(HEALTHY_UPTREND) | 价涨量缩=派发或量价背离(DISTRIBUTION) | 缩量大涨=主力锁仓延续(SHRINK_UP_LOCK) | 放量滞涨=见顶减仓(STAGNATION_WITH_VOLUME) | 平量滞涨=见顶(FLAT_VOLUME_STAGNATION) | 平量大涨=锁仓拉高(FLAT_VOLUME_RALLY)\n")
+		sb.WriteString("下跌阶段: 价跌量增=放量大跌出货(HEALTHY_DOWNTREND)或放量小跌见底(BOTTOM_WITH_VOLUME) | 价跌量缩=吸筹/洗盘(ACCUMULATION)或缩量大跌中继(SHRINK_DOWN_CONTINUE) | 平量价缩/平量大跌=下跌中继(FLAT_VOLUME_DECLINE)\n\n")
+
 		sb.WriteString("#### 技术指标\n")
 		sb.WriteString("GOLDEN_CROSS=金叉(看涨) | DEATH_CROSS=死叉(看空) | BULLISH_DIVERGENCE=看涨背离 | BEARISH_DIVERGENCE=看跌背离\n\n")
 
@@ -865,6 +881,10 @@ func getSignalExplanationEN(modelSize ModelSize) string {
 		sb.WriteString("Bottoming: MORNING_STAR/MORNING_DOJI_STAR | BULLISH_MEETING | PIERCING_LINE | RISING_SUN | BULLISH_ENGULFING | BOTTOM_FLAT_LOWS | BOTTOM_ROUNDING_BOTTOM | BOTTOM_FIVE_TIER_LINE | BOTTOM_TOWER | LOW_DOUBLE_STAR_BOTTOM (consecutive 2 doji) | DOUBLE_NEEDLE_BOTTOM (consecutive 2 long lower shadow) | VOLUME_SHRINK_TRUE_BOTTOM (non-consecutive star) | single-K HAMMER/INVERTED_HAMMER see SingleCandleTypes\n")
 		sb.WriteString("Bullish continuation: THREE_WHITE_SOLDIERS | HIGH_SIDE_COIL | FIVE_YANG_LINEUP | CONSECUTIVE_GAP_UP\n")
 		sb.WriteString("Single-candle types: DOJI LONG_LEGGED_DOJI T_LINE INVERTED_T_LINE HAMMER INVERTED_HAMMER SHOOTING_STAR SPINNING_TOP STRONG_BULL STRONG_BEAR MARUBOZU_BULL MARUBOZU_BEAR BALD_BULL BALD_BEAR FOOTLESS_BULL FOOTLESS_BEAR SMALL_BULL SMALL_BEAR LIMIT_UP LIMIT_DOWN (see SingleCandleTypes dict)\n\n")
+
+		sb.WriteString("#### Volume-Price (量价交易宝典)\n")
+		sb.WriteString("Uptrend: price up + volume up = HEALTHY_UPTREND | price up + volume down = DISTRIBUTION or SHRINK_UP_LOCK (lock-in) | volume up + price slowing = STAGNATION_WITH_VOLUME (top) | flat volume + slowing = FLAT_VOLUME_STAGNATION | flat volume + accelerating = FLAT_VOLUME_RALLY\n")
+		sb.WriteString("Downtrend: price down + volume up = HEALTHY_DOWNTREND (distribution) or BOTTOM_WITH_VOLUME (bottom) | price down + volume down = ACCUMULATION or SHRINK_DOWN_CONTINUE (continuation) | flat volume + decline = FLAT_VOLUME_DECLINE\n\n")
 
 		sb.WriteString("#### Technical Signals\n")
 		sb.WriteString("GOLDEN_CROSS=bullish(EMA20>50) | DEATH_CROSS=bearish(EMA20<50) | BULLISH_DIVERGENCE=price low but RSI not | BEARISH_DIVERGENCE=price high but RSI not\n\n")
