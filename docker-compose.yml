@@ -26,9 +26,10 @@ services:
         max-file: "3"
     networks:
       - nofx-network
-  # PostgreSQL Database
+  # PostgreSQL Database (支持向量检索版)
   nofx-postgres:
-    image: postgres:16-alpine
+    # 替换官方镜像为预装 pgvector 的版本，依然保持 alpine 的轻量
+    image: pgvector/pgvector:pg16
     container_name: nofx-postgres
     restart: unless-stopped
     environment:
@@ -41,6 +42,8 @@ services:
       - "${DB_PORT:-5432}:5432"
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
+      # 增加一个初始化脚本目录，用于自动开启插件
+      - ./scripts/init-db:/docker-entrypoint-initdb.d
       - /etc/localtime:/etc/localtime:ro
     logging:
       driver: json-file
@@ -50,7 +53,7 @@ services:
     networks:
       - nofx-network
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-nofx}" ]
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-nofx_user} -d ${DB_NAME:-nofx}" ]
       interval: 10s
       timeout: 5s
       retries: 5
