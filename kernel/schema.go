@@ -838,7 +838,8 @@ func getSignalExplanationZH(modelSize ModelSize) string {
 
 		sb.WriteString("#### 量价关系（参考量价交易宝典）\n")
 		sb.WriteString("上涨阶段: 价涨量增=健康上涨/吸筹(HEALTHY_UPTREND) | 价涨量缩=派发或量价背离(DISTRIBUTION) | 缩量大涨=主力锁仓延续(SHRINK_UP_LOCK) | 放量滞涨=见顶减仓(STAGNATION_WITH_VOLUME) | 平量滞涨=见顶(FLAT_VOLUME_STAGNATION) | 平量大涨=锁仓拉高(FLAT_VOLUME_RALLY)\n")
-		sb.WriteString("下跌阶段: 价跌量增=放量大跌出货(HEALTHY_DOWNTREND)或放量小跌见底(BOTTOM_WITH_VOLUME) | 价跌量缩=吸筹/洗盘(ACCUMULATION)或缩量大跌中继(SHRINK_DOWN_CONTINUE) | 平量价缩/平量大跌=下跌中继(FLAT_VOLUME_DECLINE)\n\n")
+		sb.WriteString("下跌阶段: 价跌量增=放量大跌出货(HEALTHY_DOWNTREND)或放量小跌见底(BOTTOM_WITH_VOLUME) | 价跌量缩=吸筹/洗盘(ACCUMULATION)或缩量大跌中继(SHRINK_DOWN_CONTINUE) | 平量价缩/平量大跌=下跌中继(FLAT_VOLUME_DECLINE)\n")
+		sb.WriteString("分时摘要(短周期1m/3m/5m/15m): Slope=斜率(steep_up=类45度角拉升) | PM=价格动量 VM=量能动量 | 量价一致/背离/恐慌/放量跌/缩量跌 | 强力买入=斜率陡峭+当前量>均量\n\n")
 
 		sb.WriteString("#### 技术指标\n")
 		sb.WriteString("GOLDEN_CROSS=金叉(看涨) | DEATH_CROSS=死叉(看空) | BULLISH_DIVERGENCE=看涨背离 | BEARISH_DIVERGENCE=看跌背离\n\n")
@@ -884,7 +885,8 @@ func getSignalExplanationEN(modelSize ModelSize) string {
 
 		sb.WriteString("#### Volume-Price (量价交易宝典)\n")
 		sb.WriteString("Uptrend: price up + volume up = HEALTHY_UPTREND | price up + volume down = DISTRIBUTION or SHRINK_UP_LOCK (lock-in) | volume up + price slowing = STAGNATION_WITH_VOLUME (top) | flat volume + slowing = FLAT_VOLUME_STAGNATION | flat volume + accelerating = FLAT_VOLUME_RALLY\n")
-		sb.WriteString("Downtrend: price down + volume up = HEALTHY_DOWNTREND (distribution) or BOTTOM_WITH_VOLUME (bottom) | price down + volume down = ACCUMULATION or SHRINK_DOWN_CONTINUE (continuation) | flat volume + decline = FLAT_VOLUME_DECLINE\n\n")
+		sb.WriteString("Downtrend: price down + volume up = HEALTHY_DOWNTREND (distribution) or BOTTOM_WITH_VOLUME (bottom) | price down + volume down = ACCUMULATION or SHRINK_DOWN_CONTINUE (continuation) | flat volume + decline = FLAT_VOLUME_DECLINE\n")
+		sb.WriteString("Intraday summary (1m/3m/5m/15m): Slope (steep_up=~45° rally), PM=price momentum VM=volume momentum, match=一致/背离/恐慌; STRONG_BUY when steep slope + volume above average\n\n")
 
 		sb.WriteString("#### Technical Signals\n")
 		sb.WriteString("GOLDEN_CROSS=bullish(EMA20>50) | DEATH_CROSS=bearish(EMA20<50) | BULLISH_DIVERGENCE=price low but RSI not | BEARISH_DIVERGENCE=price high but RSI not\n\n")

@@ -2162,7 +2162,7 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 		for _, tf := range timeframes {
 			if tfData, ok := data.TimeframeData[tf]; ok {
 				sb.WriteString(fmt.Sprintf("=== %s Timeframe (oldest → latest) ===\n\n", strings.ToUpper(tf)))
-				e.formatTimeframeSeriesData(&sb, tfData, indicators)
+				e.formatTimeframeSeriesData(&sb, tfData, indicators, tf)
 			}
 		}
 	} else {
@@ -2232,7 +2232,7 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 	return sb.String()
 }
 
-func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *market.TimeframeSeriesData, indicators store.IndicatorConfig) {
+func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *market.TimeframeSeriesData, indicators store.IndicatorConfig, timeframe string) {
 	// 优化版摘要：平衡决策质量与token消耗
 	klines := data.Klines
 	if len(klines) > 0 {
@@ -2364,6 +2364,21 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 			vpSignals := DetectVolumePriceSignals(klines)
 			if len(vpSignals) > 0 {
 				sb.WriteString(fmt.Sprintf("Volume-Price: %s\n", strings.Join(vpSignals, ", ")))
+			}
+		}
+
+		// === 分时摘要（短周期：按根数/按分钟两套斜率 + ATR 归一化，供观察员）===
+		if IsShortTimeframe(timeframe) && len(klines) >= 2 {
+			atr := float64(0)
+			if data != nil && data.ATR14 > 0 {
+				atr = data.ATR14
+			}
+			if summary, ok := ComputeIntradaySummary(klines, 10, timeframe, atr); ok {
+				sb.WriteString(FormatIntradaySummaryForPrompt(summary, true))
+				if summary.StrongBuy {
+					sb.WriteString(" [STRONG_BUY]")
+				}
+				sb.WriteString("\n")
 			}
 		}
 
