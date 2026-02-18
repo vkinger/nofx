@@ -125,6 +125,7 @@ function MessageCard({ msg }: { msg: DebateMessage }) {
 
   // Parse content into sections
   const parseContent = (c: string) => {
+    const thinking = c.match(/<thinking>([\s\S]*?)<\/thinking>/i)?.[1]?.trim()
     const reasoning = c.match(/<reasoning>([\s\S]*?)<\/reasoning>/i)?.[1]?.trim()
     const analysis = c.match(/<analysis>([\s\S]*?)<\/analysis>/i)?.[1]?.trim()
     const argument = c.match(/<argument>([\s\S]*?)<\/argument>/i)?.[1]?.trim()
@@ -134,7 +135,7 @@ function MessageCard({ msg }: { msg: DebateMessage }) {
     const cleanContent = c.replace(/<\/?[^>]+(>|$)/g, '').trim()
 
     return {
-      reasoning: reasoning || analysis || argument,
+      reasoning: thinking || reasoning || analysis || argument,
       decision,
       fullContent: cleanContent
     }

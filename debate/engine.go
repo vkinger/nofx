@@ -394,11 +394,11 @@ You are participating in a multi-AI market debate as %s %s.
 ### CRITICAL: Output Format (MUST follow exactly)
 
 First write your analysis:
-<reasoning>
+<thinking>
 - Your market analysis for each coin with specific data references
 - Your main trading thesis and arguments
 - Response to other participants (if round > 1)
-</reasoning>
+</thinking>
 
 Then output your decisions in STRICT JSON ARRAY format (can include multiple coins):
 <decision>

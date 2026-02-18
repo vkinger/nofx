@@ -31,8 +31,9 @@ var (
 	reArrayOpenSpace = regexp.MustCompile(`^\[\s+\{`)
 	reInvisibleRunes = regexp.MustCompile("[\u200B\u200C\u200D\uFEFF]")
 
-	// XML tag extraction (supports any characters in reasoning chain)
-	reReasoningTag = regexp.MustCompile(`(?s)<reasoning>(.*?)</reasoning>`)
+	// XML tag extraction: use "thinking" for top-level 思维分析 to avoid conflict with decision-level "reasoning"
+	reThinkingTag  = regexp.MustCompile(`(?s)<thinking>(.*?)</thinking>`)
+	reReasoningTag = regexp.MustCompile(`(?s)<reasoning>(.*?)</reasoning>`) // legacy
 	reDecisionTag  = regexp.MustCompile(`(?s)<decision>(.*?)</decision>`)
 )
 
@@ -1186,10 +1187,10 @@ func (e *StrategyEngine) buildOutputFormatLegacy(accountEquity float64, btcEthPo
 	sb.WriteString("**CRITICAL: You MUST follow this format exactly. Any deviation will cause parsing errors.**\n\n")
 
 	sb.WriteString("## Format Structure (Required)\n\n")
-	sb.WriteString("You MUST use XML tags to separate reasoning and decision:\n\n")
-	sb.WriteString("<reasoning>\n")
+	sb.WriteString("You MUST use XML tags to separate thinking and decision:\n\n")
+	sb.WriteString("<thinking>\n")
 	sb.WriteString("Your analysis process (brief, no excessive verbosity)\n")
-	sb.WriteString("</reasoning>\n\n")
+	sb.WriteString("</thinking>\n\n")
 	sb.WriteString("<decision>\n")
 	sb.WriteString("JSON array here (see format template below)\n")
 	sb.WriteString("</decision>\n\n")
@@ -1206,9 +1207,9 @@ func (e *StrategyEngine) buildOutputFormatLegacy(accountEquity float64, btcEthPo
 	sb.WriteString("### Example Format (Values are placeholders - 数值仅为占位符)\n\n")
 	sb.WriteString("**Note: The values below are FORMAT EXAMPLES only. Replace ALL values with your calculated decisions.**\n\n")
 	examplePositionSize := accountEquity * btcEthPosValueRatio
-	sb.WriteString("<reasoning>\n")
+	sb.WriteString("<thinking>\n")
 	sb.WriteString("Example analysis: Market shows bearish signals. RSI overbought. OI decreasing.\n")
-	sb.WriteString("</reasoning>\n\n")
+	sb.WriteString("</thinking>\n\n")
 	sb.WriteString("<decision>\n")
 	sb.WriteString("```json\n[\n")
 	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"BTCUSDT\", \"action\": \"open_short\", \"leverage\": %d, \"position_size_usd\": %.0f, \"stop_loss\": 97000, \"take_profit\": 91000, \"confidence\": 85, \"risk_usd\": 300},\n",
@@ -1312,7 +1313,7 @@ func (e *StrategyEngine) buildOutputFormatWithPromptIntegration(accountEquity fl
 		sb.WriteString("**必须**使用以下JSON对象格式输出（包含思维链和决策数组）：\n\n")
 		sb.WriteString("```json\n")
 		sb.WriteString("{\n")
-		sb.WriteString("  \"reasoning\": \"思维链分析过程...\",\n")
+		sb.WriteString("  \"thinking\": \"思维链分析过程...\",\n")
 		sb.WriteString("  \"decisions\": [\n")
 		sb.WriteString("    {\n")
 		sb.WriteString("      \"symbol\": \"BTCUSDT\",\n")
@@ -1337,7 +1338,7 @@ func (e *StrategyEngine) buildOutputFormatWithPromptIntegration(accountEquity fl
 		sb.WriteString("\n```\n\n")
 
 		sb.WriteString("### 关键字段说明\n\n")
-		sb.WriteString(fmt.Sprintf("- **reasoning**: 思维链分析（必需，至少50字符），详细说明分析思路、市场判断、风险评估\n"))
+		sb.WriteString(fmt.Sprintf("- **thinking**: 思维链分析（必需，至少50字符），详细说明分析思路、市场判断、风险评估\n"))
 		sb.WriteString("- **decisions**: 决策数组（必需，0-10个决策对象）\n")
 		sb.WriteString(fmt.Sprintf("- **action**: 必须是以下之一：open_long, open_short, close_long, close_short, hold, wait, partial_close, full_close, add_position\n"))
 		sb.WriteString(fmt.Sprintf("- **confidence**: 0-100整数（开新仓时要求≥%d）\n", riskControl.MinConfidence))
@@ -1351,7 +1352,7 @@ func (e *StrategyEngine) buildOutputFormatWithPromptIntegration(accountEquity fl
 		examplePositionSize := accountEquity * btcEthPosValueRatio
 		sb.WriteString("```json\n")
 		sb.WriteString("{\n")
-		sb.WriteString("  \"reasoning\": \"分析账户状态：当前保证金使用率25%，在安全范围内。分析持仓：BTCUSDT当前PnL +2.96%，接近历史峰值+2.99%，回撤仅0.03%。5分钟K线显示价格接近短期阻力位，成交量开始萎缩，上涨动能减弱。建议部分平仓锁定利润。\",\n")
+		sb.WriteString("  \"thinking\": \"分析账户状态：当前保证金使用率25%，在安全范围内。分析持仓：BTCUSDT当前PnL +2.96%，接近历史峰值+2.99%，回撤仅0.03%。5分钟K线显示价格接近短期阻力位，成交量开始萎缩，上涨动能减弱。建议部分平仓锁定利润。\",\n")
 		sb.WriteString("  \"decisions\": [\n")
 		sb.WriteString(fmt.Sprintf("    {\"symbol\": \"BTCUSDT\", \"action\": \"open_short\", \"leverage\": %d, \"position_size_usd\": %.0f, \"stop_loss\": 97000, \"take_profit\": 91000, \"confidence\": 85, \"reasoning\": \"市场显示看跌信号，RSI超买，OI下降\"},\n",
 			riskControl.BTCETHMaxLeverage, examplePositionSize))
@@ -1369,10 +1370,10 @@ func (e *StrategyEngine) buildOutputFormatWithPromptIntegration(accountEquity fl
 		sb.WriteString("**CRITICAL: You MUST follow this format exactly. Any deviation will cause parsing errors.**\n\n")
 
 		sb.WriteString("## Output Format Requirements\n\n")
-		sb.WriteString("**Must** use the following JSON object format (containing reasoning chain and decisions array):\n\n")
+		sb.WriteString("**Must** use the following JSON object format (containing thinking chain and decisions array):\n\n")
 		sb.WriteString("```json\n")
 		sb.WriteString("{\n")
-		sb.WriteString("  \"reasoning\": \"Chain of thought analysis...\",\n")
+		sb.WriteString("  \"thinking\": \"Chain of thought analysis...\",\n")
 		sb.WriteString("  \"decisions\": [\n")
 		sb.WriteString("    {\n")
 		sb.WriteString("      \"symbol\": \"BTCUSDT\",\n")
@@ -1397,7 +1398,7 @@ func (e *StrategyEngine) buildOutputFormatWithPromptIntegration(accountEquity fl
 		sb.WriteString("\n```\n\n")
 
 		sb.WriteString("### Key Field Descriptions\n\n")
-		sb.WriteString(fmt.Sprintf("- **reasoning**: Chain of thought analysis (required, min 50 chars), detailing analysis approach, market judgment, risk assessment\n"))
+		sb.WriteString(fmt.Sprintf("- **thinking**: Chain of thought analysis (required, min 50 chars), detailing analysis approach, market judgment, risk assessment\n"))
 		sb.WriteString("- **decisions**: Decisions array (required, 0-10 decision objects)\n")
 		sb.WriteString(fmt.Sprintf("- **action**: Must be one of: open_long, open_short, close_long, close_short, hold, wait, partial_close, full_close, add_position\n"))
 		sb.WriteString(fmt.Sprintf("- **confidence**: Integer 0-100 (opening positions require ≥%d)\n", riskControl.MinConfidence))
@@ -1411,7 +1412,7 @@ func (e *StrategyEngine) buildOutputFormatWithPromptIntegration(accountEquity fl
 		examplePositionSize := accountEquity * btcEthPosValueRatio
 		sb.WriteString("```json\n")
 		sb.WriteString("{\n")
-		sb.WriteString("  \"reasoning\": \"Analyze account status: Current margin usage 25%, within safe range. Analyze positions: BTCUSDT current PnL +2.96%, near historical peak +2.99%, only 0.03% pullback. 5M chart shows price approaching short-term resistance, volume declining, upward momentum weakening. Suggest partial close to lock profits.\",\n")
+		sb.WriteString("  \"thinking\": \"Analyze account status: Current margin usage 25%, within safe range. Analyze positions: BTCUSDT current PnL +2.96%, near historical peak +2.99%, only 0.03% pullback. 5M chart shows price approaching short-term resistance, volume declining, upward momentum weakening. Suggest partial close to lock profits.\",\n")
 		sb.WriteString("  \"decisions\": [\n")
 		sb.WriteString(fmt.Sprintf("    {\"symbol\": \"BTCUSDT\", \"action\": \"open_short\", \"leverage\": %d, \"position_size_usd\": %.0f, \"stop_loss\": 97000, \"take_profit\": 91000, \"confidence\": 85, \"reasoning\": \"Market shows bearish signals, RSI overbought, OI decreasing\"},\n",
 			riskControl.BTCETHMaxLeverage, examplePositionSize))
@@ -1590,10 +1591,10 @@ func (e *StrategyEngine) buildOutputFormatWithJSONSchemaAPI(accountEquity float6
 		sb.WriteString("**重要：模型已启用JSON Schema结构化输出，输出格式将严格按照Schema验证。**\n\n")
 		sb.WriteString("## 输出格式要求\n\n")
 		sb.WriteString("**必须**使用以下JSON对象格式输出（包含思维链和决策数组）：\n\n")
-		sb.WriteString("⚠️ **关键提醒**：最外层的 `reasoning` 字段是JSON Schema中的必需字段（required），绝对不能省略！即使 `decisions` 数组为空，也必须提供 `reasoning` 字段。\n\n")
+		sb.WriteString("⚠️ **关键提醒**：最外层的 `thinking` 字段是JSON Schema中的必需字段（required），绝对不能省略！即使 `decisions` 数组为空，也必须提供 `thinking` 字段。\n\n")
 		sb.WriteString("```json\n")
 		sb.WriteString("{\n")
-		sb.WriteString("  \"reasoning\": \"思维链分析过程...\",\n")
+		sb.WriteString("  \"thinking\": \"思维链分析过程...\",\n")
 		sb.WriteString("  \"decisions\": [\n")
 		sb.WriteString("    {\n")
 		sb.WriteString("      \"symbol\": \"BTCUSDT\",\n")
@@ -1610,7 +1611,7 @@ func (e *StrategyEngine) buildOutputFormatWithJSONSchemaAPI(accountEquity float6
 		sb.WriteString("```\n\n")
 
 		sb.WriteString("### 关键要求\n\n")
-		sb.WriteString(fmt.Sprintf("- **reasoning**: 思维链分析（必需，至少50字符）\n"))
+		sb.WriteString(fmt.Sprintf("- **thinking**: 思维链分析（必需，至少50字符）\n"))
 		sb.WriteString("- **decisions**: 决策数组（必需，0-10个决策）\n")
 		sb.WriteString(fmt.Sprintf("- **action**: 必须是以下之一：open_long, open_short, close_long, close_short, hold, wait\n"))
 		sb.WriteString(fmt.Sprintf("- **confidence**: 0-100整数（开新仓时要求≥%d）\n", riskControl.MinConfidence))
@@ -1623,10 +1624,10 @@ func (e *StrategyEngine) buildOutputFormatWithJSONSchemaAPI(accountEquity float6
 	} else {
 		sb.WriteString("**Important: Model has JSON Schema structured output enabled. Output format will be strictly validated against Schema.**\n\n")
 		sb.WriteString("## Output Format Requirements\n\n")
-		sb.WriteString("**Must** use the following JSON object format (containing reasoning chain and decisions array):\n\n")
+		sb.WriteString("**Must** use the following JSON object format (containing thinking chain and decisions array):\n\n")
 		sb.WriteString("```json\n")
 		sb.WriteString("{\n")
-		sb.WriteString("  \"reasoning\": \"Chain of thought analysis...\",\n")
+		sb.WriteString("  \"thinking\": \"Chain of thought analysis...\",\n")
 		sb.WriteString("  \"decisions\": [\n")
 		sb.WriteString("    {\n")
 		sb.WriteString("      \"symbol\": \"BTCUSDT\",\n")
@@ -1643,7 +1644,7 @@ func (e *StrategyEngine) buildOutputFormatWithJSONSchemaAPI(accountEquity float6
 		sb.WriteString("```\n\n")
 
 		sb.WriteString("### Key Requirements\n\n")
-		sb.WriteString(fmt.Sprintf("- **reasoning**: Chain of thought analysis (required, min 50 chars)\n"))
+		sb.WriteString(fmt.Sprintf("- **thinking**: Chain of thought analysis (required, min 50 chars)\n"))
 		sb.WriteString("- **decisions**: Decisions array (required, 0-10 decisions)\n")
 		sb.WriteString(fmt.Sprintf("- **action**: Must be one of: open_long, open_short, close_long, close_short, hold, wait\n"))
 		sb.WriteString(fmt.Sprintf("- **confidence**: Integer 0-100 (opening positions require ≥%d)\n", riskControl.MinConfidence))
@@ -3104,52 +3105,66 @@ func parseFullDecisionResponse(aiResponse string, accountEquity float64, btcEthL
 	}, nil
 }
 
-func extractCoTTrace(response string) string {
-	// 优先尝试新格式：JSON对象中的reasoning字段
-	type newFormatResponse struct {
-		Reasoning string     `json:"reasoning"`
-		Decisions []Decision `json:"decisions"`
+// extractThinkingFromObject 从 JSON 对象字符串中提取 thinking 或 reasoning 字段（思维链）
+func extractThinkingFromObject(jsonStr string) string {
+	var v struct {
+		Thinking  string `json:"thinking"`
+		Reasoning string `json:"reasoning"`
 	}
+	if err := json.Unmarshal([]byte(jsonStr), &v); err != nil {
+		return ""
+	}
+	chain := strings.TrimSpace(v.Thinking)
+	if chain == "" {
+		chain = strings.TrimSpace(v.Reasoning)
+	}
+	return chain
+}
 
-	// 尝试解析新格式的JSON对象
+func extractCoTTrace(response string) string {
 	s := removeInvisibleRunes(response)
 	s = strings.TrimSpace(s)
 	s = fixMissingQuotes(s)
 
-	// 查找JSON对象（包含reasoning和decisions字段）
-	// 支持两种顺序：{"reasoning": ..., "decisions": ...} 或 {"decisions": ..., "reasoning": ...}
+	// 查找JSON对象：支持 thinking 或 reasoning（thinking 优先）
 	var jsonObjStart int = -1
-
-	// 先尝试查找 {"reasoning" 开头
-	if idx := strings.Index(s, `{"reasoning"`); idx >= 0 {
+	if idx := strings.Index(s, `{"thinking"`); idx >= 0 {
+		jsonObjStart = idx
+	} else if idx := strings.Index(s, `{"reasoning"`); idx >= 0 {
 		jsonObjStart = idx
 	} else if idx := strings.Index(s, `{"decisions"`); idx >= 0 {
-		// 如果找不到 {"reasoning"，尝试查找 {"decisions" 开头
 		jsonObjStart = idx
 	}
 
 	if jsonObjStart >= 0 {
-		// 找到可能的JSON对象开始位置，尝试提取完整的JSON对象
 		jsonObjEnd := findMatchingBrace(s, jsonObjStart)
 		if jsonObjEnd > jsonObjStart {
 			jsonObjStr := s[jsonObjStart : jsonObjEnd+1]
-			var newFormat newFormatResponse
-			if err := json.Unmarshal([]byte(jsonObjStr), &newFormat); err == nil {
-				if newFormat.Reasoning != "" {
-					logger.Infof("✓ Extracted reasoning chain using new JSON format (reasoning field)")
-					return strings.TrimSpace(newFormat.Reasoning)
-				} else {
-					logger.Warnf("⚠️  JSON object parsed but reasoning field is empty. JSON: %s", jsonObjStr[:min(len(jsonObjStr), 200)])
-				}
-			} else {
-				logger.Warnf("⚠️  Failed to parse JSON object for reasoning: %v. JSON start: %s", err, jsonObjStr[:min(len(jsonObjStr), 200)])
+			if chain := extractThinkingFromObject(jsonObjStr); chain != "" {
+				logger.Infof("✓ Extracted reasoning chain using new JSON format (thinking/reasoning field)")
+				return chain
 			}
-		} else {
-			logger.Warnf("⚠️  Failed to find matching brace for JSON object starting at position %d", jsonObjStart)
 		}
 	}
 
-	// 回退到旧格式：XML标签
+	// 尝试从 ```json 代码块内解析对象中的 thinking/reasoning
+	if codeBlock := extractCodeFenceContent(s); codeBlock != "" {
+		codeBlock = fixMissingQuotes(codeBlock)
+		if objStart := strings.Index(codeBlock, "{"); objStart >= 0 {
+			if objEnd := findMatchingBrace(codeBlock, objStart); objEnd > objStart {
+				if chain := extractThinkingFromObject(codeBlock[objStart : objEnd+1]); chain != "" {
+					logger.Infof("✓ Extracted reasoning chain from code fence (thinking/reasoning)")
+					return chain
+				}
+			}
+		}
+	}
+
+	// 回退到 XML 标签：优先 <thinking>，再 <reasoning>
+	if match := reThinkingTag.FindStringSubmatch(response); match != nil && len(match) > 1 {
+		logger.Infof("✓ Extracted reasoning chain using <thinking> tag")
+		return strings.TrimSpace(match[1])
+	}
 	if match := reReasoningTag.FindStringSubmatch(response); match != nil && len(match) > 1 {
 		logger.Infof("✓ Extracted reasoning chain using <reasoning> tag (legacy format)")
 		return strings.TrimSpace(match[1])
@@ -3215,26 +3230,145 @@ func findMatchingBrace(s string, start int) int {
 	return -1
 }
 
+// findMatchingBracket 找到与 start 处 '[' 匹配的 ']' 位置（考虑字符串与嵌套）
+func findMatchingBracket(s string, start int) int {
+	if start < 0 || start >= len(s) || s[start] != '[' {
+		return -1
+	}
+	depth := 0
+	inString := false
+	escape := false
+	var quote byte
+	for i := start; i < len(s); i++ {
+		c := s[i]
+		if escape {
+			escape = false
+			continue
+		}
+		if c == '\\' && inString {
+			escape = true
+			continue
+		}
+		if (c == '"' || c == '\'') && !inString {
+			inString = true
+			quote = c
+			continue
+		}
+		if c == quote {
+			inString = false
+			continue
+		}
+		if inString {
+			continue
+		}
+		if c == '[' {
+			depth++
+		} else if c == ']' {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// extractCodeFenceContent 从响应中提取第一个 ```json 或 ``` 代码块内容（不含标记行）
+func extractCodeFenceContent(s string) string {
+	const fence = "```"
+	idx := strings.Index(s, fence)
+	if idx < 0 {
+		return ""
+	}
+	rest := s[idx+len(fence):]
+	rest = strings.TrimLeft(rest, " \t\r\n")
+	if strings.HasPrefix(strings.ToLower(rest), "json") {
+		rest = rest[4:]
+		rest = strings.TrimLeft(rest, " \t\r\n")
+	}
+	end := strings.Index(rest, fence)
+	if end < 0 {
+		return strings.TrimSpace(rest)
+	}
+	return strings.TrimSpace(rest[:end])
+}
+
+// tryRepairTrailingComma 尝试修复 JSON 中常见的尾逗号（在 ] 或 } 前）
+func tryRepairTrailingComma(in string) string {
+	// 移除 ] 前的尾逗号：, ] -> ]
+	s := regexp.MustCompile(`,\s*\]`).ReplaceAllString(in, "]")
+	// 移除 } 前的尾逗号：, } -> }
+	s = regexp.MustCompile(`,\s*}`).ReplaceAllString(s, "}")
+	return s
+}
+
+// tryUnmarshalDecisionArray 尝试解析 JSON 为 []Decision，失败时尝试修复尾逗号后重试
+func tryUnmarshalDecisionArray(jsonContent string) ([]Decision, error) {
+	jsonContent = strings.TrimSpace(jsonContent)
+	if jsonContent == "" {
+		return nil, fmt.Errorf("empty json content")
+	}
+	var decisions []Decision
+	if err := json.Unmarshal([]byte(jsonContent), &decisions); err == nil {
+		return decisions, nil
+	}
+	repaired := tryRepairTrailingComma(jsonContent)
+	if err := json.Unmarshal([]byte(repaired), &decisions); err != nil {
+		return nil, err
+	}
+	return decisions, nil
+}
+
+// normalizeDecisionAction 将 action 规范为小写且下划线形式（兼容 "Open Long" / "OPEN_LONG" 等）
+func normalizeDecisionAction(d *Decision) {
+	if d == nil {
+		return
+	}
+	d.Action = strings.TrimSpace(d.Action)
+	d.Action = strings.ToLower(d.Action)
+	d.Action = strings.ReplaceAll(d.Action, " ", "_")
+}
+
+func normalizeDecisionActions(list []Decision) {
+	for i := range list {
+		normalizeDecisionAction(&list[i])
+	}
+}
+
+// parseNewFormatObject 解析 {"thinking"/"reasoning", "decisions": [...]} 格式，返回 decisions 与是否成功
+func parseNewFormatObject(jsonStr string) ([]Decision, bool) {
+	var v struct {
+		Thinking  string     `json:"thinking"`
+		Reasoning string     `json:"reasoning"`
+		Decisions []Decision `json:"decisions"`
+	}
+	if err := json.Unmarshal([]byte(jsonStr), &v); err != nil {
+		return nil, false
+	}
+	if len(v.Decisions) == 0 {
+		return nil, false
+	}
+	return v.Decisions, true
+}
+
 func extractDecisions(response string) ([]Decision, error) {
 	s := removeInvisibleRunes(response)
 	s = strings.TrimSpace(s)
 	s = fixMissingQuotes(s)
 
-	// ========== 优先尝试新格式：JSON对象（包含reasoning和decisions字段）==========
+	// ========== 优先尝试新格式：JSON对象（包含 thinking/reasoning 和 decisions 字段）==========
 	type newFormatResponse struct {
-		Reasoning string     `json:"reasoning"`
+		Thinking  string     `json:"thinking"`
+		Reasoning string     `json:"reasoning"` // legacy
 		Decisions []Decision `json:"decisions"`
 	}
 
-	// 尝试解析新格式的JSON对象
-	// 支持两种顺序：{"reasoning": ..., "decisions": ...} 或 {"decisions": ..., "reasoning": ...}
 	var jsonObjStart int = -1
-
-	// 先尝试查找 {"reasoning" 开头
-	if idx := strings.Index(s, `{"reasoning"`); idx >= 0 {
+	if idx := strings.Index(s, `{"thinking"`); idx >= 0 {
+		jsonObjStart = idx
+	} else if idx := strings.Index(s, `{"reasoning"`); idx >= 0 {
 		jsonObjStart = idx
 	} else if idx := strings.Index(s, `{"decisions"`); idx >= 0 {
-		// 如果找不到 {"reasoning"，尝试查找 {"decisions" 开头
 		jsonObjStart = idx
 	}
 
@@ -3242,37 +3376,41 @@ func extractDecisions(response string) ([]Decision, error) {
 		jsonObjEnd := findMatchingBrace(s, jsonObjStart)
 		if jsonObjEnd > jsonObjStart {
 			jsonObjStr := s[jsonObjStart : jsonObjEnd+1]
-			var newFormat newFormatResponse
-			if err := json.Unmarshal([]byte(jsonObjStr), &newFormat); err == nil {
-				if len(newFormat.Decisions) > 0 {
-					logger.Infof("✓ Extracted decisions using new JSON format (decisions field), reasoning present: %v", newFormat.Reasoning != "")
-					return newFormat.Decisions, nil
-				} else {
-					logger.Warnf("⚠️  JSON object parsed but decisions array is empty. JSON: %s", jsonObjStr[:min(len(jsonObjStr), 200)])
+			if decisions, ok := parseNewFormatObject(jsonObjStr); ok && len(decisions) > 0 {
+				normalizeDecisionActions(decisions)
+				logger.Infof("✓ Extracted decisions using new JSON format (decisions field)")
+				return decisions, nil
+			}
+		}
+	}
+
+	// 从 ```json 代码块中提取完整对象（避免正则截断大内容）
+	if codeBlock := extractCodeFenceContent(s); codeBlock != "" {
+		codeBlock = fixMissingQuotes(codeBlock)
+		if objStart := strings.Index(codeBlock, "{"); objStart >= 0 {
+			if objEnd := findMatchingBrace(codeBlock, objStart); objEnd > objStart {
+				jsonObjStr := codeBlock[objStart : objEnd+1]
+				if decisions, ok := parseNewFormatObject(jsonObjStr); ok && len(decisions) > 0 {
+					normalizeDecisionActions(decisions)
+					logger.Infof("✓ Extracted decisions using new JSON format from code fence")
+					return decisions, nil
 				}
-			} else {
-				logger.Warnf("⚠️  Failed to parse JSON object for decisions: %v. JSON start: %s", err, jsonObjStr[:min(len(jsonObjStr), 200)])
 			}
-		} else {
-			logger.Warnf("⚠️  Failed to find matching brace for JSON object starting at position %d", jsonObjStart)
 		}
-	}
-
-	// 也尝试从```json代码块中提取新格式
-	// 匹配 ```json { "reasoning": "...", "decisions": [...] } ```
-	reNewFormatFence := regexp.MustCompile(`(?is)` + "```json\\s*(\\{[^`]*?\"decisions\"\\s*:\\s*\\[.*?\\][^`]*?\\})\\s*```")
-	if m := reNewFormatFence.FindStringSubmatch(s); m != nil && len(m) > 1 {
-		jsonObjStr := strings.TrimSpace(m[1])
-		var newFormat newFormatResponse
-		if err := json.Unmarshal([]byte(jsonObjStr), &newFormat); err == nil {
-			if len(newFormat.Decisions) > 0 {
-				logger.Infof("✓ Extracted decisions using new JSON format from code fence")
-				return newFormat.Decisions, nil
+		// 代码块内可能是纯数组
+		if arrStart := strings.Index(codeBlock, "["); arrStart >= 0 {
+			if arrEnd := findMatchingBracket(codeBlock, arrStart); arrEnd > arrStart {
+				arrStr := codeBlock[arrStart : arrEnd+1]
+				if decisions, err := tryUnmarshalDecisionArray(arrStr); err == nil && len(decisions) > 0 {
+					normalizeDecisionActions(decisions)
+					logger.Infof("✓ Extracted decisions from code fence (array)")
+					return decisions, nil
+				}
 			}
 		}
 	}
 
-	// ========== 回退到旧格式：XML标签 + JSON数组 ==========
+	// ========== 回退到旧格式：XML 标签 + JSON 数组 ==========
 	var jsonPart string
 	if match := reDecisionTag.FindStringSubmatch(s); match != nil && len(match) > 1 {
 		jsonPart = strings.TrimSpace(match[1])
@@ -3284,55 +3422,87 @@ func extractDecisions(response string) ([]Decision, error) {
 
 	jsonPart = fixMissingQuotes(jsonPart)
 
-	// 尝试从```json代码块中提取JSON数组（旧格式）
+	// 尝试从代码块或正文中提取 JSON 数组（括号匹配，避免正则截断）
+	tryExtractArray := func(text string) ([]Decision, bool) {
+		for i := 0; i < len(text); i++ {
+			if text[i] == '[' {
+				arrEnd := findMatchingBracket(text, i)
+				if arrEnd > i {
+					arrStr := text[i : arrEnd+1]
+					arrStr = compactArrayOpen(arrStr)
+					if err := validateJSONFormat(arrStr); err != nil {
+						continue
+					}
+					decisions, err := tryUnmarshalDecisionArray(arrStr)
+					if err == nil && len(decisions) > 0 {
+						return decisions, true
+					}
+				}
+			}
+		}
+		return nil, false
+	}
+
+	// 1) 代码块内的数组
+	if codeBlock := extractCodeFenceContent(jsonPart); codeBlock != "" {
+		codeBlock = fixMissingQuotes(codeBlock)
+		if decisions, ok := tryExtractArray(codeBlock); ok {
+			normalizeDecisionActions(decisions)
+			logger.Infof("✓ Extracted decisions from code fence (array)")
+			return decisions, nil
+		}
+	}
+	// 2) 正则代码块（兼容旧响应）
 	if m := reJSONFence.FindStringSubmatch(jsonPart); m != nil && len(m) > 1 {
-		jsonContent := strings.TrimSpace(m[1])
-		jsonContent = compactArrayOpen(jsonContent)
+		jsonContent := compactArrayOpen(strings.TrimSpace(m[1]))
 		jsonContent = fixMissingQuotes(jsonContent)
-		if err := validateJSONFormat(jsonContent); err != nil {
-			return nil, fmt.Errorf("JSON format validation failed: %w\nJSON content: %s\nFull response:\n%s", err, jsonContent, response)
+		if err := validateJSONFormat(jsonContent); err == nil {
+			if decisions, err := tryUnmarshalDecisionArray(jsonContent); err == nil && len(decisions) > 0 {
+				normalizeDecisionActions(decisions)
+				logger.Infof("✓ Extracted decisions from JSON code fence (legacy format)")
+				return decisions, nil
+			}
 		}
-		var decisions []Decision
-		if err := json.Unmarshal([]byte(jsonContent), &decisions); err != nil {
-			return nil, fmt.Errorf("JSON parsing failed: %w\nJSON content: %s", err, jsonContent)
-		}
-		logger.Infof("✓ Extracted decisions from JSON code fence (legacy format)")
+	}
+	// 3) 括号匹配提取数组（全文或 jsonPart）
+	if decisions, ok := tryExtractArray(jsonPart); ok {
+		normalizeDecisionActions(decisions)
+		logger.Infof("✓ Extracted decisions from JSON array (bracket match)")
 		return decisions, nil
 	}
 
-	// 尝试直接提取JSON数组（旧格式）
-	jsonContent := strings.TrimSpace(reJSONArray.FindString(jsonPart))
-	if jsonContent == "" {
-		logger.Infof("⚠️  [SafeFallback] AI didn't output JSON decision, entering safe wait mode")
-
-		cotSummary := jsonPart
-		if len(cotSummary) > 240 {
-			cotSummary = cotSummary[:240] + "..."
+	// 4) 单条决策对象兼容：{"symbol":"BTCUSDT","action":"wait",...}
+	for i := 0; i < len(jsonPart); i++ {
+		if jsonPart[i] == '{' {
+			objEnd := findMatchingBrace(jsonPart, i)
+			if objEnd > i {
+				objStr := jsonPart[i : objEnd+1]
+				var single Decision
+				if err := json.Unmarshal([]byte(tryRepairTrailingComma(objStr)), &single); err == nil {
+					if single.Symbol != "" || single.Action != "" {
+						normalizeDecisionAction(&single)
+						if single.Action == "" {
+							single.Action = "wait"
+						}
+						logger.Infof("✓ Extracted single decision object (wrapped as array)")
+						return []Decision{single}, nil
+					}
+				}
+			}
 		}
-
-		fallbackDecision := Decision{
-			Symbol:    "ALL",
-			Action:    "wait",
-			Reasoning: fmt.Sprintf("Model didn't output structured JSON decision, entering safe wait; summary: %s", cotSummary),
-		}
-
-		return []Decision{fallbackDecision}, nil
 	}
 
-	jsonContent = compactArrayOpen(jsonContent)
-	jsonContent = fixMissingQuotes(jsonContent)
-
-	if err := validateJSONFormat(jsonContent); err != nil {
-		return nil, fmt.Errorf("JSON format validation failed: %w\nJSON content: %s\nFull response:\n%s", err, jsonContent, response)
+	// 5) 无法解析时安全回退
+	logger.Infof("⚠️  [SafeFallback] AI didn't output structured JSON decision, entering safe wait mode")
+	cotSummary := jsonPart
+	if len(cotSummary) > 240 {
+		cotSummary = cotSummary[:240] + "..."
 	}
-
-	var decisions []Decision
-	if err := json.Unmarshal([]byte(jsonContent), &decisions); err != nil {
-		return nil, fmt.Errorf("JSON parsing failed: %w\nJSON content: %s", err, jsonContent)
-	}
-
-	logger.Infof("✓ Extracted decisions from JSON array (legacy format)")
-	return decisions, nil
+	return []Decision{{
+		Symbol:    "ALL",
+		Action:    "wait",
+		Reasoning: fmt.Sprintf("Model didn't output structured JSON decision, entering safe wait; summary: %s", cotSummary),
+	}}, nil
 }
 
 func fixMissingQuotes(jsonStr string) string {

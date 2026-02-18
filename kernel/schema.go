@@ -843,9 +843,9 @@ func getDecisionJSONSchemaZH() string {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "description": "交易决策输出对象，包含思维链分析和决策数组",
-  "required": ["reasoning", "decisions"],
+  "required": ["thinking", "decisions"],
   "properties": {
-    "reasoning": {
+    "thinking": {
       "type": "string",
       "description": "思维链分析过程，详细说明分析思路、市场判断、风险评估等思考过程。这是必需字段，必须详细说明决策依据和推理过程",
       "minLength": 50,
@@ -1032,10 +1032,10 @@ func getDecisionJSONSchemaEN() string {
 	return `{
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
-  "description": "Trading decision output object, containing reasoning chain and decisions array",
-  "required": ["reasoning", "decisions"],
+  "description": "Trading decision output object, containing thinking chain and decisions array",
+  "required": ["thinking", "decisions"],
   "properties": {
-    "reasoning": {
+    "thinking": {
       "type": "string",
       "description": "Chain of thought analysis process, detailing analysis approach, market judgment, risk assessment, and other thinking processes. This is a required field and must explain decision basis and reasoning in detail",
       "minLength": 50,
@@ -1224,10 +1224,10 @@ func getDecisionJSONSchemaSimplifiedEN() string {
 	return `{
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
-  "description": "Trading decision output object, containing reasoning chain and decisions array",
-  "required": ["reasoning", "decisions"],
+  "description": "Trading decision output object, containing thinking chain and decisions array",
+  "required": ["thinking", "decisions"],
   "properties": {
-    "reasoning": {
+    "thinking": {
       "type": "string",
       "description": "Chain of thought analysis process, detailing analysis approach, market judgment, risk assessment, and other thinking processes. This is a required field and must explain decision basis and reasoning in detail",
       "minLength": 50
@@ -1329,9 +1329,9 @@ func getDecisionJSONSchemaSimplifiedZH() string {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "description": "交易决策输出对象，包含思维链分析和决策数组",
-  "required": ["reasoning", "decisions"],
+  "required": ["thinking", "decisions"],
   "properties": {
-    "reasoning": {
+    "thinking": {
       "type": "string",
       "description": "思维链分析过程，详细说明分析思路、市场判断、风险评估等思考过程。这是必需字段，必须详细说明决策依据和推理过程",
       "minLength": 50
