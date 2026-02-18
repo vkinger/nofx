@@ -663,7 +663,8 @@ func formatFieldDefEN(key string, field BilingualFieldDef) string {
 
 // SignalCategoryNames 信号分类名称（双语）
 var SignalCategoryNames = map[string]struct{ ZH, EN string }{
-	"CandlestickPatterns": {"K线形态信号", "Candlestick Patterns"},
+	"SingleCandleTypes":   {"单K线形态", "Single Candle Types"},
+	"CandlestickPatterns":  {"K线形态信号", "Candlestick Patterns"},
 	"TechnicalSignals":    {"技术指标信号", "Technical Indicator Signals"},
 	"VolumePriceSignals":  {"量价信号", "Volume-Price Signals"},
 	"OIPriceSignals":      {"OI-价格信号", "OI-Price Signals"},
@@ -674,6 +675,7 @@ var SignalCategoryNames = map[string]struct{ ZH, EN string }{
 
 // SignalCategoryOrder 信号分类顺序（用于遍历时保持顺序）
 var SignalCategoryOrder = []string{
+	"SingleCandleTypes",
 	"CandlestickPatterns",
 	"TechnicalSignals",
 	"VolumePriceSignals",
@@ -686,17 +688,66 @@ var SignalCategoryOrder = []string{
 // SignalDictionary 信号术语字典（复用 BilingualFieldDef 结构）
 // 结构与 DataDictionary 一致：map[分类名]map[信号Code]BilingualFieldDef
 var SignalDictionary = map[string]map[string]BilingualFieldDef{
+	"SingleCandleTypes": {
+		"DOJI":              {NameZH: "十字星", NameEN: "Doji", DescZH: "开盘≈收盘，多空犹豫，可能反转", DescEN: "Open≈Close, indecision, potential reversal"},
+		"LONG_LEGGED_DOJI":  {NameZH: "长腿十字", NameEN: "Long-Legged Doji", DescZH: "十字星且上下影线都较长，波动大、多空分歧", DescEN: "Doji with long upper and lower shadows, high volatility, indecision"},
+		"T_LINE":            {NameZH: "T字线/蜻蜓十字", NameEN: "T-Line / Dragonfly Doji", DescZH: "无上影或上影极短、长下影，开盘收盘在高端", DescEN: "No/short upper shadow, long lower shadow, open/close at high"},
+		"INVERTED_T_LINE":   {NameZH: "倒T字/墓碑十字", NameEN: "Inverted T / Gravestone Doji", DescZH: "无下影或下影极短、长上影，开盘收盘在低端", DescEN: "No/short lower shadow, long upper shadow, open/close at low"},
+		"HAMMER":            {NameZH: "锤子线", NameEN: "Hammer", DescZH: "长下影小实体，下跌后出现多为见底信号", DescEN: "Long lower shadow small body, bottom reversal"},
+		"INVERTED_HAMMER":   {NameZH: "倒锤子", NameEN: "Inverted Hammer", DescZH: "长上影小实体，底部试探", DescEN: "Long upper shadow small body, potential bottom reversal"},
+		"SHOOTING_STAR":     {NameZH: "射击之星", NameEN: "Shooting Star", DescZH: "长上影小实体，涨势中见顶信号", DescEN: "Long upper shadow at top, bearish reversal"},
+		"SPINNING_TOP":      {NameZH: "螺旋桨", NameEN: "Spinning Top", DescZH: "上下影都较长、小实体，多空势均", DescEN: "Long upper and lower shadows, small body, indecision"},
+		"STRONG_BULL":       {NameZH: "大阳线", NameEN: "Strong Bull", DescZH: "实体大、阳线，多头占优", DescEN: "Large bullish body, bulls dominant"},
+		"STRONG_BEAR":       {NameZH: "大阴线", NameEN: "Strong Bear", DescZH: "实体大、阴线，空头占优", DescEN: "Large bearish body, bears dominant"},
+		"MARUBOZU_BULL":     {NameZH: "光头光脚大阳线", NameEN: "Marubozu Bull", DescZH: "无影线大阳线，强烈看涨", DescEN: "No-shadow large bullish candle, strong bullish"},
+		"MARUBOZU_BEAR":     {NameZH: "光头光脚大阴线", NameEN: "Marubozu Bear", DescZH: "无影线大阴线，强烈看跌", DescEN: "No-shadow large bearish candle, strong bearish"},
+		"BALD_BULL":         {NameZH: "光头阳线", NameEN: "Bald Bull", DescZH: "大阳线无上影", DescEN: "Strong bull with no upper shadow"},
+		"BALD_BEAR":         {NameZH: "光头阴线", NameEN: "Bald Bear", DescZH: "大阴线无下影", DescEN: "Strong bear with no lower shadow"},
+		"FOOTLESS_BULL":     {NameZH: "光脚阳线", NameEN: "Footless Bull", DescZH: "大阳线无下影", DescEN: "Strong bull with no lower shadow"},
+		"FOOTLESS_BEAR":     {NameZH: "光脚阴线", NameEN: "Footless Bear", DescZH: "大阴线无上影", DescEN: "Strong bear with no upper shadow"},
+		"SMALL_BULL":        {NameZH: "小阳线", NameEN: "Small Bull", DescZH: "实体较小阳线", DescEN: "Small bullish body"},
+		"SMALL_BEAR":        {NameZH: "小阴线", NameEN: "Small Bear", DescZH: "实体较小阴线", DescEN: "Small bearish body"},
+		"LIMIT_UP":          {NameZH: "涨停/一字板", NameEN: "Limit Up", DescZH: "极窄幅收阳，涨跌停或一字板", DescEN: "Tiny range close up, limit up or one-price candle"},
+		"LIMIT_DOWN":        {NameZH: "跌停/一字板", NameEN: "Limit Down", DescZH: "极窄幅收阴，涨跌停或一字板", DescEN: "Tiny range close down, limit down or one-price candle"},
+	},
 	"CandlestickPatterns": {
-		"BULLISH_ENGULFING":    {NameZH: "看涨吞没", NameEN: "Bullish Engulfing", DescZH: "阳线完全包裹前一阴线，强烈看涨反转信号", DescEN: "Bullish candle fully engulfs prior bearish candle, strong bullish reversal"},
-		"BEARISH_ENGULFING":    {NameZH: "看跌吞没", NameEN: "Bearish Engulfing", DescZH: "阴线完全包裹前一阳线，强烈看跌反转信号", DescEN: "Bearish candle fully engulfs prior bullish candle, strong bearish reversal"},
-		"HAMMER":               {NameZH: "锤子线", NameEN: "Hammer", DescZH: "下影线长，底部反转信号", DescEN: "Long lower shadow, bottom reversal signal"},
-		"INVERTED_HAMMER":      {NameZH: "倒锤子", NameEN: "Inverted Hammer", DescZH: "上影线长，底部反转信号", DescEN: "Long upper shadow, potential bottom reversal"},
-		"SHOOTING_STAR":        {NameZH: "射击之星", NameEN: "Shooting Star", DescZH: "上影线长，顶部反转信号", DescEN: "Long upper shadow at top, bearish reversal"},
-		"DOJI":                 {NameZH: "十字星", NameEN: "Doji", DescZH: "开盘≈收盘，市场犹豫，可能反转", DescEN: "Open≈Close, market indecision, potential reversal"},
-		"MORNING_STAR":         {NameZH: "启明星", NameEN: "Morning Star", DescZH: "三根K线组合，强烈底部反转", DescEN: "3-candle pattern, strong bottom reversal"},
-		"EVENING_STAR":         {NameZH: "黄昏星", NameEN: "Evening Star", DescZH: "三根K线组合，强烈顶部反转", DescEN: "3-candle pattern, strong top reversal"},
-		"THREE_WHITE_SOLDIERS": {NameZH: "三白兵", NameEN: "Three White Soldiers", DescZH: "连续三根阳线，强烈看涨延续", DescEN: "3 consecutive bullish candles, strong bullish continuation"},
-		"THREE_BLACK_CROWS":    {NameZH: "三乌鸦", NameEN: "Three Black Crows", DescZH: "连续三根阴线，强烈看跌延续", DescEN: "3 consecutive bearish candles, strong bearish continuation"},
+		// 两根及以上组合（单K形态见 SingleCandleTypes，此处不重复）
+		"BULLISH_ENGULFING":    {NameZH: "看涨吞没/巨阳包阴", NameEN: "Bullish Engulfing", DescZH: "阳线完全包裹前一阴线，强烈看涨反转", DescEN: "Bullish candle fully engulfs prior bearish, strong bullish reversal"},
+		"BEARISH_ENGULFING":    {NameZH: "看跌吞没/巨阴包阳", NameEN: "Bearish Engulfing", DescZH: "阴线完全包裹前一阳线，强烈看跌反转", DescEN: "Bearish candle fully engulfs prior bullish, strong bearish reversal"},
+		"BEARISH_MEETING":      {NameZH: "淡友反攻", NameEN: "Bearish Meeting", DescZH: "阳后阴高开低走，收盘与前一收相近，见顶", DescEN: "Bear candle opens high closes near prior close, topping"},
+		"DARK_CLOUD_COVER":     {NameZH: "乌云压顶", NameEN: "Dark Cloud Cover", DescZH: "阳后阴高开低走，收盘深入阳实体，见顶", DescEN: "Bear closes well into prior bull body, topping"},
+		"DOWNPOUR":             {NameZH: "倾盆大雨", NameEN: "Downpour", DescZH: "阳后阴低开低走，收盘低于阳开盘，见顶", DescEN: "Bear opens and closes below prior bull open, topping"},
+		"BULLISH_MEETING":      {NameZH: "好友反攻", NameEN: "Bullish Meeting", DescZH: "大阴后阳线收盘与阴收盘相近，见底", DescEN: "Bull closes near prior bear close, bottoming"},
+		"PIERCING_LINE":        {NameZH: "曙光初现", NameEN: "Piercing Line", DescZH: "大阴后阳收盘深入阴实体，见底", DescEN: "Bull closes into prior bear body, bottoming"},
+		"RISING_SUN":           {NameZH: "旭日东升", NameEN: "Rising Sun", DescZH: "大阴后阳高开于阴实体且收高于阴开盘，见底", DescEN: "Bull opens in bear body closes above bear open, bottoming"},
+		"TOPPING_FLAT_HIGHS":   {NameZH: "高位平顶", NameEN: "Topping Flat Highs", DescZH: "多根K线最高价相同或相近，涨势中见顶", DescEN: "Multiple candles same/similar high, topping"},
+		"BOTTOM_FLAT_LOWS":     {NameZH: "低位平底", NameEN: "Bottom Flat Lows", DescZH: "多根K线最低价相同或相近，跌势中见底", DescEN: "Multiple candles same/similar low, bottoming"},
+		"TOPPING_ROUNDING_TOP": {NameZH: "高位圆顶", NameEN: "Topping Rounding Top", DescZH: "涨势末端高点逐渐降低、实体变小呈圆弧回落，见顶", DescEN: "Uptrend end with declining highs and smaller bodies, rounding top"},
+		"BOTTOM_ROUNDING_BOTTOM": {NameZH: "低位圆底", NameEN: "Bottom Rounding Bottom", DescZH: "跌势末端低点逐渐抬高、实体变小呈圆弧企稳，见底", DescEN: "Downtrend end with rising lows and smaller bodies, rounding bottom"},
+		"BOTTOM_FIVE_TIER_LINE":  {NameZH: "低位五档线", NameEN: "Bottom Five-Tier Line", DescZH: "底部多根小阴小阳阶梯状、低点持平或略抬，卖压衰竭", DescEN: "Bottom area small candles stair-step, lows flat or rising, selling exhausted"},
+		"TOPPING_TWIN_SPINNERS": {NameZH: "顶部双桨", NameEN: "Topping Twin Spinners", DescZH: "两根螺旋桨K线同水平，见顶", DescEN: "Two spinners at same level, topping"},
+		// 三根
+		"MORNING_STAR":         {NameZH: "早晨之星", NameEN: "Morning Star", DescZH: "阴+小实体+阳，阳收深入阴实体，强烈见底", DescEN: "Bear+small+bull, bull closes into bear, strong bottom"},
+		"MORNING_DOJI_STAR":    {NameZH: "早晨十字星", NameEN: "Morning Doji Star", DescZH: "阴+十字星+阳，阳收深入阴实体，见底", DescEN: "Bear+doji+bull, strong bottom reversal"},
+		"EVENING_STAR":         {NameZH: "黄昏之星", NameEN: "Evening Star", DescZH: "阳+小实体+阴，阴收深入阳实体，强烈见顶", DescEN: "Bull+small+bear, bear closes into bull, strong top"},
+		"EVENING_DOJI_STAR":    {NameZH: "黄昏十字星", NameEN: "Evening Doji Star", DescZH: "阳+十字星+阴，阴收深入阳实体，见顶", DescEN: "Bull+doji+bear, strong top reversal"},
+		"THREE_WHITE_SOLDIERS": {NameZH: "三白兵/红三兵", NameEN: "Three White Soldiers", DescZH: "三根阳线收盘节节升高，涨势延续", DescEN: "3 consecutive higher closes bullish, continuation"},
+		"THREE_BLACK_CROWS":    {NameZH: "三乌鸦/黑三兵", NameEN: "Three Black Crows", DescZH: "三根阴线收盘节节下降，跌势延续", DescEN: "3 consecutive lower closes bearish, continuation"},
+		"THREE_STAGE_DIVE":     {NameZH: "三级跳水", NameEN: "Three Stage Dive", DescZH: "三阴第一根跳空高开后两根跳空低开，见顶", DescEN: "3 bears first gap up then gap down, topping"},
+		// 多根
+		"TOPPING_TOWER":       {NameZH: "高位塔顶", NameEN: "Topping Tower", DescZH: "大阳后多根小阴小阳再大阴，见顶", DescEN: "Big bull then small candles then big bear, topping"},
+		"BOTTOM_TOWER":         {NameZH: "低位塔底", NameEN: "Bottom Tower", DescZH: "大阴后多根小阴小阳再大阳，见底", DescEN: "Big bear then small candles then big bull, bottoming"},
+		"HIGH_SIDE_COIL":       {NameZH: "高位盘旋", NameEN: "High Side Coil", DescZH: "大阳后多根小阳小阴最低价高于大阳收盘，涨势延续", DescEN: "Big bull then small candles above close, continuation"},
+		"LOW_TIER_ARRANGEMENT": {NameZH: "低档排列", NameEN: "Low Tier Arrangement", DescZH: "大阴后多根小阳小阴最高价低于阴最低价，反弹无力、跌势延续", DescEN: "Big bear then small candles below low, weak bounce, downtrend continuation"},
+		"FIVE_YANG_LINEUP":     {NameZH: "五阳上阵", NameEN: "Five Yang Lineup", DescZH: "多根阳线，涨势延续", DescEN: "Multiple consecutive bullish candles, continuation"},
+		"FIVE_YIN_ROW":         {NameZH: "五阴连天", NameEN: "Five Yin Row", DescZH: "五根阴线收盘节节下降，见顶", DescEN: "5 consecutive lower bearish closes, topping"},
+		"CONSECUTIVE_GAP_UP":   {NameZH: "连续跳高", NameEN: "Consecutive Gap Up", DescZH: "多根阳线每根跳空高开，涨势延续", DescEN: "Multiple bullish candles each gap up, continuation"},
+		// 第六章 双星验证与变盘协议
+		"HIGH_DOUBLE_STAR_EXHAUSTION":  {NameZH: "高位双星/多星-动能衰竭", NameEN: "High Double/Multi Star Exhaustion", DescZH: "连续双星(涨势后两根及以上十字星且第二根不破第一根高点)。操作：禁止追高、准备减仓；第三根阴线或乌云压顶可清仓", DescEN: "Consecutive double star: 2+ doji after uptrend, 2nd cannot break 1st high. Action: avoid chasing, reduce position; exit on 3rd bear or dark cloud"},
+		"LOW_DOUBLE_STAR_BOTTOM":      {NameZH: "低位双星-卖盘枯竭", NameEN: "Low Double Star", DescZH: "连续双星(跌势后两根十字星)，卖盘枯竭。观察首星高点为压力线；买入=早晨之星或巨阳包阴且放量突破星线高点", DescEN: "Consecutive double star: 2 doji after downtrend, selling exhausted. Watch 1st star high as resistance; buy on morning star or bullish engulfing with volume break above star high"},
+		"DOUBLE_NEEDLE_BOTTOM":         {NameZH: "双针探底", NameEN: "Double Needle Bottom", DescZH: "连续双针(跌势末端两根长下影K线在相近低点探底)，非十字星。二次试探支撑、卖压衰竭，见底信号", DescEN: "Consecutive double needle: 2 long lower-shadow candles at similar low after downtrend (not doji). Double test of support, selling exhausted, bottoming"},
+		"VOLUME_SHRINK_TRUE_BOTTOM":   {NameZH: "缩量止跌真底", NameEN: "Volume Shrink True Bottom", DescZH: "非连续双星：当前星线价格≥历史星线且量能显著缩减(V2<V1)，二次回踩抛压穷尽，真底确立", DescEN: "Non-consecutive double star: current doji price≥prior doji and volume shrinks (V2<V1), second touch selling exhausted, true bottom"},
+		"VOLUME_STAGNATION_FALSE_BREAKOUT": {NameZH: "放量滞涨诱多", NameEN: "Volume Stagnation False Breakout", DescZH: "非连续双星：当前星线无法突破历史星线高点且量能≥历史(V2≥V1)，同一位置抛压沉重，假突破", DescEN: "Non-consecutive double star: current doji cannot break prior high and volume≥prior (V2≥V1), same level heavy selling, false breakout"},
 	},
 	"TechnicalSignals": {
 		"GOLDEN_CROSS":       {NameZH: "金叉", NameEN: "Golden Cross", DescZH: "EMA20上穿EMA50，中期看涨信号", DescEN: "EMA20 crosses above EMA50, bullish signal"},
@@ -766,9 +817,12 @@ func getSignalExplanationZH(modelSize ModelSize) string {
 			sb.WriteString("\n")
 		}
 	} else {
-		// 精简版 - 适用于大模型
-		sb.WriteString("#### K线形态\n")
-		sb.WriteString("ENGULFING=吞没(强反转) | HAMMER=锤子(底部) | DOJI=十字星(犹豫) | MORNING/EVENING_STAR=启明/黄昏星 | THREE_WHITE/BLACK=三白兵/三乌鸦\n\n")
+		// 精简版 - 适用于大模型（单根: doji/hammer/strong_bull/bear；组合见下）
+		sb.WriteString("#### K线形态（单根+组合，参考实战进阶宝典）\n")
+		sb.WriteString("见顶: EVENING_STAR/EVENING_DOJI_STAR 黄昏星/黄昏十字星 | BEARISH_MEETING 淡友反攻 | DARK_CLOUD_COVER 乌云压顶 | DOWNPOUR 倾盆大雨 | BEARISH_ENGULFING 看跌吞没 | TOPPING_FLAT_HIGHS 高位平顶 | TOPPING_ROUNDING_TOP 高位圆顶 | TOPPING_TWIN_SPINNERS 顶部双桨 | TOPPING_TOWER 高位塔顶 | HIGH_DOUBLE_STAR_EXHAUSTION 高位双星(连续十字星不破高→减仓/第三根阴清仓) | VOLUME_STAGNATION_FALSE_BREAKOUT 放量滞涨诱多(非连续双星) | THREE_BLACK_CROWS/FIVE_YIN_ROW 黑三兵/五阴连天 | THREE_STAGE_DIVE 三级跳水 | LOW_TIER_ARRANGEMENT 低档排列\n")
+		sb.WriteString("见底: MORNING_STAR/MORNING_DOJI_STAR 早晨之星/早晨十字星 | BULLISH_MEETING 好友反攻 | PIERCING_LINE 曙光初现 | RISING_SUN 旭日东升 | BULLISH_ENGULFING 看涨吞没 | BOTTOM_FLAT_LOWS 低位平底 | BOTTOM_ROUNDING_BOTTOM 低位圆底 | BOTTOM_FIVE_TIER_LINE 低位五档线 | BOTTOM_TOWER 低位塔底 | LOW_DOUBLE_STAR_BOTTOM 低位双星(连续双十字星) | DOUBLE_NEEDLE_BOTTOM 双针探底(连续两根长下影) | VOLUME_SHRINK_TRUE_BOTTOM 缩量止跌真底(非连续双星) | 单K HAMMER/INVERTED_HAMMER 见 SingleCandleTypes\n")
+		sb.WriteString("上升: THREE_WHITE_SOLDIERS 三白兵 | HIGH_SIDE_COIL 高位盘旋 | FIVE_YANG_LINEUP 五阳上阵 | CONSECUTIVE_GAP_UP 连续跳高\n")
+		sb.WriteString("单根类型: DOJI LONG_LEGGED_DOJI T_LINE INVERTED_T_LINE HAMMER INVERTED_HAMMER SHOOTING_STAR SPINNING_TOP STRONG_BULL STRONG_BEAR MARUBOZU_BULL MARUBOZU_BEAR BALD_BULL BALD_BEAR FOOTLESS_BULL FOOTLESS_BEAR SMALL_BULL SMALL_BEAR LIMIT_UP LIMIT_DOWN（见 SingleCandleTypes 字典）\n\n")
 
 		sb.WriteString("#### 技术指标\n")
 		sb.WriteString("GOLDEN_CROSS=金叉(看涨) | DEATH_CROSS=死叉(看空) | BULLISH_DIVERGENCE=看涨背离 | BEARISH_DIVERGENCE=看跌背离\n\n")
@@ -805,9 +859,12 @@ func getSignalExplanationEN(modelSize ModelSize) string {
 			sb.WriteString("\n")
 		}
 	} else {
-		// Compact version - for large models
-		sb.WriteString("#### Candlestick Patterns\n")
-		sb.WriteString("ENGULFING=strong reversal | HAMMER=bottom reversal | DOJI=indecision | MORNING/EVENING_STAR=reversal patterns | THREE_WHITE/BLACK=continuation\n\n")
+		// Compact version - for large models (single: doji/hammer/strong_bull/bear; combined below)
+		sb.WriteString("#### Candlestick Patterns (single + combined)\n")
+		sb.WriteString("Topping: EVENING_STAR/EVENING_DOJI_STAR | BEARISH_MEETING | DARK_CLOUD_COVER | DOWNPOUR | BEARISH_ENGULFING | TOPPING_FLAT_HIGHS | TOPPING_ROUNDING_TOP | TOPPING_TWIN_SPINNERS | TOPPING_TOWER | HIGH_DOUBLE_STAR_EXHAUSTION (consecutive doji, reduce/exit on 3rd bear) | VOLUME_STAGNATION_FALSE_BREAKOUT (non-consecutive star) | THREE_BLACK_CROWS/FIVE_YIN_ROW | THREE_STAGE_DIVE | LOW_TIER_ARRANGEMENT\n")
+		sb.WriteString("Bottoming: MORNING_STAR/MORNING_DOJI_STAR | BULLISH_MEETING | PIERCING_LINE | RISING_SUN | BULLISH_ENGULFING | BOTTOM_FLAT_LOWS | BOTTOM_ROUNDING_BOTTOM | BOTTOM_FIVE_TIER_LINE | BOTTOM_TOWER | LOW_DOUBLE_STAR_BOTTOM (consecutive 2 doji) | DOUBLE_NEEDLE_BOTTOM (consecutive 2 long lower shadow) | VOLUME_SHRINK_TRUE_BOTTOM (non-consecutive star) | single-K HAMMER/INVERTED_HAMMER see SingleCandleTypes\n")
+		sb.WriteString("Bullish continuation: THREE_WHITE_SOLDIERS | HIGH_SIDE_COIL | FIVE_YANG_LINEUP | CONSECUTIVE_GAP_UP\n")
+		sb.WriteString("Single-candle types: DOJI LONG_LEGGED_DOJI T_LINE INVERTED_T_LINE HAMMER INVERTED_HAMMER SHOOTING_STAR SPINNING_TOP STRONG_BULL STRONG_BEAR MARUBOZU_BULL MARUBOZU_BEAR BALD_BULL BALD_BEAR FOOTLESS_BULL FOOTLESS_BEAR SMALL_BULL SMALL_BEAR LIMIT_UP LIMIT_DOWN (see SingleCandleTypes dict)\n\n")
 
 		sb.WriteString("#### Technical Signals\n")
 		sb.WriteString("GOLDEN_CROSS=bullish(EMA20>50) | DEATH_CROSS=bearish(EMA20<50) | BULLISH_DIVERGENCE=price low but RSI not | BEARISH_DIVERGENCE=price high but RSI not\n\n")

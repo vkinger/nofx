@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"nofx/logger"
 	"nofx/market"
@@ -2340,29 +2339,7 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 			k := klines[len(klines)-i]
 			t := time.Unix(k.Time/1000, 0).UTC()
 			timeStr := t.Format("01-02 15:04")
-			// 判断K线类型
-			candleType := "doji"
-			body := k.Close - k.Open
-			totalRange := k.High - k.Low
-			if totalRange > 0 {
-				bodyRatio := math.Abs(body) / totalRange
-				if bodyRatio > 0.6 {
-					if body > 0 {
-						candleType = "bullish"
-					} else {
-						candleType = "bearish"
-					}
-				} else if bodyRatio < 0.1 {
-					candleType = "doji"
-				} else {
-					if body > 0 {
-						candleType = "small-bull"
-					} else {
-						candleType = "small-bear"
-					}
-				}
-			}
-			// 成交量对比
+			candleType := SingleCandleType(k)
 			volRatio := k.Volume / avgVolume
 			volLabel := ""
 			if volRatio > 2.0 {
@@ -2376,104 +2353,8 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 				timeStr, fmtPrice(k.Open), fmtPrice(k.High), fmtPrice(k.Low), fmtPrice(k.Close), candleType, volLabel))
 		}
 
-		// === K线组合形态识别 ===
-		var patterns []string
-		if len(klines) >= 2 {
-			k1 := klines[len(klines)-2] // 前一根
-			k2 := klines[len(klines)-1] // 最新一根
-			body1 := k1.Close - k1.Open
-			body2 := k2.Close - k2.Open
-			range2 := k2.High - k2.Low
-
-			// 吞没形态 (Engulfing) - 优化：更严格的判断条件
-			// 看涨吞没：前一根阴线，后一根阳线完全吞没前一根
-			if body1 < 0 && body2 > 0 &&
-				k2.Open < k1.Close && k2.Close > k1.Open &&
-				math.Abs(body2) > math.Abs(body1)*1.2 {
-				// 检查是否真正吞没（高点更高，低点更低）
-				if k2.High > k1.High && k2.Low < k1.Low {
-					patterns = append(patterns, "BULLISH_ENGULFING (strong)")
-				} else {
-					patterns = append(patterns, "BULLISH_ENGULFING")
-				}
-			} else if body1 > 0 && body2 < 0 &&
-				k2.Open > k1.Close && k2.Close < k1.Open &&
-				math.Abs(body2) > math.Abs(body1)*1.2 {
-				// 看跌吞没：前一根阳线，后一根阴线完全吞没前一根
-				if k2.High > k1.High && k2.Low < k1.Low {
-					patterns = append(patterns, "BEARISH_ENGULFING (strong)")
-				} else {
-					patterns = append(patterns, "BEARISH_ENGULFING")
-				}
-			}
-
-			// 锤子线 (Hammer) - 下影线长，实体小，在下跌趋势中
-			if range2 > 0 {
-				upperShadow2 := k2.High - math.Max(k2.Open, k2.Close)
-				lowerShadow2 := math.Min(k2.Open, k2.Close) - k2.Low
-				bodySize2 := math.Abs(body2)
-				if lowerShadow2 > bodySize2*2 && upperShadow2 < bodySize2*0.5 && trend == "downtrend" {
-					patterns = append(patterns, "HAMMER (reversal signal)")
-				}
-				// 倒锤子 (Inverted Hammer / Shooting Star)
-				if upperShadow2 > bodySize2*2 && lowerShadow2 < bodySize2*0.5 {
-					if trend == "downtrend" {
-						patterns = append(patterns, "INVERTED_HAMMER")
-					} else if trend == "uptrend" {
-						patterns = append(patterns, "SHOOTING_STAR (reversal signal)")
-					}
-				}
-			}
-
-			// 十字星 (Doji) - 开盘收盘接近
-			if range2 > 0 && math.Abs(body2)/range2 < 0.1 {
-				if k2.High-math.Max(k2.Open, k2.Close) > range2*0.3 && math.Min(k2.Open, k2.Close)-k2.Low > range2*0.3 {
-					patterns = append(patterns, "DOJI (indecision)")
-				}
-			}
-		}
-
-		// 三根K线形态
-		if len(klines) >= 3 {
-			k1 := klines[len(klines)-3]
-			k2 := klines[len(klines)-2]
-			k3 := klines[len(klines)-1]
-			body1 := k1.Close - k1.Open
-			body2 := k2.Close - k2.Open
-			body3 := k3.Close - k3.Open
-			range2 := k2.High - k2.Low
-
-			// 早晨之星 (Morning Star) - 大阴线 + 小实体 + 大阳线
-			if body1 < 0 && math.Abs(body1) > (k1.High-k1.Low)*0.5 && // 大阴线
-				range2 > 0 && math.Abs(body2)/range2 < 0.3 && // 小实体或十字星
-				body3 > 0 && math.Abs(body3) > (k3.High-k3.Low)*0.5 && // 大阳线
-				k3.Close > (k1.Open+k1.Close)/2 { // 收盘超过第一根中点
-				patterns = append(patterns, "MORNING_STAR (bullish reversal)")
-			}
-
-			// 黄昏之星 (Evening Star) - 大阳线 + 小实体 + 大阴线
-			if body1 > 0 && math.Abs(body1) > (k1.High-k1.Low)*0.5 &&
-				range2 > 0 && math.Abs(body2)/range2 < 0.3 &&
-				body3 < 0 && math.Abs(body3) > (k3.High-k3.Low)*0.5 &&
-				k3.Close < (k1.Open+k1.Close)/2 {
-				patterns = append(patterns, "EVENING_STAR (bearish reversal)")
-			}
-
-			// 三白兵 (Three White Soldiers)
-			if body1 > 0 && body2 > 0 && body3 > 0 &&
-				k2.Close > k1.Close && k3.Close > k2.Close &&
-				k2.Open > k1.Open && k3.Open > k2.Open {
-				patterns = append(patterns, "THREE_WHITE_SOLDIERS (strong bullish)")
-			}
-
-			// 三黑鸦 (Three Black Crows)
-			if body1 < 0 && body2 < 0 && body3 < 0 &&
-				k2.Close < k1.Close && k3.Close < k2.Close &&
-				k2.Open < k1.Open && k3.Open < k2.Open {
-				patterns = append(patterns, "THREE_BLACK_CROWS (strong bearish)")
-			}
-		}
-
+		// K线组合形态识别（完整清单见 kernel/candlestick.go）
+		patterns := DetectCandlestickPatterns(klines, trend)
 		if len(patterns) > 0 {
 			sb.WriteString(fmt.Sprintf("Patterns: %s\n", strings.Join(patterns, ", ")))
 		}
