@@ -276,3 +276,20 @@ func TestRuleDefinitionMethods(t *testing.T) {
 		t.Error("GetReason(English) failed")
 	}
 }
+
+func TestGetSignalDisplayName(t *testing.T) {
+	// 组合形态与字典对应：中文用 NameZH，英文用 NameEN
+	zh := GetSignalDisplayName("CandlestickPatterns", "BULLISH_ENGULFING", LangChinese)
+	if zh != "看涨吞没/巨阳包阴" {
+		t.Errorf("GetSignalDisplayName(CandlestickPatterns, BULLISH_ENGULFING, zh) = %q, want 看涨吞没/巨阳包阴", zh)
+	}
+	en := GetSignalDisplayName("CandlestickPatterns", "BULLISH_ENGULFING", LangEnglish)
+	if en != "Bullish Engulfing" {
+		t.Errorf("GetSignalDisplayName(CandlestickPatterns, BULLISH_ENGULFING, en) = %q, want Bullish Engulfing", en)
+	}
+	// 未知 code 原样返回
+	unk := GetSignalDisplayName("CandlestickPatterns", "UNKNOWN_CODE", LangChinese)
+	if unk != "UNKNOWN_CODE" {
+		t.Errorf("GetSignalDisplayName(unknown code) = %q, want UNKNOWN_CODE", unk)
+	}
+}

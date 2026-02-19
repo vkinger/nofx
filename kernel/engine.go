@@ -2234,6 +2234,7 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 }
 
 func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *market.TimeframeSeriesData, indicators store.IndicatorConfig, timeframe string) {
+	lang := e.GetLanguage()
 	// 优化版摘要：平衡决策质量与token消耗
 	klines := data.Klines
 	if len(klines) > 0 {
@@ -2340,7 +2341,8 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 			k := klines[len(klines)-i]
 			t := time.Unix(k.Time/1000, 0).UTC()
 			timeStr := t.Format("01-02 15:04")
-			candleType := SingleCandleType(k)
+			candleTypeCode := SingleCandleType(k)
+			candleTypeDisplay := GetSignalDisplayName("SingleCandleTypes", candleTypeCode, lang)
 			volRatio := k.Volume / avgVolume
 			volLabel := ""
 			if volRatio > 2.0 {
@@ -2351,31 +2353,43 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 				volLabel = " [-vol]"
 			}
 			sb.WriteString(fmt.Sprintf("  %s: O:%s H:%s L:%s C:%s (%s)%s\n",
-				timeStr, fmtPrice(k.Open), fmtPrice(k.High), fmtPrice(k.Low), fmtPrice(k.Close), candleType, volLabel))
+				timeStr, fmtPrice(k.Open), fmtPrice(k.High), fmtPrice(k.Low), fmtPrice(k.Close), candleTypeDisplay, volLabel))
 		}
 
-		// K线组合形态识别（完整清单见 kernel/candlestick.go）
+		// K线组合形态识别（完整清单见 kernel/candlestick.go），提示词双语且形态名与字典对应
 		patterns := DetectCandlestickPatterns(klines, trend)
 		if len(patterns) > 0 {
-			sb.WriteString(fmt.Sprintf("Patterns: %s\n", strings.Join(patterns, ", ")))
-		}
-
-		// === 量价配合分析（全部量价类型，参考量价交易宝典）===
-		if len(klines) >= 3 {
-			vpSignals := DetectVolumePriceSignals(klines)
-			if len(vpSignals) > 0 {
-				sb.WriteString(fmt.Sprintf("Volume-Price: %s\n", strings.Join(vpSignals, ", ")))
+			displayNames := make([]string, len(patterns))
+			for i, code := range patterns {
+				displayNames[i] = GetSignalDisplayName("CandlestickPatterns", code, lang)
+			}
+			if lang == LangChinese {
+				sb.WriteString(fmt.Sprintf("形态: %s\n", strings.Join(displayNames, ", ")))
+			} else {
+				sb.WriteString(fmt.Sprintf("Patterns: %s\n", strings.Join(displayNames, ", ")))
 			}
 		}
 
-		// === 分时摘要（短周期：按根数/按分钟两套斜率 + ATR 归一化，供观察员）===
+		// === 量价配合分析（全部量价类型，参考量价交易宝典），提示词双语 ===
+		if len(klines) >= 3 {
+			vpSignals := DetectVolumePriceSignals(klines)
+			if len(vpSignals) > 0 {
+				if lang == LangChinese {
+					sb.WriteString(fmt.Sprintf("量价: %s\n", strings.Join(vpSignals, ", ")))
+				} else {
+					sb.WriteString(fmt.Sprintf("Volume-Price: %s\n", strings.Join(vpSignals, ", ")))
+				}
+			}
+		}
+
+		// === 分时摘要（短周期：按根数/按分钟两套斜率 + ATR 归一化，供观察员），提示词双语 ===
 		if IsShortTimeframe(timeframe) && len(klines) >= 2 {
 			atr := float64(0)
 			if data != nil && data.ATR14 > 0 {
 				atr = data.ATR14
 			}
 			if summary, ok := ComputeIntradaySummary(klines, 10, timeframe, atr); ok {
-				sb.WriteString(FormatIntradaySummaryForPrompt(summary, true))
+				sb.WriteString(FormatIntradaySummaryForPrompt(summary, lang == LangChinese))
 				if summary.StrongBuy {
 					sb.WriteString(" [STRONG_BUY]")
 				}

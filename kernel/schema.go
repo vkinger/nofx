@@ -798,6 +798,23 @@ var SignalDictionary = map[string]map[string]BilingualFieldDef{
 	},
 }
 
+// GetSignalDisplayName 根据字典返回信号的显示名称（双语）；若字典无则返回 code
+func GetSignalDisplayName(category string, code string, lang Language) string {
+	cat, ok := SignalDictionary[category]
+	if !ok {
+		return code
+	}
+	field, ok := cat[code]
+	if !ok {
+		return code
+	}
+	name := field.GetName(lang)
+	if name == "" {
+		return code
+	}
+	return name
+}
+
 // GetSignalExplanation 获取信号说明（根据语言和模型大小）
 // modelSize: ModelLarge = 精简版(~150 tokens), ModelSmall = 完整版(~350 tokens)
 func GetSignalExplanation(lang Language, modelSize ModelSize) string {
@@ -883,7 +900,7 @@ func getSignalExplanationEN(modelSize ModelSize) string {
 		sb.WriteString("Bullish continuation: THREE_WHITE_SOLDIERS | HIGH_SIDE_COIL | FIVE_YANG_LINEUP | CONSECUTIVE_GAP_UP\n")
 		sb.WriteString("Single-candle types: DOJI LONG_LEGGED_DOJI T_LINE INVERTED_T_LINE HAMMER INVERTED_HAMMER SHOOTING_STAR SPINNING_TOP STRONG_BULL STRONG_BEAR MARUBOZU_BULL MARUBOZU_BEAR BALD_BULL BALD_BEAR FOOTLESS_BULL FOOTLESS_BEAR SMALL_BULL SMALL_BEAR LIMIT_UP LIMIT_DOWN (see SingleCandleTypes dict)\n\n")
 
-		sb.WriteString("#### Volume-Price (量价交易宝典)\n")
+		sb.WriteString("#### Volume-Price\n")
 		sb.WriteString("Uptrend: price up + volume up = HEALTHY_UPTREND | price up + volume down = DISTRIBUTION or SHRINK_UP_LOCK (lock-in) | volume up + price slowing = STAGNATION_WITH_VOLUME (top) | flat volume + slowing = FLAT_VOLUME_STAGNATION | flat volume + accelerating = FLAT_VOLUME_RALLY\n")
 		sb.WriteString("Downtrend: price down + volume up = HEALTHY_DOWNTREND (distribution) or BOTTOM_WITH_VOLUME (bottom) | price down + volume down = ACCUMULATION or SHRINK_DOWN_CONTINUE (continuation) | flat volume + decline = FLAT_VOLUME_DECLINE\n")
 		sb.WriteString("Intraday summary (1m/3m/5m/15m): Slope (steep_up=~45° rally), PM=price momentum VM=volume momentum, match=一致/背离/恐慌; STRONG_BUY when steep slope + volume above average\n\n")

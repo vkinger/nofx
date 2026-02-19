@@ -14,7 +14,7 @@ func TestSingleCandleType(t *testing.T) {
 		{"long_legged_doji", market.KlineBar{Open: 100, High: 102, Low: 98, Close: 100}, "LONG_LEGGED_DOJI"},
 		{"strong_bull", market.KlineBar{Open: 100, High: 108, Low: 99, Close: 107}, "STRONG_BULL"},
 		{"strong_bear", market.KlineBar{Open: 100, High: 101, Low: 93, Close: 94}, "STRONG_BEAR"},
-		{"hammer", market.KlineBar{Open: 100, High: 101, Low: 90, Close: 100.5}, "HAMMER"},
+		{"hammer", market.KlineBar{Open: 99, High: 101, Low: 90, Close: 101}, "HAMMER"}, // 下影长、上影极短、小实体，满足 HAMMER 条件
 		{"spinning_top", market.KlineBar{Open: 100, High: 104, Low: 96, Close: 101}, "SPINNING_TOP"},
 		{"limit_up", market.KlineBar{Open: 100, High: 100.00001, Low: 100, Close: 100.00001}, "LIMIT_UP"},
 	}
