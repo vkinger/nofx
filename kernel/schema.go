@@ -229,6 +229,28 @@ var DataDictionary = map[string]map[string]BilingualFieldDef{
 			DescEN: "OI change in 1 hour. Used to determine real capital flow direction",
 		},
 	},
+
+	// 价格数据说明：提示词中「当前价」与「实时价」的含义（系统提示词由字典构建时会包含此节）
+	"PriceDataNote": {
+		"CurrentPrice": {
+			NameZH:    "当前价",
+			NameEN:    "Current price",
+			Unit:      "",
+			FormulaZH: "最短周期最后一根已收盘K线收盘价",
+			FormulaEN: "Last closed candle close of the shortest configured timeframe",
+			DescZH:    "已配置周期中最短周期最后一根已收盘K线收盘价，存在分钟级延后。与指标(EMA/MACD/RSI)同源。",
+			DescEN:    "Last closed candle of the shortest configured timeframe; may lag by minutes. Same source as indicators (EMA/MACD/RSI).",
+		},
+		"RealtimePrice": {
+			NameZH:    "实时价",
+			NameEN:    "Realtime",
+			Unit:      "",
+			FormulaZH: "交易所盘口价",
+			FormulaEN: "Exchange ticker",
+			DescZH:    "交易所盘口价，供下单与风控参考。",
+			DescEN:    "Exchange ticker for execution reference.",
+		},
+	},
 }
 
 // ========== 双语规则定义 ==========
@@ -578,6 +600,12 @@ func getSchemaPromptZH() string {
 		prompt += formatFieldDefZH(key, field)
 	}
 
+	// 价格数据说明（当前价 vs 实时价）
+	prompt += "\n### 价格数据说明\n"
+	for key, field := range DataDictionary["PriceDataNote"] {
+		prompt += formatFieldDefZH(key, field)
+	}
+
 	// OI解读 - 已移至 SignalDictionary["OIPriceSignals"]，由 GetSignalExplanation 统一输出
 	// prompt += "\n## 💹 持仓量(OI)变化解读\n\n"
 	// prompt += "- **OI增加 + 价格上涨**: " + OIInterpretation.OIUp_PriceUp.ZH + "\n"
@@ -614,6 +642,12 @@ func getSchemaPromptEN() string {
 	// Market Data
 	prompt += "\n### Market Data\n"
 	for key, field := range DataDictionary["MarketData"] {
+		prompt += formatFieldDefEN(key, field)
+	}
+
+	// Price data note (current price vs realtime)
+	prompt += "\n### Price Data Note\n"
+	for key, field := range DataDictionary["PriceDataNote"] {
 		prompt += formatFieldDefEN(key, field)
 	}
 

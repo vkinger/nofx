@@ -1127,8 +1127,14 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 		}
 	}
 
-	// 12. Set exchange credentials for accurate trading fee fetching
+	// 12. Set exchange for market data (K-line, funding, OI use same exchange as trading venue)
+	ctx.Exchange = at.exchange
 	ctx.ExchangeCredentials = at.getExchangeCredentials()
+
+	// 13. Set realtime price getter so prompt can show 实时价 (exchange ticker for execution reference)
+	ctx.RealtimePriceGetter = func(symbol string) (float64, error) {
+		return at.trader.GetMarketPrice(symbol)
+	}
 
 	return ctx, nil
 }

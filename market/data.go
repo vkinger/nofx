@@ -265,15 +265,14 @@ func GetWithExchange(symbol, exchange string) (*Data, error) {
 		}
 	}
 
-	// Get OI data
-	oiData, err := getOpenInterestData(symbol)
+	// Get OI data (use same exchange as K-line source)
+	oiData, err := getOpenInterestData(symbol, exchange)
 	if err != nil {
-		// OI failure doesn't affect overall result, use default values
 		oiData = &OIData{Latest: 0, Average: 0}
 	}
 
-	// Get Funding Rate
-	fundingRate, _ := getFundingRate(symbol)
+	// Get Funding Rate (same exchange)
+	fundingRate, _ := getFundingRate(symbol, exchange)
 	makerFeeRate, takerFeeRate, feeSource := getTradingFeeRates(symbol)
 
 	// Calculate intraday series data
@@ -300,12 +299,32 @@ func GetWithExchange(symbol, exchange string) (*Data, error) {
 	}, nil
 }
 
-// GetWithTimeframes retrieves market data for specified multiple timeframes
+// timeframeOrder defines order from shortest to longest (used to pick "shortest" TF for current price to reduce lag)
+var timeframeOrder = []string{"1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d", "3d", "1w"}
+
+func shortestTimeframeInList(timeframes []string) string {
+	for _, ordered := range timeframeOrder {
+		for _, tf := range timeframes {
+			if tf == ordered {
+				return tf
+			}
+		}
+	}
+	return "" // fallback: use first in list
+}
+
+// GetWithTimeframes retrieves market data for specified multiple timeframes using the given exchange.
+// exchange: "binance", "bybit", "okx", "hyperliquid", etc.; empty defaults to "binance". For xyz/hyperliquid assets, exchange is ignored and Hyperliquid API is used.
 // timeframes: list of timeframes, e.g. ["5m", "15m", "1h", "4h"]
 // primaryTimeframe: primary timeframe (used for calculating current indicators), defaults to timeframes[0]
 // count: number of K-lines for each timeframe
-func GetWithTimeframes(symbol string, timeframes []string, primaryTimeframe string, count int) (*Data, error) {
+// CurrentPrice is set from the shortest configured timeframe's last closed bar to minimize lag (e.g. 3m close when 3m and 5m are both configured).
+func GetWithTimeframes(symbol string, exchange string, timeframes []string, primaryTimeframe string, count int) (*Data, error) {
 	symbol = Normalize(symbol)
+	ex := strings.ToLower(strings.TrimSpace(exchange))
+	if ex == "" {
+		ex = "binance"
+	}
 
 	if len(timeframes) == 0 {
 		return nil, fmt.Errorf("at least one timeframe is required")
@@ -332,26 +351,24 @@ func GetWithTimeframes(symbol string, timeframes []string, primaryTimeframe stri
 	timeframeData := make(map[string]*TimeframeSeriesData)
 	var primaryKlines []Kline
 
-	// Check if this is an xyz dex asset (use Hyperliquid API)
 	isXyzAsset := IsXyzDexAsset(symbol)
+	useHyperliquidAPI := isXyzAsset || ex == "hyperliquid"
 
-	// Get K-line data for each timeframe
+	// Get K-line data for each timeframe (use exchange-specific source)
 	for _, tf := range timeframes {
 		var klines []Kline
 		var err error
 
-		if isXyzAsset {
-			// Use Hyperliquid API for xyz dex assets
+		if useHyperliquidAPI {
 			klines, err = getKlinesFromHyperliquid(symbol, tf, 200)
 			if err != nil {
 				logger.Infof("⚠️ Failed to get %s %s K-line from Hyperliquid: %v", symbol, tf, err)
 				continue
 			}
 		} else {
-			// Use CoinAnk for regular crypto assets (default to Binance)
-			klines, err = getKlinesFromCoinAnk(symbol, tf, "binance", 200)
+			klines, err = getKlinesFromCoinAnk(symbol, tf, ex, 200)
 			if err != nil {
-				logger.Infof("⚠️ Failed to get %s %s K-line from CoinAnk: %v", symbol, tf, err)
+				logger.Infof("⚠️ Failed to get %s %s K-line from CoinAnk (%s): %v", symbol, tf, ex, err)
 				continue
 			}
 		}
@@ -382,8 +399,20 @@ func GetWithTimeframes(symbol string, timeframes []string, primaryTimeframe stri
 		return nil, fmt.Errorf("%s data is stale, possible cache failure", symbol)
 	}
 
-	// Calculate current indicators (based on primary timeframe latest data)
+	// Current price: use shortest available timeframe's last closed bar to minimize lag (K-line APIs only return closed bars)
+	availableTFs := make([]string, 0, len(timeframeData))
+	for tf := range timeframeData {
+		availableTFs = append(availableTFs, tf)
+	}
+	shortestTF := shortestTimeframeInList(availableTFs)
 	currentPrice := primaryKlines[len(primaryKlines)-1].Close
+	if shortestTF != "" {
+		if sd, ok := timeframeData[shortestTF]; ok && len(sd.Klines) > 0 {
+			currentPrice = sd.Klines[len(sd.Klines)-1].Close
+		}
+	}
+
+	// Calculate current indicators (based on primary timeframe latest data)
 	currentEMA20 := calculateEMA(primaryKlines, 20)
 	currentMACD := calculateMACD(primaryKlines)
 	currentRSI7 := calculateRSI(primaryKlines, 7)
@@ -392,14 +421,21 @@ func GetWithTimeframes(symbol string, timeframes []string, primaryTimeframe stri
 	priceChange1h := calculatePriceChangeByBars(primaryKlines, primaryTimeframe, 60)  // 1 hour
 	priceChange4h := calculatePriceChangeByBars(primaryKlines, primaryTimeframe, 240) // 4 hours
 
-	// Get OI data
-	oiData, err := getOpenInterestData(symbol)
+	// Get OI and Funding from same exchange (hyperliquid has no public OI/funding in this form; use binance as fallback for crypto)
+	oiExchange := ex
+	if useHyperliquidAPI {
+		oiExchange = "binance"
+	}
+	oiData, err := getOpenInterestData(symbol, oiExchange)
 	if err != nil {
 		oiData = &OIData{Latest: 0, Average: 0}
 	}
-
-	// Get Funding Rate
-	fundingRate, _ := getFundingRate(symbol)
+	var fundingRate float64
+	if useHyperliquidAPI {
+		fundingRate, _ = getFundingRate(symbol, "binance")
+	} else {
+		fundingRate, _ = getFundingRate(symbol, ex)
+	}
 	makerFeeRate, takerFeeRate, feeSource := getTradingFeeRates(symbol)
 
 	return &Data{
@@ -811,90 +847,220 @@ func calculateLongerTermData(klines []Kline) *LongerTermData {
 	return data
 }
 
-// getOpenInterestData retrieves OI data
-func getOpenInterestData(symbol string) (*OIData, error) {
-	url := fmt.Sprintf("https://fapi.binance.com/fapi/v1/openInterest?symbol=%s", symbol)
+// getOpenInterestData retrieves OI data from the specified exchange (binance, bybit, okx). Empty exchange defaults to binance.
+func getOpenInterestData(symbol string, exchange string) (*OIData, error) {
+	ex := strings.ToLower(strings.TrimSpace(exchange))
+	if ex == "" {
+		ex = "binance"
+	}
+	switch ex {
+	case "bybit":
+		return getOpenInterestDataBybit(symbol)
+	case "okx":
+		return getOpenInterestDataOKX(symbol)
+	case "binance":
+		fallthrough
+	default:
+		return getOpenInterestDataBinance(symbol)
+	}
+}
 
+func getOpenInterestDataBinance(symbol string) (*OIData, error) {
+	url := fmt.Sprintf("https://fapi.binance.com/fapi/v1/openInterest?symbol=%s", symbol)
 	apiClient := NewAPIClient()
 	resp, err := apiClient.client.Get(url)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
-
 	var result struct {
 		OpenInterest string `json:"openInterest"`
 		Symbol       string `json:"symbol"`
 		Time         int64  `json:"time"`
 	}
-
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, err
 	}
-
 	oi, _ := strconv.ParseFloat(result.OpenInterest, 64)
-
-	return &OIData{
-		Latest:  oi,
-		Average: oi * 0.999, // Approximate average
-	}, nil
+	return &OIData{Latest: oi, Average: oi * 0.999}, nil
 }
 
-// getFundingRate retrieves funding rate (optimized: uses 1-hour cache)
-func getFundingRate(symbol string) (float64, error) {
-	// Check cache (1-hour validity)
-	// Funding Rate only updates every 8 hours, 1-hour cache is very reasonable
-	if cached, ok := fundingRateMap.Load(symbol); ok {
+func getOpenInterestDataBybit(symbol string) (*OIData, error) {
+	url := fmt.Sprintf("https://api.bybit.com/v5/market/tickers?category=linear&symbol=%s", symbol)
+	apiClient := NewAPIClient()
+	resp, err := apiClient.client.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	var result struct {
+		RetCode int `json:"retCode"`
+		Result  struct {
+			List []struct {
+				OpenInterest string `json:"openInterest"`
+			} `json:"list"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+	if result.RetCode != 0 || len(result.Result.List) == 0 {
+		return nil, fmt.Errorf("bybit OI: no data")
+	}
+	oi, _ := strconv.ParseFloat(result.Result.List[0].OpenInterest, 64)
+	return &OIData{Latest: oi, Average: oi * 0.999}, nil
+}
+
+func getOpenInterestDataOKX(symbol string) (*OIData, error) {
+	// OKX instId format: BTC-USDT-SWAP
+	base := strings.ReplaceAll(symbol, "USDT", "")
+	instId := base + "-USDT-SWAP"
+	url := fmt.Sprintf("https://www.okx.com/api/v5/public/open-interest?instId=%s", instId)
+	apiClient := NewAPIClient()
+	resp, err := apiClient.client.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	var result struct {
+		Code string `json:"code"`
+		Data []struct {
+			Oi   string `json:"oi"`
+			Inst string `json:"instId"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+	if result.Code != "0" || len(result.Data) == 0 {
+		return nil, fmt.Errorf("okx OI: no data")
+	}
+	oi, _ := strconv.ParseFloat(result.Data[0].Oi, 64)
+	return &OIData{Latest: oi, Average: oi * 0.999}, nil
+}
+
+// getFundingRate retrieves funding rate from the specified exchange (binance, bybit, okx). Empty exchange defaults to binance. Uses 1-hour cache per exchange+symbol.
+func getFundingRate(symbol string, exchange string) (float64, error) {
+	ex := strings.ToLower(strings.TrimSpace(exchange))
+	if ex == "" {
+		ex = "binance"
+	}
+	cacheKey := ex + ":" + symbol
+	if cached, ok := fundingRateMap.Load(cacheKey); ok {
 		cache := cached.(*FundingRateCache)
 		if time.Since(cache.UpdatedAt) < frCacheTTL {
-			// Cache hit, return directly
 			return cache.Rate, nil
 		}
 	}
 
-	// Cache expired or doesn't exist, call API
-	url := fmt.Sprintf("https://fapi.binance.com/fapi/v1/premiumIndex?symbol=%s", symbol)
+	var rate float64
+	var err error
+	switch ex {
+	case "bybit":
+		rate, err = getFundingRateBybit(symbol)
+	case "okx":
+		rate, err = getFundingRateOKX(symbol)
+	case "binance":
+		fallthrough
+	default:
+		rate, err = getFundingRateBinance(symbol)
+	}
+	if err != nil {
+		return 0, err
+	}
+	fundingRateMap.Store(cacheKey, &FundingRateCache{Rate: rate, UpdatedAt: time.Now()})
+	return rate, nil
+}
 
+func getFundingRateBinance(symbol string) (float64, error) {
+	url := fmt.Sprintf("https://fapi.binance.com/fapi/v1/premiumIndex?symbol=%s", symbol)
 	apiClient := NewAPIClient()
 	resp, err := apiClient.client.Get(url)
 	if err != nil {
 		return 0, err
 	}
 	defer resp.Body.Close()
-
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return 0, err
 	}
-
 	var result struct {
-		Symbol          string `json:"symbol"`
-		MarkPrice       string `json:"markPrice"`
-		IndexPrice      string `json:"indexPrice"`
 		LastFundingRate string `json:"lastFundingRate"`
-		NextFundingTime int64  `json:"nextFundingTime"`
-		InterestRate    string `json:"interestRate"`
-		Time            int64  `json:"time"`
 	}
-
 	if err := json.Unmarshal(body, &result); err != nil {
 		return 0, err
 	}
+	return strconv.ParseFloat(result.LastFundingRate, 64)
+}
 
-	rate, _ := strconv.ParseFloat(result.LastFundingRate, 64)
+func getFundingRateBybit(symbol string) (float64, error) {
+	url := fmt.Sprintf("https://api.bybit.com/v5/market/tickers?category=linear&symbol=%s", symbol)
+	apiClient := NewAPIClient()
+	resp, err := apiClient.client.Get(url)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, err
+	}
+	var result struct {
+		RetCode int `json:"retCode"`
+		Result  struct {
+			List []struct {
+				FundingRate string `json:"fundingRate"`
+			} `json:"list"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return 0, err
+	}
+	if result.RetCode != 0 || len(result.Result.List) == 0 {
+		return 0, fmt.Errorf("bybit funding: no data")
+	}
+	return strconv.ParseFloat(result.Result.List[0].FundingRate, 64)
+}
 
-	// Update cache
-	fundingRateMap.Store(symbol, &FundingRateCache{
-		Rate:      rate,
-		UpdatedAt: time.Now(),
-	})
-
-	return rate, nil
+func getFundingRateOKX(symbol string) (float64, error) {
+	base := strings.ReplaceAll(symbol, "USDT", "")
+	instId := base + "-USDT-SWAP"
+	url := fmt.Sprintf("https://www.okx.com/api/v5/public/funding-rate?instId=%s", instId)
+	apiClient := NewAPIClient()
+	resp, err := apiClient.client.Get(url)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, err
+	}
+	var result struct {
+		Code string `json:"code"`
+		Data []struct {
+			FundingRate string `json:"fundingRate"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return 0, err
+	}
+	if result.Code != "0" || len(result.Data) == 0 {
+		return 0, fmt.Errorf("okx funding: no data")
+	}
+	return strconv.ParseFloat(result.Data[0].FundingRate, 64)
 }
 
 // ExchangeCredentials holds API credentials for fetching trading fees from exchange

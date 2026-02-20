@@ -168,6 +168,9 @@ type Context struct {
 	AltcoinLeverage     int                                `json:"-"`
 	Timeframes          []string                           `json:"-"`
 	ExchangeCredentials *market.ExchangeCredentials        `json:"-"` // Optional exchange credentials for fetching accurate trading fees
+	Exchange            string                             `json:"-"` // Exchange type for market data (binance, bybit, okx, hyperliquid, etc.); used so K-line/funding/OI match trading venue
+	RealtimePriceGetter func(symbol string) (float64, error) `json:"-"` // Optional: if set, used to fill RealtimePrice after market data fetch (e.g. exchange ticker for execution reference)
+	RealtimePrice       map[string]float64                  `json:"-"` // Symbol -> live ticker price; filled when RealtimePriceGetter is set (for prompt: "实时价")
 }
 
 // Decision AI trading decision
@@ -309,6 +312,17 @@ func GetFullDecisionWithStrategy(ctx *Context, mcpClient mcp.AIClient, engine *S
 	if len(ctx.MarketDataMap) == 0 {
 		if err := fetchMarketDataWithStrategy(ctx, engine); err != nil {
 			return nil, fmt.Errorf("failed to fetch market data: %w", err)
+		}
+	}
+
+	// 1.5. Fill realtime prices from exchange (for prompt: 实时价) when getter is provided
+	if ctx.RealtimePriceGetter != nil {
+		ctx.RealtimePrice = make(map[string]float64)
+		for symbol := range ctx.MarketDataMap {
+			price, err := ctx.RealtimePriceGetter(symbol)
+			if err == nil && price > 0 {
+				ctx.RealtimePrice[symbol] = price
+			}
 		}
 	}
 
@@ -462,9 +476,13 @@ func fetchMarketDataWithStrategy(ctx *Context, engine *StrategyEngine) error {
 
 	logger.Infof("📊 Strategy timeframes: %v, Primary: %s, Kline count: %d", timeframes, primaryTimeframe, klineCount)
 
-	// 1. First fetch data for position coins (must fetch)
+	exchange := ctx.Exchange
+	if exchange == "" {
+		exchange = "binance"
+	}
+	// 1. First fetch data for position coins (must fetch), using trader's exchange
 	for _, pos := range ctx.Positions {
-		data, err := market.GetWithTimeframes(pos.Symbol, timeframes, primaryTimeframe, klineCount)
+		data, err := market.GetWithTimeframes(pos.Symbol, exchange, timeframes, primaryTimeframe, klineCount)
 		if err != nil {
 			logger.Infof("⚠️  Failed to fetch market data for position %s: %v", pos.Symbol, err)
 			continue
@@ -485,7 +503,7 @@ func fetchMarketDataWithStrategy(ctx *Context, engine *StrategyEngine) error {
 			continue
 		}
 
-		data, err := market.GetWithTimeframes(coin.Symbol, timeframes, primaryTimeframe, klineCount)
+		data, err := market.GetWithTimeframes(coin.Symbol, exchange, timeframes, primaryTimeframe, klineCount)
 		if err != nil {
 			logger.Infof("⚠️  Failed to fetch market data for %s: %v", coin.Symbol, err)
 			continue
@@ -1740,8 +1758,14 @@ func (e *StrategyEngine) BuildUserPrompt(ctx *Context) string {
 
 	// BTC market
 	if btcData, hasBTC := ctx.MarketDataMap["BTCUSDT"]; hasBTC {
-		sb.WriteString(fmt.Sprintf("BTC: %.2f (1h: %+.2f%%, 4h: %+.2f%%) | MACD: %.4f | RSI: %.2f\n\n",
-			btcData.CurrentPrice, btcData.PriceChange1h, btcData.PriceChange4h,
+		sb.WriteString(fmt.Sprintf("BTC: %.2f", btcData.CurrentPrice))
+		if ctx.RealtimePrice != nil {
+			if rt, ok := ctx.RealtimePrice["BTCUSDT"]; ok && rt > 0 {
+				sb.WriteString(fmt.Sprintf(" (实时价 %.2f)", rt))
+			}
+		}
+		sb.WriteString(fmt.Sprintf(" (1h: %+.2f%%, 4h: %+.2f%%) | MACD: %.4f | RSI: %.2f\n\n",
+			btcData.PriceChange1h, btcData.PriceChange4h,
 			btcData.CurrentMACD, btcData.CurrentRSI7))
 	}
 

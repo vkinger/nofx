@@ -253,10 +253,16 @@ func formatCurrentPositionsZH(ctx *Context) string {
 			sb.WriteString("   ⚠️ **止损提示**: 亏损接近-5%止损线，建议考虑止损\n")
 		}
 
-		// 显示当前价格（如果有市场数据）
+		// 显示当前价格（若有）+ 实时价（若有）
 		if ctx.MarketDataMap != nil {
 			if mdata, ok := ctx.MarketDataMap[pos.Symbol]; ok {
-				sb.WriteString(fmt.Sprintf("   📈 当前价格: %.4f\n", mdata.CurrentPrice))
+				sb.WriteString(fmt.Sprintf("   📈 当前价格: %.4f", mdata.CurrentPrice))
+				if ctx.RealtimePrice != nil {
+					if rt, ok := ctx.RealtimePrice[pos.Symbol]; ok && rt > 0 {
+						sb.WriteString(fmt.Sprintf(" | 实时价: %.4f (供下单参考)", rt))
+					}
+				}
+				sb.WriteString("\n")
 			}
 		}
 
@@ -274,10 +280,16 @@ func formatCandidateCoinsZH(ctx *Context) string {
 	for i, coin := range ctx.CandidateCoins {
 		sb.WriteString(fmt.Sprintf("### %d. %s\n\n", i+1, coin.Symbol))
 
-		// 当前价格
+		// 当前价格（最短周期K线收盘）+ 实时价（若有）
 		if ctx.MarketDataMap != nil {
 			if mdata, ok := ctx.MarketDataMap[coin.Symbol]; ok {
-				sb.WriteString(fmt.Sprintf("当前价格: %.4f\n\n", mdata.CurrentPrice))
+				sb.WriteString(fmt.Sprintf("当前价格: %.4f", mdata.CurrentPrice))
+				if ctx.RealtimePrice != nil {
+					if rt, ok := ctx.RealtimePrice[coin.Symbol]; ok && rt > 0 {
+						sb.WriteString(fmt.Sprintf(" | 实时价: %.4f (供下单参考)", rt))
+					}
+				}
+				sb.WriteString("\n\n")
 
 				// K线数据（多时间框架）
 				if mdata.TimeframeData != nil {
@@ -521,7 +533,13 @@ func formatCurrentPositionsEN(ctx *Context) string {
 
 		if ctx.MarketDataMap != nil {
 			if mdata, ok := ctx.MarketDataMap[pos.Symbol]; ok {
-				sb.WriteString(fmt.Sprintf("   📈 Current Price: %.4f\n", mdata.CurrentPrice))
+				sb.WriteString(fmt.Sprintf("   📈 Current Price: %.4f", mdata.CurrentPrice))
+				if ctx.RealtimePrice != nil {
+					if rt, ok := ctx.RealtimePrice[pos.Symbol]; ok && rt > 0 {
+						sb.WriteString(fmt.Sprintf(" | Realtime: %.4f (for execution)", rt))
+					}
+				}
+				sb.WriteString("\n")
 			}
 		}
 
@@ -541,7 +559,13 @@ func formatCandidateCoinsEN(ctx *Context) string {
 
 		if ctx.MarketDataMap != nil {
 			if mdata, ok := ctx.MarketDataMap[coin.Symbol]; ok {
-				sb.WriteString(fmt.Sprintf("Current Price: %.4f\n\n", mdata.CurrentPrice))
+				sb.WriteString(fmt.Sprintf("Current Price: %.4f", mdata.CurrentPrice))
+				if ctx.RealtimePrice != nil {
+					if rt, ok := ctx.RealtimePrice[coin.Symbol]; ok && rt > 0 {
+						sb.WriteString(fmt.Sprintf(" | Realtime: %.4f (for execution)", rt))
+					}
+				}
+				sb.WriteString("\n\n")
 
 				if mdata.TimeframeData != nil {
 					sb.WriteString(formatKlineDataEN(coin.Symbol, mdata.TimeframeData, ctx.Timeframes))
