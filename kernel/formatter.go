@@ -142,8 +142,9 @@ func formatTradingStatsZH(stats *TradingStats) string {
 		winLossRatio = stats.AvgWin / stats.AvgLoss
 	}
 
-	// 指标定义说明（去掉胜率，聚焦核心指标）
+	// 指标定义说明（含胜率，便于 AI 自我校准开仓频率）
 	sb.WriteString("**指标说明**:\n")
+	sb.WriteString("- 胜率: 盈利笔数 ÷ 总笔数（>50%为基本要求，胜率偏低时建议少开仓、提高开仓门槛）\n")
 	sb.WriteString("- 盈利因子: 总盈利 ÷ 总亏损（>1表示盈利，>1.5为良好，>2为优秀）\n")
 	sb.WriteString("- 夏普比率: (平均收益 - 无风险收益) ÷ 收益标准差（>1良好，>2优秀）\n")
 	sb.WriteString("- 盈亏比: 平均盈利 ÷ 平均亏损（>1.5为良好，>2为优秀）\n")
@@ -151,7 +152,7 @@ func formatTradingStatsZH(stats *TradingStats) string {
 
 	// 数据值
 	sb.WriteString("**当前数据**:\n")
-	sb.WriteString(fmt.Sprintf("- 总交易: %d 笔\n", stats.TotalTrades))
+	sb.WriteString(fmt.Sprintf("- 总交易: %d 笔 | 胜率: %.1f%%\n", stats.TotalTrades, stats.WinRate))
 	sb.WriteString(fmt.Sprintf("- 盈利因子: %.2f\n", stats.ProfitFactor))
 	sb.WriteString(fmt.Sprintf("- 夏普比率: %.2f\n", stats.SharpeRatio))
 	sb.WriteString(fmt.Sprintf("- 盈亏比: %.2f\n", winLossRatio))
@@ -166,6 +167,10 @@ func formatTradingStatsZH(stats *TradingStats) string {
 	// 根据统计数据给出具体建议
 	if stats.TotalTrades < 10 {
 		sb.WriteString("- 样本量较小（<10笔），统计结果参考意义有限\n")
+	}
+
+	if stats.WinRate > 0 && stats.WinRate < 50 {
+		sb.WriteString("- ⚠️ 胜率偏低: 建议减少开仓频率，仅在多信号共振、高置信度时开仓\n")
 	}
 
 	if stats.ProfitFactor >= 1.5 && stats.SharpeRatio >= 1 {
@@ -422,8 +427,9 @@ func formatTradingStatsEN(stats *TradingStats) string {
 		winLossRatio = stats.AvgWin / stats.AvgLoss
 	}
 
-	// Metric definitions (focus on core metrics, remove win rate)
+	// Metric definitions (include win rate for AI self-calibration)
 	sb.WriteString("**Metric Definitions**:\n")
+	sb.WriteString("- Win Rate: Winning trades ÷ Total trades (>50% = baseline; when low, reduce frequency and only open on high conviction)\n")
 	sb.WriteString("- Profit Factor: Total profits ÷ Total losses (>1 = profitable, >1.5 = good, >2 = excellent)\n")
 	sb.WriteString("- Sharpe Ratio: (Avg return - Risk-free rate) ÷ Std dev of returns (>1 = good, >2 = excellent)\n")
 	sb.WriteString("- Win/Loss Ratio: Avg win ÷ Avg loss (>1.5 = good, >2 = excellent)\n")
@@ -431,7 +437,7 @@ func formatTradingStatsEN(stats *TradingStats) string {
 
 	// Data values
 	sb.WriteString("**Current Data**:\n")
-	sb.WriteString(fmt.Sprintf("- Total Trades: %d\n", stats.TotalTrades))
+	sb.WriteString(fmt.Sprintf("- Total Trades: %d | Win Rate: %.1f%%\n", stats.TotalTrades, stats.WinRate))
 	sb.WriteString(fmt.Sprintf("- Profit Factor: %.2f\n", stats.ProfitFactor))
 	sb.WriteString(fmt.Sprintf("- Sharpe Ratio: %.2f\n", stats.SharpeRatio))
 	sb.WriteString(fmt.Sprintf("- Win/Loss Ratio: %.2f\n", winLossRatio))
@@ -446,6 +452,10 @@ func formatTradingStatsEN(stats *TradingStats) string {
 	// Specific recommendations based on stats
 	if stats.TotalTrades < 10 {
 		sb.WriteString("- Small sample size (<10 trades), statistics have limited significance\n")
+	}
+
+	if stats.WinRate > 0 && stats.WinRate < 50 {
+		sb.WriteString("- ⚠️ Low win rate: Reduce trade frequency; only open when multiple signals align and confidence is high\n")
 	}
 
 	if stats.ProfitFactor >= 1.5 && stats.SharpeRatio >= 1 {

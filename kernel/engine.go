@@ -1160,6 +1160,17 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 		sb.WriteString(fmt.Sprintf("\nFeel free to use any effective analysis method, but **confidence ≥ %d** required to open positions; avoid low-quality behaviors such as single indicators, contradictory signals, sideways consolidation, reopening immediately after closing, etc.\n\n", riskControl.MinConfidence))
 	}
 
+	// 5.5 Win rate & cost awareness (improve win rate by fewer low-quality opens)
+	if lang == LangChinese {
+		sb.WriteString("# 📊 胜率与成本意识\n\n")
+		sb.WriteString("- 当**历史胜率**或**近期胜率**偏低时，优先输出 WAIT/hold，少开新仓；仅在多信号共振、高置信度时开仓。\n")
+		sb.WriteString("- 开仓前确认**预期波动**明显大于**往返手续费**（数据中会给出 round-trip 成本）；否则易被成本吃掉利润。\n\n")
+	} else {
+		sb.WriteString("# 📊 Win Rate & Cost Awareness\n\n")
+		sb.WriteString("- When **historical** or **recent win rate** is low, prefer WAIT/hold; only open when multiple signals align and confidence is high.\n")
+		sb.WriteString("- Before opening, ensure **expected price move** clearly exceeds **round-trip cost** (shown in data); otherwise profit is eroded by fees.\n\n")
+	}
+
 	// 6. Decision process (editable)
 	if promptSections.DecisionProcess != "" {
 		sb.WriteString(promptSections.DecisionProcess)
@@ -1781,6 +1792,24 @@ func (e *StrategyEngine) BuildUserPrompt(ctx *Context) string {
 	// Recently completed orders (placed before positions to ensure visibility)
 	if len(ctx.RecentOrders) > 0 {
 		sb.WriteString("## Recent Completed Trades\n")
+		wins := 0
+		for _, order := range ctx.RecentOrders {
+			if order.RealizedPnL > 0 {
+				wins++
+			}
+		}
+		n := len(ctx.RecentOrders)
+		recentWinRate := 0.0
+		if n > 0 {
+			recentWinRate = float64(wins) / float64(n) * 100
+		}
+		if e.GetLanguage() == LangChinese {
+			sb.WriteString(fmt.Sprintf("近期%d笔: %d胜 (胜率 %.1f%%) — 胜率偏低时建议少开仓、提高开仓门槛\n",
+				n, wins, recentWinRate))
+		} else {
+			sb.WriteString(fmt.Sprintf("Recent %d trades: %d wins (%.1f%% win rate) — when low, reduce frequency and only open on high conviction\n",
+				n, wins, recentWinRate))
+		}
 		for i, order := range ctx.RecentOrders {
 			resultStr := "Profit"
 			if order.RealizedPnL < 0 {
@@ -1808,8 +1837,9 @@ func (e *StrategyEngine) BuildUserPrompt(ctx *Context) string {
 
 		if lang == LangChinese {
 			sb.WriteString("## 历史交易统计\n")
-			sb.WriteString(fmt.Sprintf("总交易: %d 笔 | 盈利因子: %.2f | 夏普比率: %.2f | 盈亏比: %.2f\n",
+			sb.WriteString(fmt.Sprintf("总交易: %d 笔 | 胜率: %.1f%% | 盈利因子: %.2f | 夏普比率: %.2f | 盈亏比: %.2f\n",
 				ctx.TradingStats.TotalTrades,
+				ctx.TradingStats.WinRate,
 				ctx.TradingStats.ProfitFactor,
 				ctx.TradingStats.SharpeRatio,
 				winLossRatio))
@@ -1819,8 +1849,10 @@ func (e *StrategyEngine) BuildUserPrompt(ctx *Context) string {
 				ctx.TradingStats.AvgLoss,
 				ctx.TradingStats.MaxDrawdownPct))
 
-			// Performance hints based on profit factor, sharpe, and drawdown
-			if ctx.TradingStats.ProfitFactor >= 1.5 && ctx.TradingStats.SharpeRatio >= 1 {
+			// Performance hints based on profit factor, sharpe, drawdown, win rate
+			if ctx.TradingStats.WinRate > 0 && ctx.TradingStats.WinRate < 50 {
+				sb.WriteString("表现: 胜率偏低 - 建议减少开仓频率，仅在多信号共振、高置信度时开仓\n")
+			} else if ctx.TradingStats.ProfitFactor >= 1.5 && ctx.TradingStats.SharpeRatio >= 1 {
 				sb.WriteString("表现: 良好 - 保持当前策略\n")
 			} else if ctx.TradingStats.ProfitFactor < 1 {
 				sb.WriteString("表现: 需改进 - 提高盈亏比，优化止盈止损\n")
@@ -1831,8 +1863,9 @@ func (e *StrategyEngine) BuildUserPrompt(ctx *Context) string {
 			}
 		} else {
 			sb.WriteString("## Historical Trading Statistics\n")
-			sb.WriteString(fmt.Sprintf("Total Trades: %d | Profit Factor: %.2f | Sharpe: %.2f | Win/Loss Ratio: %.2f\n",
+			sb.WriteString(fmt.Sprintf("Total Trades: %d | Win Rate: %.1f%% | Profit Factor: %.2f | Sharpe: %.2f | Win/Loss Ratio: %.2f\n",
 				ctx.TradingStats.TotalTrades,
+				ctx.TradingStats.WinRate,
 				ctx.TradingStats.ProfitFactor,
 				ctx.TradingStats.SharpeRatio,
 				winLossRatio))
@@ -1842,8 +1875,10 @@ func (e *StrategyEngine) BuildUserPrompt(ctx *Context) string {
 				ctx.TradingStats.AvgLoss,
 				ctx.TradingStats.MaxDrawdownPct))
 
-			// Performance hints based on profit factor, sharpe, and drawdown
-			if ctx.TradingStats.ProfitFactor >= 1.5 && ctx.TradingStats.SharpeRatio >= 1 {
+			// Performance hints based on win rate, profit factor, sharpe, drawdown
+			if ctx.TradingStats.WinRate > 0 && ctx.TradingStats.WinRate < 50 {
+				sb.WriteString("Performance: LOW WIN RATE - reduce trade frequency, only open when signals align and confidence is high\n")
+			} else if ctx.TradingStats.ProfitFactor >= 1.5 && ctx.TradingStats.SharpeRatio >= 1 {
 				sb.WriteString("Performance: GOOD - maintain current strategy\n")
 			} else if ctx.TradingStats.ProfitFactor < 1 {
 				sb.WriteString("Performance: NEEDS IMPROVEMENT - improve win/loss ratio, optimize TP/SL\n")
@@ -2084,9 +2119,33 @@ func (e *StrategyEngine) formatCoinSourceTag(sources []string) string {
 func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 	var sb strings.Builder
 	indicators := e.config.Indicators
+	lang := e.GetLanguage()
 
 	// 明确标注币种
 	sb.WriteString(fmt.Sprintf("=== %s Market Data ===\n\n", data.Symbol))
+
+	// 市场状态标签（基于 1h/4h 涨跌幅），便于 AI 判断是否适合开仓
+	var regime string
+	if lang == LangChinese {
+		if data.PriceChange1h > 0.005 && data.PriceChange4h > 0.01 {
+			regime = "上升趋势"
+		} else if data.PriceChange1h < -0.005 && data.PriceChange4h < -0.01 {
+			regime = "下降趋势"
+		} else {
+			regime = "震荡"
+		}
+		sb.WriteString(fmt.Sprintf("市场状态(1h/4h): %s\n", regime))
+	} else {
+		if data.PriceChange1h > 0.005 && data.PriceChange4h > 0.01 {
+			regime = "UPTREND"
+		} else if data.PriceChange1h < -0.005 && data.PriceChange4h < -0.01 {
+			regime = "DOWNTREND"
+		} else {
+			regime = "RANGING"
+		}
+		sb.WriteString(fmt.Sprintf("Regime (1h/4h): %s\n", regime))
+	}
+
 	sb.WriteString(fmt.Sprintf("current_price = %s", market.FormatPriceWithDynamicPrecision(data.CurrentPrice)))
 
 	if indicators.EnableEMA {
@@ -2144,36 +2203,49 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 				formatFlowValue(data.OpenInterest.Latest), oiChange, oiSignal))
 		}
 
-		// Unified funding rate and trading fee display
+		// Unified funding rate and trading fee display，显式量化成本便于决策
 		if hasFundingRate || hasTradingFee {
-			sb.WriteString("Cost Structure: ")
-
 			var costParts []string
-
 			if hasFundingRate {
-				// Format funding rate with direction indicator
 				fundingDir := "→"
 				if data.FundingRate > 0 {
-					fundingDir = "Long→Short" // Longs pay shorts
+					fundingDir = "Long→Short"
 				} else if data.FundingRate < 0 {
-					fundingDir = "Short→Long" // Shorts pay longs
+					fundingDir = "Short→Long"
 				}
 				costParts = append(costParts, fmt.Sprintf("Funding=%.4f%% (%s)",
 					data.FundingRate*100, fundingDir))
 			}
-
 			if hasTradingFee {
-				// Calculate total round-trip cost (open + close)
 				roundTripFee := (data.MakerFeeRate + data.TakerFeeRate) * 100
 				costParts = append(costParts, fmt.Sprintf("Fee(maker/taker)=%.4f%%/%.4f%% [round-trip≈%.3f%%]",
 					data.MakerFeeRate*100, data.TakerFeeRate*100, roundTripFee))
-				if data.FeeSource != "" && data.FeeSource != "default" {
-					sb.WriteString(fmt.Sprintf("%s (source: %s)\n", strings.Join(costParts, ", "), data.FeeSource))
+			}
+			sb.WriteString("Cost Structure: ")
+			sb.WriteString(strings.Join(costParts, ", "))
+			if data.FeeSource != "" && data.FeeSource != "default" {
+				sb.WriteString(fmt.Sprintf(" (source: %s)", data.FeeSource))
+			}
+			sb.WriteString("\n")
+
+			// 显式成本提示：开仓前预期波动需覆盖成本
+			roundTripPct := (data.MakerFeeRate + data.TakerFeeRate) * 100
+			funding8hPct := data.FundingRate * 100
+			if hasTradingFee && roundTripPct > 0 {
+				if lang == LangChinese {
+					sb.WriteString(fmt.Sprintf("成本提示: 往返手续费约 %.3f%%，开仓前预期波动需明显大于此值；", roundTripPct))
 				} else {
-					sb.WriteString(fmt.Sprintf("%s\n", strings.Join(costParts, ", ")))
+					sb.WriteString(fmt.Sprintf("Cost note: Round-trip fee ≈ %.3f%%, ensure expected move > this before opening; ", roundTripPct))
 				}
-			} else {
-				sb.WriteString(fmt.Sprintf("%s\n", strings.Join(costParts, ", ")))
+			}
+			if hasFundingRate {
+				if lang == LangChinese {
+					sb.WriteString(fmt.Sprintf("资金费率 8h≈%.4f%%\n", funding8hPct))
+				} else {
+					sb.WriteString(fmt.Sprintf("Funding 8h≈%.4f%%\n", funding8hPct))
+				}
+			} else if hasTradingFee {
+				sb.WriteString("\n")
 			}
 		}
 
@@ -2355,8 +2427,17 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 			fmtPrice(latest.Close), fmtPrice(maxPrice), fmtPrice(minPrice),
 			priceChange, trend, trendStrength))
 
-		// 显示最近5根K线（必需：量价分析需要5根，同时提供完整形态识别上下文）
-		recentCount := 5
+		// 近期关键价位（支撑/阻力），便于买卖点参考
+		if lang == LangChinese {
+			sb.WriteString(fmt.Sprintf("关键价位(近期区间): 阻力 %s | 支撑 %s\n",
+				fmtPrice(maxPrice), fmtPrice(minPrice)))
+		} else {
+			sb.WriteString(fmt.Sprintf("Key levels (recent range): Resistance %s | Support %s\n",
+				fmtPrice(maxPrice), fmtPrice(minPrice)))
+		}
+
+		// 显示最近10根K线（提供完整形态与量价上下文，便于买卖点判断）
+		recentCount := 10
 		if len(klines) < recentCount {
 			recentCount = len(klines)
 		}

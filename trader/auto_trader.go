@@ -779,6 +779,12 @@ func (at *AutoTrader) runCycle() error {
 		return nil
 	}
 
+	// Min confidence for opening: backend enforces strategy MinConfidence to reduce low-quality trades
+	minConfidence := 70
+	if at.config.StrategyConfig != nil && at.config.StrategyConfig.RiskControl.MinConfidence > 0 {
+		minConfidence = at.config.StrategyConfig.RiskControl.MinConfidence
+	}
+
 	// Execute decisions and record results
 	hasSuccessfulDecision := false
 	for _, d := range sortedDecisions {
@@ -789,6 +795,17 @@ func (at *AutoTrader) runCycle() error {
 		if !running {
 			logger.Infof("⏹ Trader stopped during decision execution, aborting remaining decisions")
 			break
+		}
+
+		// Skip opening positions when confidence is below threshold (reduce overtrading / low win rate)
+		if (d.Action == "open_long" || d.Action == "open_short") && d.Confidence < minConfidence {
+			logger.Infof("⏭️ Skipping %s %s: confidence %d < min %d", d.Symbol, d.Action, d.Confidence, minConfidence)
+			record.ExecutionLog = append(record.ExecutionLog, fmt.Sprintf("⏭️ %s %s skipped (confidence %d < %d)", d.Symbol, d.Action, d.Confidence, minConfidence))
+			record.Decisions = append(record.Decisions, store.DecisionAction{
+				Action: d.Action, Symbol: d.Symbol, Confidence: d.Confidence, Reasoning: d.Reasoning,
+				Timestamp: time.Now().UTC(), Success: false,
+			})
+			continue
 		}
 
 		actionRecord := store.DecisionAction{
