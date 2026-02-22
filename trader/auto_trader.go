@@ -68,9 +68,10 @@ type AutoTraderConfig struct {
 	KuCoinPassphrase string
 
 	// Hyperliquid configuration
-	HyperliquidPrivateKey string
-	HyperliquidWalletAddr string
-	HyperliquidTestnet    bool
+	HyperliquidPrivateKey  string
+	HyperliquidWalletAddr  string
+	HyperliquidTestnet     bool
+	HyperliquidUnifiedAcct bool // Unified Account mode: Spot USDC as Perp collateral
 
 	// Aster configuration
 	AsterUser       string // Aster main wallet address
