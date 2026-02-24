@@ -720,7 +720,8 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
     lighterWalletAddr?: string,
     lighterPrivateKey?: string,
     lighterApiKeyPrivateKey?: string,
-    lighterApiKeyIndex?: number
+    lighterApiKeyIndex?: number,
+    priceSourceExchangeId?: string
   ) => {
     try {
       if (exchangeId) {
@@ -758,7 +759,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
         })
       } else {
         // 创建新账户
-        const createRequest = {
+        const createRequest: Record<string, unknown> = {
           exchange_type: exchangeType,
           account_name: accountName,
           enabled: true,
@@ -774,6 +775,9 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
           lighter_private_key: lighterPrivateKey || '',
           lighter_api_key_private_key: lighterApiKeyPrivateKey || '',
           lighter_api_key_index: lighterApiKeyIndex || 0,
+        }
+        if (exchangeType === 'paper' && priceSourceExchangeId) {
+          createRequest.price_source_exchange_id = priceSourceExchangeId
         }
 
         await toast.promise(api.createExchangeEncrypted(createRequest), {

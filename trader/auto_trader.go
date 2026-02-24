@@ -21,6 +21,7 @@ import (
 	"nofx/trader/kucoin"
 	"nofx/trader/lighter"
 	"nofx/trader/okx"
+	"nofx/trader/types"
 	"strings"
 	"sync"
 	"time"
@@ -110,6 +111,9 @@ type AutoTraderConfig struct {
 
 	// Strategy configuration (use complete strategy config)
 	StrategyConfig *store.StrategyConfig // Strategy configuration (includes coin sources, indicators, risk control, prompts, etc.)
+
+	// PrebuiltTrader 可选：已创建好的 Trader 实例（如 PaperTrader），若设置则不再根据 Exchange 创建
+	PrebuiltTrader types.Trader
 }
 
 // MonitoringStats 监控统计信息
@@ -175,6 +179,36 @@ type AutoTrader struct {
 	positionCacheMutex    sync.RWMutex                        // 持仓缓存锁
 	lastLoggedProfit      map[string]float64                  // 上次记录的利润（用于减少日志）
 	lastLoggedProfitMutex sync.RWMutex                        // 上次记录利润锁
+}
+
+// CreateUnderlyingTrader creates only the exchange Trader (no AutoTrader).
+// Used when building a price-source trader for paper trading.
+func CreateUnderlyingTrader(config AutoTraderConfig, userID string) (Trader, error) {
+	switch config.Exchange {
+	case "binance":
+		return binance.NewFuturesTrader(config.BinanceAPIKey, config.BinanceSecretKey, userID), nil
+	case "bybit":
+		return bybit.NewBybitTrader(config.BybitAPIKey, config.BybitSecretKey), nil
+	case "okx":
+		return okx.NewOKXTrader(config.OKXAPIKey, config.OKXSecretKey, config.OKXPassphrase), nil
+	case "bitget":
+		return bitget.NewBitgetTrader(config.BitgetAPIKey, config.BitgetSecretKey, config.BitgetPassphrase), nil
+	case "gate":
+		return gate.NewGateTrader(config.GateAPIKey, config.GateSecretKey), nil
+	case "kucoin":
+		return kucoin.NewKuCoinTrader(config.KuCoinAPIKey, config.KuCoinSecretKey, config.KuCoinPassphrase), nil
+	case "hyperliquid":
+		return hyperliquid.NewHyperliquidTrader(config.HyperliquidPrivateKey, config.HyperliquidWalletAddr, config.HyperliquidTestnet)
+	case "aster":
+		return aster.NewAsterTrader(config.AsterUser, config.AsterSigner, config.AsterPrivateKey)
+	case "lighter":
+		if config.LighterWalletAddr == "" || config.LighterAPIKeyPrivateKey == "" {
+			return nil, fmt.Errorf("Lighter requires wallet address and API Key private key")
+		}
+		return lighter.NewLighterTraderV2(config.LighterWalletAddr, config.LighterAPIKeyPrivateKey, config.LighterAPIKeyIndex, false)
+	default:
+		return nil, fmt.Errorf("unsupported trading platform: %s", config.Exchange)
+	}
 }
 
 // NewAutoTrader creates an automatic trader
@@ -264,69 +298,76 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 	// Create corresponding trader based on configuration
 	var trader Trader
 	var err error
+	if config.PrebuiltTrader != nil {
+		trader = config.PrebuiltTrader
+		logger.Infof("📄 [%s] Using paper trading (prebuilt trader)", config.Name)
+	} else {
+		// Record position mode (general)
+		marginModeStr := "Cross Margin"
+		if !config.IsCrossMargin {
+			marginModeStr = "Isolated Margin"
+		}
+		logger.Infof("📊 [%s] Position mode: %s", config.Name, marginModeStr)
 
-	// Record position mode (general)
-	marginModeStr := "Cross Margin"
-	if !config.IsCrossMargin {
-		marginModeStr = "Isolated Margin"
+		switch config.Exchange {
+		case "binance":
+			logger.Infof("🏦 [%s] Using Binance Futures trading", config.Name)
+			trader = binance.NewFuturesTrader(config.BinanceAPIKey, config.BinanceSecretKey, userID)
+		case "bybit":
+			logger.Infof("🏦 [%s] Using Bybit Futures trading", config.Name)
+			trader = bybit.NewBybitTrader(config.BybitAPIKey, config.BybitSecretKey)
+		case "okx":
+			logger.Infof("🏦 [%s] Using OKX Futures trading", config.Name)
+			trader = okx.NewOKXTrader(config.OKXAPIKey, config.OKXSecretKey, config.OKXPassphrase)
+		case "bitget":
+			logger.Infof("🏦 [%s] Using Bitget Futures trading", config.Name)
+			trader = bitget.NewBitgetTrader(config.BitgetAPIKey, config.BitgetSecretKey, config.BitgetPassphrase)
+		case "gate":
+			logger.Infof("🏦 [%s] Using Gate.io Futures trading", config.Name)
+			trader = gate.NewGateTrader(config.GateAPIKey, config.GateSecretKey)
+		case "kucoin":
+			logger.Infof("🏦 [%s] Using KuCoin Futures trading", config.Name)
+			trader = kucoin.NewKuCoinTrader(config.KuCoinAPIKey, config.KuCoinSecretKey, config.KuCoinPassphrase)
+		case "hyperliquid":
+			logger.Infof("🏦 [%s] Using Hyperliquid trading", config.Name)
+			trader, err = hyperliquid.NewHyperliquidTrader(config.HyperliquidPrivateKey, config.HyperliquidWalletAddr, config.HyperliquidTestnet)
+			if err != nil {
+				return nil, fmt.Errorf("failed to initialize Hyperliquid trader: %w", err)
+			}
+		case "aster":
+			logger.Infof("🏦 [%s] Using Aster trading", config.Name)
+			trader, err = aster.NewAsterTrader(config.AsterUser, config.AsterSigner, config.AsterPrivateKey)
+			if err != nil {
+				return nil, fmt.Errorf("failed to initialize Aster trader: %w", err)
+			}
+		case "lighter":
+			logger.Infof("🏦 [%s] Using LIGHTER trading", config.Name)
+
+			if config.LighterWalletAddr == "" || config.LighterAPIKeyPrivateKey == "" {
+				return nil, fmt.Errorf("Lighter requires wallet address and API Key private key")
+			}
+
+			// Lighter only supports mainnet (testnet disabled)
+			trader, err = lighter.NewLighterTraderV2(
+				config.LighterWalletAddr,
+				config.LighterAPIKeyPrivateKey,
+				config.LighterAPIKeyIndex,
+				false, // Always use mainnet for Lighter
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to initialize LIGHTER trader: %w", err)
+			}
+			logger.Infof("✓ LIGHTER trader initialized successfully")
+		default:
+			return nil, fmt.Errorf("unsupported trading platform: %s", config.Exchange)
+		}
 	}
-	logger.Infof("📊 [%s] Position mode: %s", config.Name, marginModeStr)
 
-	switch config.Exchange {
-	case "binance":
-		logger.Infof("🏦 [%s] Using Binance Futures trading", config.Name)
-		trader = binance.NewFuturesTrader(config.BinanceAPIKey, config.BinanceSecretKey, userID)
-	case "bybit":
-		logger.Infof("🏦 [%s] Using Bybit Futures trading", config.Name)
-		trader = bybit.NewBybitTrader(config.BybitAPIKey, config.BybitSecretKey)
-	case "okx":
-		logger.Infof("🏦 [%s] Using OKX Futures trading", config.Name)
-		trader = okx.NewOKXTrader(config.OKXAPIKey, config.OKXSecretKey, config.OKXPassphrase)
-	case "bitget":
-		logger.Infof("🏦 [%s] Using Bitget Futures trading", config.Name)
-		trader = bitget.NewBitgetTrader(config.BitgetAPIKey, config.BitgetSecretKey, config.BitgetPassphrase)
-	case "gate":
-		logger.Infof("🏦 [%s] Using Gate.io Futures trading", config.Name)
-		trader = gate.NewGateTrader(config.GateAPIKey, config.GateSecretKey)
-	case "kucoin":
-		logger.Infof("🏦 [%s] Using KuCoin Futures trading", config.Name)
-		trader = kucoin.NewKuCoinTrader(config.KuCoinAPIKey, config.KuCoinSecretKey, config.KuCoinPassphrase)
-	case "hyperliquid":
-		logger.Infof("🏦 [%s] Using Hyperliquid trading", config.Name)
-		trader, err = hyperliquid.NewHyperliquidTrader(config.HyperliquidPrivateKey, config.HyperliquidWalletAddr, config.HyperliquidTestnet)
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize Hyperliquid trader: %w", err)
-		}
-	case "aster":
-		logger.Infof("🏦 [%s] Using Aster trading", config.Name)
-		trader, err = aster.NewAsterTrader(config.AsterUser, config.AsterSigner, config.AsterPrivateKey)
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize Aster trader: %w", err)
-		}
-	case "lighter":
-		logger.Infof("🏦 [%s] Using LIGHTER trading", config.Name)
-
-		if config.LighterWalletAddr == "" || config.LighterAPIKeyPrivateKey == "" {
-			return nil, fmt.Errorf("Lighter requires wallet address and API Key private key")
-		}
-
-		// Lighter only supports mainnet (testnet disabled)
-		trader, err = lighter.NewLighterTraderV2(
-			config.LighterWalletAddr,
-			config.LighterAPIKeyPrivateKey,
-			config.LighterAPIKeyIndex,
-			false, // Always use mainnet for Lighter
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize LIGHTER trader: %w", err)
-		}
-		logger.Infof("✓ LIGHTER trader initialized successfully")
-	default:
-		return nil, fmt.Errorf("unsupported trading platform: %s", config.Exchange)
-	}
-
-	// Validate initial balance configuration, auto-fetch from exchange if 0
+	// Validate initial balance configuration (paper uses DB balance; others may auto-fetch from exchange)
 	if config.InitialBalance <= 0 {
+		if config.PrebuiltTrader != nil {
+			return nil, fmt.Errorf("paper trading requires InitialBalance > 0")
+		}
 		logger.Infof("📊 [%s] Initial balance not set, attempting to fetch current balance from exchange...", config.Name)
 		account, err := trader.GetBalance()
 		if err != nil {

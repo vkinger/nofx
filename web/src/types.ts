@@ -158,6 +158,8 @@ export interface Exchange {
   lighterPrivateKey?: string
   lighterApiKeyPrivateKey?: string
   lighterApiKeyIndex?: number
+  // Paper 虚拟盘：取盘口/价格的实盘账户 ID
+  priceSourceExchangeId?: string
 }
 
 export interface CreateExchangeRequest {
@@ -176,6 +178,7 @@ export interface CreateExchangeRequest {
   lighter_private_key?: string
   lighter_api_key_private_key?: string
   lighter_api_key_index?: number
+  price_source_exchange_id?: string
 }
 
 export interface CreateTraderRequest {

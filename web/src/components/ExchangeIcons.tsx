@@ -101,7 +101,9 @@ export const getExchangeIcon = (
                   ? 'aster'
                   : lowerType.includes('lighter')
                     ? 'lighter'
-                    : lowerType
+                    : lowerType.includes('paper')
+                      ? 'paper'
+                      : lowerType
 
   const iconProps = {
     width: props.width || 24,

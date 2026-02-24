@@ -603,6 +603,12 @@ func (s *Server) handleCreateTrader(c *gin.Context) {
 		logger.Infof("⚠️ Exchange %s configuration not found, using user input for initial balance", req.ExchangeID)
 	} else if !exchangeCfg.Enabled {
 		logger.Infof("⚠️ Exchange %s not enabled, using user input for initial balance", req.ExchangeID)
+	} else if exchangeCfg.ExchangeType == "paper" {
+		// 虚拟盘：无 API 连接，直接使用用户填写的初始资金
+		if req.InitialBalance > 0 {
+			actualBalance = req.InitialBalance
+			logger.Infof("✓ Paper trading: using user initial balance %.2f USDT", actualBalance)
+		}
 	} else {
 		// Create temporary trader based on exchange type to query balance
 		var tempTrader trader.Trader
@@ -1170,6 +1176,46 @@ func (s *Server) handleSyncBalance(c *gin.Context) {
 
 	if exchangeCfg == nil || !exchangeCfg.Enabled {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Exchange not configured or not enabled"})
+		return
+	}
+
+	// Paper 账户：直接使用内存中的 Trader 查询虚拟盘余额，无需创建临时连接
+	if exchangeCfg.ExchangeType == "paper" {
+		at, err := s.traderManager.GetTrader(traderID)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Trader not loaded"})
+			return
+		}
+		balanceInfo, balanceErr := at.GetAccountInfo()
+		if balanceErr != nil {
+			SafeInternalError(c, "Failed to get paper balance", balanceErr)
+			return
+		}
+		var actualBalance float64
+		for _, key := range []string{"total_equity", "totalWalletBalance", "wallet_balance", "totalEq", "balance"} {
+			if balance, ok := balanceInfo[key].(float64); ok && balance > 0 {
+				actualBalance = balance
+				break
+			}
+		}
+		if actualBalance <= 0 {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Unable to get paper total equity"})
+			return
+		}
+		oldBalance := traderConfig.InitialBalance
+		if err := s.store.Trader().UpdateInitialBalance(userID, traderID, actualBalance); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update balance"})
+			return
+		}
+		_ = s.traderManager.LoadUserTradersFromStore(s.store, userID)
+		changePercent := ((actualBalance - oldBalance) / oldBalance) * 100
+		logger.Infof("✅ Paper balance synced: %.2f → %.2f USDT (%.2f%%)", oldBalance, actualBalance, changePercent)
+		c.JSON(http.StatusOK, gin.H{
+			"message":        "Balance synced successfully",
+			"previous_value": oldBalance,
+			"new_value":      actualBalance,
+			"change_percent": changePercent,
+		})
 		return
 	}
 
@@ -1953,7 +1999,7 @@ func (s *Server) handleUpdateExchangeConfigs(c *gin.Context) {
 
 // CreateExchangeRequest request structure for creating a new exchange account
 type CreateExchangeRequest struct {
-	ExchangeType            string `json:"exchange_type" binding:"required"` // "binance", "bybit", "okx", "hyperliquid", "aster", "lighter"
+	ExchangeType            string `json:"exchange_type" binding:"required"` // "binance", "bybit", "okx", "paper", ...
 	AccountName             string `json:"account_name"`                     // User-defined account name
 	Enabled                 bool   `json:"enabled"`
 	APIKey                  string `json:"api_key"`
@@ -1968,6 +2014,7 @@ type CreateExchangeRequest struct {
 	LighterPrivateKey       string `json:"lighter_private_key"`
 	LighterAPIKeyPrivateKey string `json:"lighter_api_key_private_key"`
 	LighterAPIKeyIndex      int    `json:"lighter_api_key_index"`
+	PriceSourceExchangeID   string `json:"price_source_exchange_id"` // 仅当 exchange_type=paper 时：取盘口/价格的实盘账户 ID
 }
 
 // handleCreateExchange Create a new exchange account
@@ -2024,11 +2071,23 @@ func (s *Server) handleCreateExchange(c *gin.Context) {
 	// Validate exchange type
 	validTypes := map[string]bool{
 		"binance": true, "bybit": true, "okx": true, "bitget": true,
-		"hyperliquid": true, "aster": true, "lighter": true, "gate": true, "kucoin": true,
+		"hyperliquid": true, "aster": true, "lighter": true, "gate": true, "kucoin": true, "paper": true,
 	}
 	if !validTypes[req.ExchangeType] {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid exchange type: %s", req.ExchangeType)})
 		return
+	}
+	if req.ExchangeType == "paper" {
+		if req.PriceSourceExchangeID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Paper trading requires price_source_exchange_id"})
+			return
+		}
+		// 校验价格源账户存在且非 paper
+		src, _ := s.store.Exchange().GetByID(userID, req.PriceSourceExchangeID)
+		if src == nil || src.ExchangeType == "paper" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Price source exchange not found or cannot be paper"})
+			return
+		}
 	}
 
 	// Create new exchange account
@@ -2037,6 +2096,7 @@ func (s *Server) handleCreateExchange(c *gin.Context) {
 		req.APIKey, req.SecretKey, req.Passphrase, req.Testnet,
 		req.HyperliquidWalletAddr, req.AsterUser, req.AsterSigner, req.AsterPrivateKey,
 		req.LighterWalletAddr, req.LighterPrivateKey, req.LighterAPIKeyPrivateKey, req.LighterAPIKeyIndex,
+		req.PriceSourceExchangeID,
 	)
 	if err != nil {
 		logger.Infof("❌ Failed to create exchange account: %v", err)

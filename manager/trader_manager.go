@@ -8,6 +8,7 @@ import (
 	"nofx/logger"
 	"nofx/store"
 	"nofx/trader"
+	"nofx/trader/paper"
 	"sort"
 	"sync"
 	"time"
@@ -674,8 +675,93 @@ func (tm *TraderManager) addTraderFromStore(traderCfg *store.Trader, aiModelCfg 
 	logger.Infof("📊 Loading trader %s: ScanIntervalMinutes=%d (from DB), ScanInterval=%v",
 		traderCfg.Name, traderCfg.ScanIntervalMinutes, traderConfig.ScanInterval)
 
+	// Paper trading: use price source exchange for order book and price, wrap with PaperTrader
+	if exchangeCfg.ExchangeType == "paper" {
+		if exchangeCfg.PriceSourceExchangeID == "" {
+			return fmt.Errorf("paper trading requires PriceSourceExchangeID to be set on the exchange")
+		}
+		if traderCfg.InitialBalance <= 0 {
+			return fmt.Errorf("paper trading requires InitialBalance > 0")
+		}
+		priceSourceExchange, err := st.Exchange().GetByID(traderCfg.UserID, exchangeCfg.PriceSourceExchangeID)
+		if err != nil || priceSourceExchange == nil {
+			return fmt.Errorf("paper price source exchange %s not found: %w", exchangeCfg.PriceSourceExchangeID, err)
+		}
+		priceSourceConfig := trader.AutoTraderConfig{
+			Exchange:              priceSourceExchange.ExchangeType,
+			BinanceAPIKey:         "",
+			BinanceSecretKey:      "",
+			BybitAPIKey:           "",
+			BybitSecretKey:        "",
+			OKXAPIKey:             "",
+			OKXSecretKey:          "",
+			OKXPassphrase:         "",
+			BitgetAPIKey:          "",
+			BitgetSecretKey:       "",
+			BitgetPassphrase:      "",
+			GateAPIKey:            "",
+			GateSecretKey:         "",
+			KuCoinAPIKey:          "",
+			KuCoinSecretKey:       "",
+			KuCoinPassphrase:      "",
+			HyperliquidTestnet:    priceSourceExchange.Testnet,
+			LighterWalletAddr:       priceSourceExchange.LighterWalletAddr,
+			LighterAPIKeyPrivateKey: string(priceSourceExchange.LighterAPIKeyPrivateKey),
+			LighterAPIKeyIndex:     priceSourceExchange.LighterAPIKeyIndex,
+		}
+		switch priceSourceExchange.ExchangeType {
+		case "binance":
+			priceSourceConfig.BinanceAPIKey = string(priceSourceExchange.APIKey)
+			priceSourceConfig.BinanceSecretKey = string(priceSourceExchange.SecretKey)
+		case "bybit":
+			priceSourceConfig.BybitAPIKey = string(priceSourceExchange.APIKey)
+			priceSourceConfig.BybitSecretKey = string(priceSourceExchange.SecretKey)
+		case "okx":
+			priceSourceConfig.OKXAPIKey = string(priceSourceExchange.APIKey)
+			priceSourceConfig.OKXSecretKey = string(priceSourceExchange.SecretKey)
+			priceSourceConfig.OKXPassphrase = string(priceSourceExchange.Passphrase)
+		case "bitget":
+			priceSourceConfig.BitgetAPIKey = string(priceSourceExchange.APIKey)
+			priceSourceConfig.BitgetSecretKey = string(priceSourceExchange.SecretKey)
+			priceSourceConfig.BitgetPassphrase = string(priceSourceExchange.Passphrase)
+		case "gate":
+			priceSourceConfig.GateAPIKey = string(priceSourceExchange.APIKey)
+			priceSourceConfig.GateSecretKey = string(priceSourceExchange.SecretKey)
+		case "kucoin":
+			priceSourceConfig.KuCoinAPIKey = string(priceSourceExchange.APIKey)
+			priceSourceConfig.KuCoinSecretKey = string(priceSourceExchange.SecretKey)
+			priceSourceConfig.KuCoinPassphrase = string(priceSourceExchange.Passphrase)
+		case "hyperliquid":
+			priceSourceConfig.HyperliquidPrivateKey = string(priceSourceExchange.APIKey)
+			priceSourceConfig.HyperliquidWalletAddr = priceSourceExchange.HyperliquidWalletAddr
+		case "aster":
+			priceSourceConfig.AsterUser = priceSourceExchange.AsterUser
+			priceSourceConfig.AsterSigner = priceSourceExchange.AsterSigner
+			priceSourceConfig.AsterPrivateKey = string(priceSourceExchange.AsterPrivateKey)
+		case "lighter":
+			priceSourceConfig.LighterWalletAddr = priceSourceExchange.LighterWalletAddr
+			priceSourceConfig.LighterAPIKeyPrivateKey = string(priceSourceExchange.LighterAPIKeyPrivateKey)
+			priceSourceConfig.LighterAPIKeyIndex = priceSourceExchange.LighterAPIKeyIndex
+		default:
+			return fmt.Errorf("paper price source exchange type %s not supported", priceSourceExchange.ExchangeType)
+		}
+		priceSourceTrader, err := trader.CreateUnderlyingTrader(priceSourceConfig, traderCfg.UserID)
+		if err != nil {
+			return fmt.Errorf("failed to create paper price source trader: %w", err)
+		}
+		paperTrader, err := paper.NewTrader(priceSourceTrader, st.Paper(), traderCfg.UserID, traderCfg.ID, traderCfg.InitialBalance,
+			paper.WithFeeRateByExchange(priceSourceExchange.ExchangeType))
+		if err != nil {
+			return fmt.Errorf("failed to create paper trader: %w", err)
+		}
+		traderConfig.PrebuiltTrader = paperTrader
+		logger.Infof("📄 Paper trader '%s' using price source: %s (%s)", traderCfg.Name, priceSourceExchange.AccountName, priceSourceExchange.ExchangeType)
+	}
+
 	// Set API keys based on exchange type (convert EncryptedString to string)
 	switch exchangeCfg.ExchangeType {
+	case "paper":
+		// Keys not used; PrebuiltTrader already set above
 	case "binance":
 		traderConfig.BinanceAPIKey = string(exchangeCfg.APIKey)
 		traderConfig.BinanceSecretKey = string(exchangeCfg.SecretKey)

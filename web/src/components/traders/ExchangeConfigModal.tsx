@@ -31,6 +31,7 @@ const SUPPORTED_EXCHANGE_TEMPLATES = [
   { exchange_type: 'hyperliquid', name: 'Hyperliquid', type: 'dex' as const },
   { exchange_type: 'aster', name: 'Aster DEX', type: 'dex' as const },
   { exchange_type: 'lighter', name: 'Lighter', type: 'dex' as const },
+  { exchange_type: 'paper', name: '虚拟盘 (Paper)', type: 'cex' as const },
 ]
 
 interface ExchangeConfigModalProps {
@@ -51,7 +52,8 @@ interface ExchangeConfigModalProps {
     lighterWalletAddr?: string,
     lighterPrivateKey?: string,
     lighterApiKeyPrivateKey?: string,
-    lighterApiKeyIndex?: number
+    lighterApiKeyIndex?: number,
+    priceSourceExchangeId?: string
   ) => Promise<void>
   onDelete: (exchangeId: string) => void
   onClose: () => void
@@ -181,6 +183,9 @@ export function ExchangeConfigModal({
   const [lighterApiKeyPrivateKey, setLighterApiKeyPrivateKey] = useState('')
   const [lighterApiKeyIndex, setLighterApiKeyIndex] = useState(0)
 
+  // Paper 虚拟盘：价格源交易所
+  const [priceSourceExchangeId, setPriceSourceExchangeId] = useState('')
+
   // Other state
   const [secureInputTarget, setSecureInputTarget] = useState<null | 'hyperliquid' | 'aster' | 'lighter'>(null)
   const [isSaving, setIsSaving] = useState(false)
@@ -225,6 +230,7 @@ export function ExchangeConfigModal({
       setLighterWalletAddr(selectedExchange.lighterWalletAddr || '')
       setLighterApiKeyPrivateKey('')
       setLighterApiKeyIndex(selectedExchange.lighterApiKeyIndex || 0)
+      setPriceSourceExchangeId(selectedExchange.priceSourceExchangeId || '')
     }
   }, [editingExchangeId, selectedExchange])
 
@@ -316,7 +322,14 @@ export function ExchangeConfigModal({
 
     setIsSaving(true)
     try {
-      if (currentExchangeType === 'binance' || currentExchangeType === 'bybit') {
+      if (currentExchangeType === 'paper') {
+        if (!priceSourceExchangeId.trim()) {
+          toast.error(language === 'zh' ? '请选择价格源交易所' : 'Please select price source exchange')
+          setIsSaving(false)
+          return
+        }
+        await onSave(exchangeId, exchangeType, trimmedAccountName, '', '', '', testnet, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, priceSourceExchangeId.trim())
+      } else if (currentExchangeType === 'binance' || currentExchangeType === 'bybit') {
         if (!apiKey.trim() || !secretKey.trim()) return
         await onSave(exchangeId, exchangeType, trimmedAccountName, apiKey.trim(), secretKey.trim(), '', testnet)
       } else if (currentExchangeType === 'okx' || currentExchangeType === 'bitget' || currentExchangeType === 'kucoin') {
@@ -517,6 +530,32 @@ export function ExchangeConfigModal({
                   required
                 />
               </div>
+
+              {/* Paper 虚拟盘：选择价格源交易所 */}
+              {currentExchangeType === 'paper' && (
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm font-semibold" style={{ color: '#EAECEF' }}>
+                    {language === 'zh' ? '价格源交易所' : 'Price Source Exchange'} *
+                  </label>
+                  <p className="text-xs" style={{ color: '#848E9C' }}>
+                    {language === 'zh' ? '虚拟盘将使用该实盘账户的盘口与价格进行模拟成交' : 'Paper trading will use this exchange\'s order book and price for simulated fills'}
+                  </p>
+                  <select
+                    value={priceSourceExchangeId}
+                    onChange={(e) => setPriceSourceExchangeId(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl text-base"
+                    style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
+                    required
+                  >
+                    <option value="">{language === 'zh' ? '请选择' : 'Select...'}</option>
+                    {(allExchanges || []).filter((e) => e.exchange_type !== 'paper').map((ex) => (
+                      <option key={ex.id} value={ex.id}>
+                        {ex.account_name || ex.name} ({ex.exchange_type?.toUpperCase()})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {/* CEX Fields */}
               {(currentExchangeType === 'binance' || currentExchangeType === 'bybit' || currentExchangeType === 'okx' || currentExchangeType === 'bitget' || currentExchangeType === 'gate' || currentExchangeType === 'kucoin') && (

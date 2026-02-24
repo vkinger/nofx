@@ -36,6 +36,8 @@ type Exchange struct {
 	LighterPrivateKey       crypto.EncryptedString `gorm:"column:lighter_private_key;default:''" json:"lighterPrivateKey"`
 	LighterAPIKeyPrivateKey crypto.EncryptedString `gorm:"column:lighter_api_key_private_key;default:''" json:"lighterAPIKeyPrivateKey"`
 	LighterAPIKeyIndex      int             `gorm:"column:lighter_api_key_index;default:0" json:"lighterAPIKeyIndex"`
+	// PriceSourceExchangeID 仅当 exchange_type=paper 时使用：用于盘口/价格的实盘交易所账户 ID
+	PriceSourceExchangeID  string          `gorm:"column:price_source_exchange_id;default:''" json:"priceSourceExchangeId"`
 	CreatedAt               time.Time       `json:"created_at"`
 	UpdatedAt               time.Time       `json:"updated_at"`
 }
@@ -173,6 +175,8 @@ func getExchangeNameAndType(exchangeType string) (name string, typ string) {
 		return "Aster DEX", "dex"
 	case "lighter":
 		return "LIGHTER DEX", "dex"
+	case "paper":
+		return "虚拟盘 (Paper)", "cex"
 	default:
 		return exchangeType + " Exchange", "cex"
 	}
@@ -182,7 +186,8 @@ func getExchangeNameAndType(exchangeType string) (name string, typ string) {
 func (s *ExchangeStore) Create(userID, exchangeType, accountName string, enabled bool,
 	apiKey, secretKey, passphrase string, testnet bool,
 	hyperliquidWalletAddr, asterUser, asterSigner, asterPrivateKey,
-	lighterWalletAddr, lighterPrivateKey, lighterApiKeyPrivateKey string, lighterApiKeyIndex int) (string, error) {
+	lighterWalletAddr, lighterPrivateKey, lighterApiKeyPrivateKey string, lighterApiKeyIndex int,
+	priceSourceExchangeID string) (string, error) {
 
 	id := uuid.New().String()
 	name, typ := getExchangeNameAndType(exchangeType)
@@ -195,25 +200,26 @@ func (s *ExchangeStore) Create(userID, exchangeType, accountName string, enabled
 		userID, exchangeType, accountName, id)
 
 	exchange := &Exchange{
-		ID:                      id,
-		ExchangeType:            exchangeType,
-		AccountName:             accountName,
-		UserID:                  userID,
-		Name:                    name,
-		Type:                    typ,
-		Enabled:                 enabled,
-		APIKey:                  crypto.EncryptedString(apiKey),
-		SecretKey:               crypto.EncryptedString(secretKey),
-		Passphrase:              crypto.EncryptedString(passphrase),
-		Testnet:                 testnet,
-		HyperliquidWalletAddr:   hyperliquidWalletAddr,
-		AsterUser:               asterUser,
+		ID:                     id,
+		ExchangeType:           exchangeType,
+		AccountName:            accountName,
+		UserID:                 userID,
+		Name:                   name,
+		Type:                   typ,
+		Enabled:                enabled,
+		APIKey:                 crypto.EncryptedString(apiKey),
+		SecretKey:              crypto.EncryptedString(secretKey),
+		Passphrase:             crypto.EncryptedString(passphrase),
+		Testnet:                testnet,
+		HyperliquidWalletAddr:  hyperliquidWalletAddr,
+		AsterUser:              asterUser,
 		AsterSigner:             asterSigner,
-		AsterPrivateKey:         crypto.EncryptedString(asterPrivateKey),
-		LighterWalletAddr:       lighterWalletAddr,
-		LighterPrivateKey:       crypto.EncryptedString(lighterPrivateKey),
+		AsterPrivateKey:        crypto.EncryptedString(asterPrivateKey),
+		LighterWalletAddr:      lighterWalletAddr,
+		LighterPrivateKey:      crypto.EncryptedString(lighterPrivateKey),
 		LighterAPIKeyPrivateKey: crypto.EncryptedString(lighterApiKeyPrivateKey),
-		LighterAPIKeyIndex:      lighterApiKeyIndex,
+		LighterAPIKeyIndex:     lighterApiKeyIndex,
+		PriceSourceExchangeID:  priceSourceExchangeID,
 	}
 
 	if err := s.db.Create(exchange).Error; err != nil {
@@ -307,7 +313,7 @@ func (s *ExchangeStore) CreateLegacy(userID, id, name, typ string, enabled bool,
 	// Check if this is an old-style ID (exchange type as ID)
 	if id == "binance" || id == "bybit" || id == "okx" || id == "bitget" || id == "hyperliquid" || id == "aster" || id == "lighter" {
 		_, err := s.Create(userID, id, "Default", enabled, apiKey, secretKey, "", testnet,
-			hyperliquidWalletAddr, asterUser, asterSigner, asterPrivateKey, "", "", "", 0)
+			hyperliquidWalletAddr, asterUser, asterSigner, asterPrivateKey, "", "", "", 0, "")
 		return err
 	}
 
