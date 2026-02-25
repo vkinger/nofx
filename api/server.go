@@ -701,6 +701,12 @@ func (s *Server) handleCreateTrader(c *gin.Context) {
 		}
 	}
 
+	// 虚拟盘必须填写初始资金，否则创建后无法启动（无法获取初始化余额）
+	if exchangeCfg != nil && exchangeCfg.ExchangeType == "paper" && actualBalance <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "虚拟盘需设置初始资金，请填写「初始资金」后再创建"})
+		return
+	}
+
 	// Create trader configuration (database entity)
 	logger.Infof("🔧 DEBUG: Starting to create trader config, ID=%s, Name=%s, AIModel=%s, Exchange=%s, StrategyID=%s", traderID, req.Name, req.AIModelID, req.ExchangeID, req.StrategyID)
 	traderRecord := &store.Trader{

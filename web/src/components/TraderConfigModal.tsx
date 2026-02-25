@@ -122,6 +122,10 @@ export function TraderConfigModal({
 
   if (!isOpen) return null
 
+  const selectedExchange = availableExchanges.find((e) => e.id === formData.exchange_id)
+  const isPaperExchange = selectedExchange?.exchange_type === 'paper'
+  const defaultPaperInitialBalance = 100
+
   const handleInputChange = (field: keyof FormState, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
   }
@@ -172,9 +176,11 @@ export function TraderConfigModal({
         scan_interval_minutes: formData.scan_interval_minutes,
       }
 
-      // 只在编辑模式时包含initial_balance
+      // 编辑模式：提交已填写的初始余额；创建虚拟盘：必须带初始资金（默认 10000）
       if (isEditMode && formData.initial_balance !== undefined) {
         saveData.initial_balance = formData.initial_balance
+      } else if (!isEditMode && isPaperExchange) {
+        saveData.initial_balance = formData.initial_balance ?? defaultPaperInitialBalance
       }
 
       await toast.promise(onSave(saveData), {
@@ -688,43 +694,52 @@ export function TraderConfigModal({
                 </p>
               </div>
 
-              {/* Initial Balance (Edit mode only) */}
-              {isEditMode && (
+              {/* Initial Balance: 编辑模式始终显示；创建时仅虚拟盘显示（必填，默认 10000） */}
+              {(isEditMode || isPaperExchange) && (
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <label className="text-sm" style={{ color: 'var(--text-primary)' }}>
-                      初始余额 ($)
+                      {isPaperExchange && !isEditMode
+                        ? language === 'zh'
+                          ? '初始资金 (USDT)'
+                          : 'Initial Balance (USDT)'
+                        : '初始余额 ($)'}
                     </label>
-                    <button
-                      type="button"
-                      onClick={handleFetchCurrentBalance}
-                      disabled={isFetchingBalance}
-                      className="px-3 py-1 text-xs rounded transition-colors disabled:cursor-not-allowed"
-                      style={{
-                        background: isFetchingBalance ? 'var(--text-disabled)' : 'var(--nofx-gold)',
-                        color: isFetchingBalance ? 'var(--text-secondary)' : '#000',
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!isFetchingBalance) {
-                          e.currentTarget.style.background = '#E1A706'
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!isFetchingBalance) {
-                          e.currentTarget.style.background = 'var(--nofx-gold)'
-                        }
-                      }}
-                    >
-                      {isFetchingBalance ? '获取中...' : '获取当前余额'}
-                    </button>
+                    {isEditMode && (
+                      <button
+                        type="button"
+                        onClick={handleFetchCurrentBalance}
+                        disabled={isFetchingBalance}
+                        className="px-3 py-1 text-xs rounded transition-colors disabled:cursor-not-allowed"
+                        style={{
+                          background: isFetchingBalance ? 'var(--text-disabled)' : 'var(--nofx-gold)',
+                          color: isFetchingBalance ? 'var(--text-secondary)' : '#000',
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isFetchingBalance) {
+                            e.currentTarget.style.background = '#E1A706'
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isFetchingBalance) {
+                            e.currentTarget.style.background = 'var(--nofx-gold)'
+                          }
+                        }}
+                      >
+                        {isFetchingBalance ? '获取中...' : '获取当前余额'}
+                      </button>
+                    )}
                   </div>
                   <input
                     type="number"
-                    value={formData.initial_balance || 0}
+                    value={
+                      formData.initial_balance ??
+                      (isPaperExchange && !isEditMode ? defaultPaperInitialBalance : 0)
+                    }
                     onChange={(e) =>
                       handleInputChange(
                         'initial_balance',
-                        Number(e.target.value)
+                        Number(e.target.value) || undefined
                       )
                     }
                     className="w-full px-3 py-2 rounded transition-colors focus:outline-none"
@@ -739,11 +754,15 @@ export function TraderConfigModal({
                     onBlur={(e) => {
                       e.currentTarget.style.borderColor = 'var(--panel-border)'
                     }}
-                    min="100"
+                    min={isPaperExchange && !isEditMode ? 1 : 100}
                     step="0.01"
                   />
                   <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
-                    用于手动更新初始余额基准（例如充值/提现后）
+                    {isPaperExchange && !isEditMode
+                      ? language === 'zh'
+                        ? '虚拟盘模拟本金，默认 10000 USDT，可修改'
+                        : 'Paper trading simulated balance, default 10000 USDT'
+                      : '用于手动更新初始余额基准（例如充值/提现后）'}
                   </p>
                   {balanceFetchError && (
                     <p className="text-xs text-red-500 mt-1">

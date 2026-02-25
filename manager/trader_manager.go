@@ -680,8 +680,23 @@ func (tm *TraderManager) addTraderFromStore(traderCfg *store.Trader, aiModelCfg 
 		if exchangeCfg.PriceSourceExchangeID == "" {
 			return fmt.Errorf("paper trading requires PriceSourceExchangeID to be set on the exchange")
 		}
+		// 若 DB 中 initial_balance 未设置或为 0，尝试从已有虚拟盘账户回填（兼容历史数据或先同步后启动的场景）
 		if traderCfg.InitialBalance <= 0 {
-			return fmt.Errorf("paper trading requires InitialBalance > 0")
+			acc, accErr := st.Paper().GetAccountByUserAndTrader(traderCfg.UserID, traderCfg.ID)
+			if accErr == nil && acc != nil && (acc.Balance > 0 || acc.InitialBalance > 0) {
+				useBalance := acc.Balance
+				if useBalance <= 0 {
+					useBalance = acc.InitialBalance
+				}
+				traderConfig.InitialBalance = useBalance
+				if err := st.Trader().UpdateInitialBalance(traderCfg.UserID, traderCfg.ID, useBalance); err != nil {
+					logger.Warnf("⚠️ Failed to sync paper initial_balance to traders table: %v", err)
+				} else {
+					logger.Infof("✓ Paper trader %s: using initial balance from existing account: %.2f USDT", traderCfg.Name, useBalance)
+				}
+			} else {
+				return fmt.Errorf("paper trading requires initial balance > 0: please set initial balance in trader config or sync balance first")
+			}
 		}
 		priceSourceExchange, err := st.Exchange().GetByID(traderCfg.UserID, exchangeCfg.PriceSourceExchangeID)
 		if err != nil || priceSourceExchange == nil {
@@ -749,7 +764,7 @@ func (tm *TraderManager) addTraderFromStore(traderCfg *store.Trader, aiModelCfg 
 		if err != nil {
 			return fmt.Errorf("failed to create paper price source trader: %w", err)
 		}
-		paperTrader, err := paper.NewTrader(priceSourceTrader, st.Paper(), traderCfg.UserID, traderCfg.ID, traderCfg.InitialBalance,
+		paperTrader, err := paper.NewTrader(priceSourceTrader, st.Paper(), traderCfg.UserID, traderCfg.ID, traderConfig.InitialBalance,
 			paper.WithFeeRateByExchange(priceSourceExchange.ExchangeType))
 		if err != nil {
 			return fmt.Errorf("failed to create paper trader: %w", err)
