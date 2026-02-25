@@ -17,7 +17,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: nofx:latest
+    image: nofx-web:lastest
     container_name: nofx
     restart: unless-stopped
     ports:
