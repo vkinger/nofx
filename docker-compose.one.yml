@@ -1,0 +1,40 @@
+# NOFX 前后端一体镜像 - 一键构建并运行（带后端配置）
+#
+# 使用根目录 Dockerfile 构建单镜像，运行时会挂载 .env 与 data 目录。
+#
+# 首次运行前请准备 .env：
+#   cp .env.example .env
+#   # 编辑 .env 填写 JWT_SECRET、DATA_ENCRYPTION_KEY、RSA_PRIVATE_KEY 等
+#
+# 一键构建并启动：
+#   docker compose -f docker-compose.one.yml up -d --build
+#
+# 仅启动（已构建过镜像）：
+#   docker compose -f docker-compose.one.yml up -d
+
+services:
+  nofx:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nofx:latest
+    container_name: nofx
+    restart: unless-stopped
+    ports:
+      - "${NOFX_BACKEND_PORT:-8080}:8080"
+    volumes:
+      - ./data:/app/data
+      - /etc/localtime:/etc/localtime:ro
+    env_file:
+      - .env
+    environment:
+      - TZ=${TZ:-Asia/Shanghai}
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s

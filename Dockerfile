@@ -1,6 +1,11 @@
 # ═══════════════════════════════════════════════════════════════
 # NOFX 前后端一体镜像 Dockerfile
 # 从源码构建：前端 (Node/Vite) + 后端 (Go + TA-Lib)，运行时 Nginx + 后端进程
+#
+# 运行需挂载后端配置与数据目录，推荐使用：
+#   docker compose -f docker-compose.one.yml up -d --build
+# 首次请先准备 .env：cp .env.example .env 并按需修改。
+# 若直接 docker run，请加：--env-file .env -v $(pwd)/data:/app/data
 # ═══════════════════════════════════════════════════════════════
 
 ARG NODE_VERSION=20-alpine
