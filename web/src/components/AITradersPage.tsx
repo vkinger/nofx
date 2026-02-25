@@ -5,6 +5,7 @@ import { api } from '../lib/api'
 import type {
   TraderInfo,
   CreateTraderRequest,
+  CreateExchangeRequest,
   AIModel,
   Exchange,
 } from '../types'
@@ -759,7 +760,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
         })
       } else {
         // 创建新账户
-        const createRequest: Record<string, unknown> = {
+        const createRequest: CreateExchangeRequest = {
           exchange_type: exchangeType,
           account_name: accountName,
           enabled: true,
