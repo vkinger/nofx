@@ -5,11 +5,11 @@ import (
 	"strconv"
 )
 
-// SafeFloat64 Safely extract float64 value from map
+// SafeFloat64 Safely extract float64 value from map (nil/missing => 0)
 func SafeFloat64(data map[string]interface{}, key string) (float64, error) {
 	value, ok := data[key]
-	if !ok {
-		return 0, fmt.Errorf("key '%s' not found", key)
+	if !ok || value == nil {
+		return 0, nil
 	}
 
 	switch v := value.(type) {
@@ -23,13 +23,17 @@ func SafeFloat64(data map[string]interface{}, key string) (float64, error) {
 		return float64(v), nil
 	case string:
 		// Try to parse string as float64
+		if v == "" {
+			return 0, nil
+		}
 		parsed, err := strconv.ParseFloat(v, 64)
 		if err != nil {
 			return 0, fmt.Errorf("cannot parse string '%s' as float64: %w", v, err)
 		}
 		return parsed, nil
 	default:
-		return 0, fmt.Errorf("value for key '%s' is not a number (type: %T)", key, v)
+		// nil interface or other types: treat as 0 to avoid panic
+		return 0, nil
 	}
 }
 

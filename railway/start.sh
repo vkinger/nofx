@@ -43,7 +43,6 @@ server {
     }
 }
 NGINX_EOF
-cp /app/data/.env /app/.env
 # 启动后端（端口 8081）
 API_SERVER_PORT=8081 /app/nofx &
 sleep 2
