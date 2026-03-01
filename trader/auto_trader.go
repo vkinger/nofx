@@ -939,11 +939,11 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 	currentPositionKeys := make(map[string]bool)
 
 	for _, pos := range positions {
-		symbol := pos["symbol"].(string)
-		side := pos["side"].(string)
-		entryPrice := pos["entryPrice"].(float64)
-		markPrice := pos["markPrice"].(float64)
-		quantity := pos["positionAmt"].(float64)
+		symbol, _ := SafeString(pos, "symbol")
+		side, _ := SafeString(pos, "side")
+		entryPrice, _ := SafeFloat64(pos, "entryPrice")
+		markPrice, _ := SafeFloat64(pos, "markPrice")
+		quantity, _ := SafeFloat64(pos, "positionAmt")
 		if quantity < 0 {
 			quantity = -quantity // Short position quantity is negative, convert to positive
 		}
@@ -953,12 +953,12 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 			continue
 		}
 
-		unrealizedPnl := pos["unRealizedProfit"].(float64)
-		liquidationPrice := pos["liquidationPrice"].(float64)
+		unrealizedPnl, _ := SafeFloat64(pos, "unRealizedProfit")
+		liquidationPrice, _ := SafeFloat64(pos, "liquidationPrice")
 
 		// Calculate margin used (estimated)
 		leverage := 10 // Default value, should actually be fetched from position info
-		if lev, ok := pos["leverage"].(float64); ok {
+		if lev, _ := SafeFloat64(pos, "leverage"); lev > 0 {
 			leverage = int(lev)
 		}
 		marginUsed := (quantity * markPrice) / float64(leverage)
@@ -982,8 +982,8 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 		}
 		// Priority 2: Get from exchange API (Bybit: createdTime, OKX: createdTime)
 		if updateTime == 0 {
-			if createdTime, ok := pos["createdTime"].(int64); ok && createdTime > 0 {
-				updateTime = createdTime
+			if ct, _ := SafeFloat64(pos, "createdTime"); ct > 0 {
+				updateTime = int64(ct)
 			}
 		}
 		// Priority 3: Fallback to local tracking
@@ -1906,16 +1906,16 @@ func (at *AutoTrader) GetAccountInfo() (map[string]interface{}, error) {
 	totalMarginUsed := 0.0
 	totalUnrealizedPnLCalculated := 0.0
 	for _, pos := range positions {
-		markPrice := pos["markPrice"].(float64)
-		quantity := pos["positionAmt"].(float64)
+		markPrice, _ := SafeFloat64(pos, "markPrice")
+		quantity, _ := SafeFloat64(pos, "positionAmt")
 		if quantity < 0 {
 			quantity = -quantity
 		}
-		unrealizedPnl := pos["unRealizedProfit"].(float64)
+		unrealizedPnl, _ := SafeFloat64(pos, "unRealizedProfit")
 		totalUnrealizedPnLCalculated += unrealizedPnl
 
 		leverage := 10
-		if lev, ok := pos["leverage"].(float64); ok {
+		if lev, _ := SafeFloat64(pos, "leverage"); lev > 0 {
 			leverage = int(lev)
 		}
 		marginUsed := (quantity * markPrice) / float64(leverage)
@@ -2360,18 +2360,18 @@ func (at *AutoTrader) checkPositionDrawdown() float64 {
 	maxProfitPct := 0.0 // Track maximum profit across all positions
 
 	for _, pos := range positions {
-		symbol := pos["symbol"].(string)
-		side := pos["side"].(string)
-		entryPrice := pos["entryPrice"].(float64)
-		markPrice := pos["markPrice"].(float64)
-		quantity := pos["positionAmt"].(float64)
+		symbol, _ := SafeString(pos, "symbol")
+		side, _ := SafeString(pos, "side")
+		entryPrice, _ := SafeFloat64(pos, "entryPrice")
+		markPrice, _ := SafeFloat64(pos, "markPrice")
+		quantity, _ := SafeFloat64(pos, "positionAmt")
 		if quantity < 0 {
 			quantity = -quantity // Short position quantity is negative, convert to positive
 		}
 
 		// Calculate current P&L percentage using price change (real-time, no cache delay)
 		leverage := 10 // Default value
-		if lev, ok := pos["leverage"].(float64); ok {
+		if lev, _ := SafeFloat64(pos, "leverage"); lev > 0 {
 			leverage = int(lev)
 		}
 
@@ -2593,7 +2593,9 @@ func (at *AutoTrader) emergencyClosePosition(symbol, side string, isRiskControl 
 	if err == nil {
 		positionExists := false
 		for _, pos := range positions {
-			if pos["symbol"].(string) == symbol && pos["side"].(string) == side {
+			posSymbol, _ := SafeString(pos, "symbol")
+			posSide, _ := SafeString(pos, "side")
+			if posSymbol == symbol && posSide == side {
 				if amt, ok := pos["positionAmt"].(float64); ok {
 					if side == "long" && amt > 0 {
 						positionExists = true
@@ -3317,18 +3319,18 @@ func (at *AutoTrader) checkStopLoss() {
 	}
 
 	for _, pos := range positions {
-		symbol := pos["symbol"].(string)
-		side := pos["side"].(string)
-		entryPrice := pos["entryPrice"].(float64)
-		markPrice := pos["markPrice"].(float64)
-		quantity := pos["positionAmt"].(float64)
+		symbol, _ := SafeString(pos, "symbol")
+		side, _ := SafeString(pos, "side")
+		entryPrice, _ := SafeFloat64(pos, "entryPrice")
+		markPrice, _ := SafeFloat64(pos, "markPrice")
+		quantity, _ := SafeFloat64(pos, "positionAmt")
 		if quantity < 0 {
 			quantity = -quantity
 		}
 
 		// Get leverage
 		leverage := 10
-		if lev, ok := pos["leverage"].(float64); ok {
+		if lev, _ := SafeFloat64(pos, "leverage"); lev > 0 {
 			leverage = int(lev)
 		}
 
@@ -3342,7 +3344,7 @@ func (at *AutoTrader) checkStopLoss() {
 
 		// Prepare common data for all strategies
 		posKey := symbol + "_" + side
-		unrealizedPnl := pos["unRealizedProfit"].(float64)
+		unrealizedPnl, _ := SafeFloat64(pos, "unRealizedProfit")
 		marginUsed := (quantity * markPrice) / float64(leverage)
 		realPnlPct := calculatePnLPercentage(unrealizedPnl, marginUsed)
 
