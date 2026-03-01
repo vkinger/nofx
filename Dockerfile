@@ -78,6 +78,7 @@ RUN ldconfig /usr/local/lib 2>/dev/null || true
 # 后端二进制
 WORKDIR /app
 COPY --from=backend-builder /app/nofx /app/nofx
+COPY .env /app/.env
 RUN mkdir -p /app/data
 
 # 前端静态资源
