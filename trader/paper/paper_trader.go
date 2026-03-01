@@ -89,7 +89,7 @@ func (t *Trader) ensureAccount() (*store.PaperAccount, error) {
 	return t.paperStore.GetOrCreateAccount(t.userID, t.traderID, t.initialBal)
 }
 
-// GetBalance 从 DB 读取余额，并加上持仓未实现盈亏作为 total_equity
+// GetBalance 从 DB 读取余额：availableBalance=可用（不含持仓占用），total_equity=可用+占用保证金+未实现盈亏
 func (t *Trader) GetBalance() (map[string]interface{}, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -102,7 +102,13 @@ func (t *Trader) GetBalance() (map[string]interface{}, error) {
 		return nil, err
 	}
 	var totalUnrealized float64
+	var totalMarginUsed float64
 	for _, pos := range positions {
+		lev := pos.Leverage
+		if lev <= 0 {
+			lev = 1
+		}
+		totalMarginUsed += (pos.EntryPrice * pos.Quantity) / float64(lev)
 		mark, _ := t.priceSource.GetMarketPrice(pos.Symbol)
 		if mark <= 0 {
 			continue
@@ -113,12 +119,12 @@ func (t *Trader) GetBalance() (map[string]interface{}, error) {
 			totalUnrealized += (pos.EntryPrice - mark) * pos.Quantity
 		}
 	}
-	totalEquity := acc.Balance + totalUnrealized
+	totalEquity := acc.Balance + totalMarginUsed + totalUnrealized
 	return map[string]interface{}{
-		"totalWalletBalance":    acc.Balance,
-		"total_equity":          totalEquity,
+		"totalWalletBalance":    acc.Balance + totalMarginUsed,
+		"total_equity":         totalEquity,
 		"totalUnrealizedProfit": totalUnrealized,
-		"availableBalance":      acc.Balance,
+		"availableBalance":     acc.Balance,
 	}, nil
 }
 
@@ -246,6 +252,16 @@ func (t *Trader) OpenLong(symbol string, quantity float64, leverage int) (map[st
 		}
 	}
 	fee := avgPrice * quantity * t.feeRate
+	lev := leverage
+	if lev <= 0 {
+		lev = 1
+	}
+	marginUsed := (avgPrice * quantity) / float64(lev)
+	newBalance := acc.Balance - marginUsed - fee
+	if newBalance < 0 {
+		t.mu.Unlock()
+		return nil, fmt.Errorf("paper: insufficient balance: need margin %.2f + fee %.2f, available %.2f", marginUsed, fee, acc.Balance)
+	}
 	pos := &store.PaperPosition{
 		AccountID:    acc.ID,
 		Symbol:       symbol,
@@ -259,7 +275,10 @@ func (t *Trader) OpenLong(symbol string, quantity float64, leverage int) (map[st
 	if err := t.paperStore.AddPosition(pos); err != nil {
 		return nil, err
 	}
-	logger.Infof("📄 [Paper] OpenLong %s qty=%.6f avgPrice=%.4f fee=%.4f", symbol, quantity, avgPrice, fee)
+	if err := t.paperStore.UpdateBalance(acc.ID, newBalance); err != nil {
+		return nil, err
+	}
+	logger.Infof("📄 [Paper] OpenLong %s qty=%.6f avgPrice=%.4f margin=%.2f fee=%.4f balance %.2f→%.2f", symbol, quantity, avgPrice, marginUsed, fee, acc.Balance, newBalance)
 	return map[string]interface{}{
 		"orderId":   pos.EntryOrderID,
 		"avgPrice":  avgPrice,
@@ -293,6 +312,16 @@ func (t *Trader) OpenShort(symbol string, quantity float64, leverage int) (map[s
 		}
 	}
 	fee := avgPrice * quantity * t.feeRate
+	lev := leverage
+	if lev <= 0 {
+		lev = 1
+	}
+	marginUsed := (avgPrice * quantity) / float64(lev)
+	newBalance := acc.Balance - marginUsed - fee
+	if newBalance < 0 {
+		t.mu.Unlock()
+		return nil, fmt.Errorf("paper: insufficient balance: need margin %.2f + fee %.2f, available %.2f", marginUsed, fee, acc.Balance)
+	}
 	pos := &store.PaperPosition{
 		AccountID:    acc.ID,
 		Symbol:       symbol,
@@ -306,7 +335,10 @@ func (t *Trader) OpenShort(symbol string, quantity float64, leverage int) (map[s
 	if err := t.paperStore.AddPosition(pos); err != nil {
 		return nil, err
 	}
-	logger.Infof("📄 [Paper] OpenShort %s qty=%.6f avgPrice=%.4f fee=%.4f", symbol, quantity, avgPrice, fee)
+	if err := t.paperStore.UpdateBalance(acc.ID, newBalance); err != nil {
+		return nil, err
+	}
+	logger.Infof("📄 [Paper] OpenShort %s qty=%.6f avgPrice=%.4f margin=%.2f fee=%.4f balance %.2f→%.2f", symbol, quantity, avgPrice, marginUsed, fee, acc.Balance, newBalance)
 	return map[string]interface{}{
 		"orderId":   pos.EntryOrderID,
 		"avgPrice":  avgPrice,
@@ -357,6 +389,11 @@ func (t *Trader) CloseLong(symbol string, quantity float64) (map[string]interfac
 	realizedPnL := (exitPrice - target.EntryPrice) * closeQty
 	fee := exitPrice * closeQty * t.feeRate
 	realizedPnL -= fee
+	lev := target.Leverage
+	if lev <= 0 {
+		lev = 1
+	}
+	marginReleased := (target.EntryPrice * closeQty) / float64(lev)
 	_, _, err = t.paperStore.ReducePosition(target.ID, closeQty, exitPrice, realizedPnL, fee, "manual")
 	if err != nil {
 		return nil, err
@@ -365,10 +402,11 @@ func (t *Trader) CloseLong(symbol string, quantity float64) (map[string]interfac
 	if acc == nil {
 		return nil, fmt.Errorf("paper: account not found")
 	}
-	if err := t.paperStore.UpdateBalance(acc.ID, acc.Balance+realizedPnL); err != nil {
+	newBalance := acc.Balance + marginReleased + realizedPnL
+	if err := t.paperStore.UpdateBalance(acc.ID, newBalance); err != nil {
 		return nil, err
 	}
-	logger.Infof("📄 [Paper] CloseLong %s qty=%.6f exit=%.4f realizedPnL=%.4f", symbol, closeQty, exitPrice, realizedPnL)
+	logger.Infof("📄 [Paper] CloseLong %s closeQty=%.6f exit=%.4f realizedPnL=%.4f marginReleased=%.2f balance %.2f→%.2f", symbol, closeQty, exitPrice, realizedPnL, marginReleased, acc.Balance, newBalance)
 	return map[string]interface{}{
 		"orderId":      fmt.Sprintf("paper-close-%d", time.Now().UnixNano()),
 		"avgPrice":     exitPrice,
@@ -420,15 +458,24 @@ func (t *Trader) CloseShort(symbol string, quantity float64) (map[string]interfa
 	realizedPnL := (target.EntryPrice - exitPrice) * closeQty
 	fee := exitPrice * closeQty * t.feeRate
 	realizedPnL -= fee
+	lev := target.Leverage
+	if lev <= 0 {
+		lev = 1
+	}
+	marginReleased := (target.EntryPrice * closeQty) / float64(lev)
 	_, _, err = t.paperStore.ReducePosition(target.ID, closeQty, exitPrice, realizedPnL, fee, "manual")
 	if err != nil {
 		return nil, err
 	}
 	acc, _ = t.paperStore.GetAccountByUserAndTrader(t.userID, t.traderID)
-	if err := t.paperStore.UpdateBalance(acc.ID, acc.Balance+realizedPnL); err != nil {
+	if acc == nil {
+		return nil, fmt.Errorf("paper: account not found")
+	}
+	newBalance := acc.Balance + marginReleased + realizedPnL
+	if err := t.paperStore.UpdateBalance(acc.ID, newBalance); err != nil {
 		return nil, err
 	}
-	logger.Infof("📄 [Paper] CloseShort %s qty=%.6f exit=%.4f realizedPnL=%.4f", symbol, closeQty, exitPrice, realizedPnL)
+	logger.Infof("📄 [Paper] CloseShort %s closeQty=%.6f exit=%.4f realizedPnL=%.4f marginReleased=%.2f balance %.2f→%.2f", symbol, closeQty, exitPrice, realizedPnL, marginReleased, acc.Balance, newBalance)
 	return map[string]interface{}{
 		"orderId":     fmt.Sprintf("paper-close-%d", time.Now().UnixNano()),
 		"avgPrice":    exitPrice,
