@@ -1,0 +1,27 @@
+# service.yaml
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: my-app
+  annotations:
+    run.googleapis.com/launch-stage: BETA
+spec:
+  template:
+    metadata:
+      annotations:
+        # 关键：限制单实例，避免 SQLite 并发写入冲突
+        autoscaling.knative.dev/maxScale: '1'
+        autoscaling.knative.dev/minScale: '0'
+        run.googleapis.com/cloudsql-instances: project-89265d2d-3f92-4e3c-967:asia-east1:pg
+        run.googleapis.com/vpc-access-connector: cloud-run-vpc
+        run.googleapis.com/vpc-access-egress: private-ranges-only
+    spec:
+      serviceAccountName: cloud-run-sa@project-89265d2d-3f92-4e3c-967.iam.gserviceaccount.com
+      containers:
+      - image: asia-east1-docker.pkg.dev/project-89265d2d-3f92-4e3c-967/my-repo/my-app:latest
+        ports:
+        - containerPort: 8080
+        resources:
+          limits:
+            cpu: '1'
+            memory: 1Gi
