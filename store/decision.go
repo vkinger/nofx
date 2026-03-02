@@ -181,6 +181,59 @@ func (s *DecisionStore) LogDecision(record *DecisionRecord) error {
 	return nil
 }
 
+// ListDecisionOptions 最近决策列表查询选项（有效操作过滤、币种过滤、分页）
+type ListDecisionOptions struct {
+	EffectiveOnly bool   // 仅有效操作（Success == true）
+	Symbol       string // 按币种过滤，空表示不过滤
+	Page         int    // 页码，从 1 开始
+	PageSize     int    // 每页条数
+}
+
+// ListRecords 分页查询决策记录，支持有效操作过滤、币种过滤
+// 返回 records（按时间倒序，即最新在前）、total 总数
+func (s *DecisionStore) ListRecords(traderID string, opts ListDecisionOptions) (records []*DecisionRecord, total int64, err error) {
+	if opts.Page < 1 {
+		opts.Page = 1
+	}
+	if opts.PageSize < 1 {
+		opts.PageSize = 20
+	}
+	if opts.PageSize > 100 {
+		opts.PageSize = 100
+	}
+	offset := (opts.Page - 1) * opts.PageSize
+
+	base := s.db.Model(&DecisionRecordDB{}).Where("trader_id = ?", traderID)
+	if opts.EffectiveOnly {
+		base = base.Where("success = ?", true)
+	}
+	if opts.Symbol != "" {
+		dialect := s.db.Dialector.Name()
+		if dialect == "postgres" {
+			base = base.Where("EXISTS (SELECT 1 FROM jsonb_array_elements(decision_records.decisions::jsonb) AS elem WHERE elem->>'symbol' = ?)", opts.Symbol)
+		} else {
+			// sqlite
+			base = base.Where("EXISTS (SELECT 1 FROM json_each(decision_records.decisions) WHERE json_extract(value, '$.symbol') = ?)", opts.Symbol)
+		}
+	}
+
+	if err = base.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count decision records: %w", err)
+	}
+
+	var dbRecords []*DecisionRecordDB
+	err = base.Order("timestamp DESC").Limit(opts.PageSize).Offset(offset).Find(&dbRecords).Error
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to list decision records: %w", err)
+	}
+
+	records = make([]*DecisionRecord, len(dbRecords))
+	for i, db := range dbRecords {
+		records[i] = db.toRecord()
+	}
+	return records, total, nil
+}
+
 // GetLatestRecords gets the latest N records for specified trader (sorted by time in ascending order: old to new)
 func (s *DecisionStore) GetLatestRecords(traderID string, n int) ([]*DecisionRecord, error) {
 	var dbRecords []*DecisionRecordDB

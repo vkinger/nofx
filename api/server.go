@@ -2920,7 +2920,7 @@ func (s *Server) handleSymbols(c *gin.Context) {
 	})
 }
 
-// handleDecisions Decision log list
+// handleDecisions Decision log list (supports effective_only, symbol filter, pagination)
 func (s *Server) handleDecisions(c *gin.Context) {
 	_, traderID, err := s.getTraderFromQuery(c)
 	if err != nil {
@@ -2934,14 +2934,42 @@ func (s *Server) handleDecisions(c *gin.Context) {
 		return
 	}
 
-	// Get all historical decision records (unlimited)
-	records, err := trader.GetStore().Decision().GetLatestRecords(trader.GetID(), 10000)
+	opts := store.ListDecisionOptions{
+		Page:     1,
+		PageSize: 20,
+	}
+	if v := c.Query("effective_only"); v != "" {
+		opts.EffectiveOnly = strings.ToLower(v) == "true" || v == "1"
+	}
+	if v := c.Query("symbol"); v != "" {
+		opts.Symbol = strings.TrimSpace(v)
+	}
+	if v := c.Query("page"); v != "" {
+		if p, err := strconv.Atoi(v); err == nil && p >= 1 {
+			opts.Page = p
+		}
+	}
+	if v := c.Query("page_size"); v != "" {
+		if ps, err := strconv.Atoi(v); err == nil && ps >= 1 {
+			opts.PageSize = ps
+			if opts.PageSize > 100 {
+				opts.PageSize = 100
+			}
+		}
+	}
+
+	records, total, err := trader.GetStore().Decision().ListRecords(trader.GetID(), opts)
 	if err != nil {
 		SafeInternalError(c, "Get decision log", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, records)
+	c.JSON(http.StatusOK, gin.H{
+		"list":      records,
+		"total":     total,
+		"page":      opts.Page,
+		"page_size": opts.PageSize,
+	})
 }
 
 // handleLatestDecisions Latest decision logs (newest first, supports limit parameter)
