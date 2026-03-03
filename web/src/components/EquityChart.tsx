@@ -43,7 +43,7 @@ export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
   const [displayMode, setDisplayMode] = useState<'dollar' | 'percent'>('dollar')
-  
+
   // 根据主题获取图表颜色
   const getChartColors = () => {
     const isDark = theme === 'dark'
@@ -60,7 +60,7 @@ export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
       tooltipLabel: isDark ? '#848E9C' : 'rgba(0, 0, 0, 0.6)',
     }
   }
-  
+
   const chartColors = getChartColors()
 
   const { data: history, error, isLoading } = useSWR<EquityPoint[]>(
@@ -163,7 +163,7 @@ export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
       : undefined) || // 备选：淨值 - 盈亏
     1000 // 默认值（与创建交易员时的默认配置一致）
 
-  // 转换数据格式，保留完整时间供 tooltip 显示；cycle_number 可能未定义，用序号兜底
+  // 转换数据格式
   const chartData = displayHistory.map((point, index) => {
     const pnl = point.total_equity - initialBalance
     const pnlPct = ((pnl / initialBalance) * 100).toFixed(2)
@@ -181,7 +181,7 @@ export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
       timeLabel,
       timestamp: point.timestamp,
       value: displayMode === 'dollar' ? point.total_equity : parseFloat(pnlPct),
-      cycle,
+      cycle: point.cycle_number ?? index + 1,
       raw_equity: point.total_equity,
       raw_pnl: pnl,
       raw_pnl_pct: parseFloat(pnlPct),
@@ -350,9 +350,9 @@ export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
         {/* Display Mode Toggle */}
         <div
           className="flex gap-1.5 sm:gap-2 rounded p-1 sm:p-1.5 self-start sm:self-auto"
-          style={{ 
-            background: isDark ? '#0B0E11' : 'var(--panel-bg-hover)', 
-            border: `1px solid var(--panel-border)` 
+          style={{
+            background: isDark ? '#0B0E11' : 'var(--panel-bg-hover)',
+            border: `1px solid var(--panel-border)`
           }}
         >
           <button
@@ -365,9 +365,9 @@ export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
                     color: '#000',
                     boxShadow: '0 2px 8px rgba(240, 185, 11, 0.4)',
                   }
-                : { 
-                    background: 'transparent', 
-                    color: 'var(--text-secondary)' 
+                : {
+                    background: 'transparent',
+                    color: 'var(--text-secondary)'
                   }
             }
             onMouseEnter={(e) => {
@@ -395,9 +395,9 @@ export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
                     color: '#000',
                     boxShadow: '0 2px 8px rgba(240, 185, 11, 0.4)',
                   }
-                : { 
-                    background: 'transparent', 
-                    color: 'var(--text-secondary)' 
+                : {
+                    background: 'transparent',
+                    color: 'var(--text-secondary)'
                   }
             }
             onMouseEnter={(e) => {
@@ -513,7 +513,7 @@ export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
       >
         <div
           className="p-3 rounded transition-all"
-          style={{ 
+          style={{
             background: isDark ? 'rgba(240, 185, 11, 0.05)' : 'var(--panel-bg-hover)',
             border: `1px solid var(--panel-border)`,
           }}
@@ -533,7 +533,7 @@ export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
         </div>
         <div
           className="p-3 rounded transition-all"
-          style={{ 
+          style={{
             background: isDark ? 'rgba(240, 185, 11, 0.05)' : 'var(--panel-bg-hover)',
             border: `1px solid var(--panel-border)`,
           }}
@@ -553,7 +553,7 @@ export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
         </div>
         <div
           className="p-3 rounded transition-all"
-          style={{ 
+          style={{
             background: isDark ? 'rgba(240, 185, 11, 0.05)' : 'var(--panel-bg-hover)',
             border: `1px solid var(--panel-border)`,
           }}
@@ -573,7 +573,7 @@ export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
         </div>
         <div
           className="p-3 rounded transition-all"
-          style={{ 
+          style={{
             background: isDark ? 'rgba(240, 185, 11, 0.05)' : 'var(--panel-bg-hover)',
             border: `1px solid var(--panel-border)`,
           }}
