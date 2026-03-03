@@ -1,8 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { api } from '../lib/api'
 import { useLanguage } from '../contexts/LanguageContext'
-import { useTheme } from '../contexts/ThemeContext'
-import { t } from '../i18n/translations'
+import { t, type Language } from '../i18n/translations'
 import { MetricTooltip } from './MetricTooltip'
 import { formatPrice, formatQuantity } from '../utils/format'
 import type {
