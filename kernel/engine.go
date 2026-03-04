@@ -3135,6 +3135,18 @@ func extractCoTTrace(response string) string {
 		}
 	}
 
+	// 兼容格式化 JSON：{ 后带换行/空格再跟 "decisions" 或 "thinking" 等，精确子串匹配不到时从第一个 { 起解析
+	if firstBrace := strings.Index(s, "{"); firstBrace >= 0 {
+		jsonObjEnd := findMatchingBrace(s, firstBrace)
+		if jsonObjEnd > firstBrace {
+			jsonObjStr := s[firstBrace : jsonObjEnd+1]
+			if chain := extractThinkingFromObject(jsonObjStr); chain != "" {
+				logger.Infof("✓ Extracted reasoning chain from pretty-printed JSON (thinking/reasoning field)")
+				return chain
+			}
+		}
+	}
+
 	// 尝试从 ```json 代码块内解析对象中的 thinking/reasoning
 	if codeBlock := extractCodeFenceContent(s); codeBlock != "" {
 		codeBlock = fixMissingQuotes(codeBlock)
@@ -3323,7 +3335,7 @@ func normalizeDecisionActions(list []Decision) {
 	}
 }
 
-// parseNewFormatObject 解析 {"thinking"/"reasoning", "decisions": [...]} 格式，返回 decisions 与是否成功
+// parseNewFormatObject 解析 {"thinking"/"reasoning", "decisions": [...]} 格式，返回 decisions 与是否成功（空数组也视为成功）
 func parseNewFormatObject(jsonStr string) ([]Decision, bool) {
 	var v struct {
 		Thinking  string     `json:"thinking"`
@@ -3333,9 +3345,7 @@ func parseNewFormatObject(jsonStr string) ([]Decision, bool) {
 	if err := json.Unmarshal([]byte(jsonStr), &v); err != nil {
 		return nil, false
 	}
-	if len(v.Decisions) == 0 {
-		return nil, false
-	}
+	// 空数组为合法结果（表示 wait，无需新开/平仓）
 	return v.Decisions, true
 }
 
@@ -3364,9 +3374,22 @@ func extractDecisions(response string) ([]Decision, error) {
 		jsonObjEnd := findMatchingBrace(s, jsonObjStart)
 		if jsonObjEnd > jsonObjStart {
 			jsonObjStr := s[jsonObjStart : jsonObjEnd+1]
-			if decisions, ok := parseNewFormatObject(jsonObjStr); ok && len(decisions) > 0 {
+			if decisions, ok := parseNewFormatObject(jsonObjStr); ok {
 				normalizeDecisionActions(decisions)
 				logger.Infof("✓ Extracted decisions using new JSON format (decisions field)")
+				return decisions, nil
+			}
+		}
+	}
+
+	// 兼容格式化 JSON：{ 后带换行/空格再跟 "decisions"/"thinking" 等时，从第一个 { 起解析
+	if firstBrace := strings.Index(s, "{"); firstBrace >= 0 {
+		jsonObjEnd := findMatchingBrace(s, firstBrace)
+		if jsonObjEnd > firstBrace {
+			jsonObjStr := s[firstBrace : jsonObjEnd+1]
+			if decisions, ok := parseNewFormatObject(jsonObjStr); ok {
+				normalizeDecisionActions(decisions)
+				logger.Infof("✓ Extracted decisions from pretty-printed JSON (decisions field)")
 				return decisions, nil
 			}
 		}
@@ -3378,7 +3401,7 @@ func extractDecisions(response string) ([]Decision, error) {
 		if objStart := strings.Index(codeBlock, "{"); objStart >= 0 {
 			if objEnd := findMatchingBrace(codeBlock, objStart); objEnd > objStart {
 				jsonObjStr := codeBlock[objStart : objEnd+1]
-				if decisions, ok := parseNewFormatObject(jsonObjStr); ok && len(decisions) > 0 {
+				if decisions, ok := parseNewFormatObject(jsonObjStr); ok {
 					normalizeDecisionActions(decisions)
 					logger.Infof("✓ Extracted decisions using new JSON format from code fence")
 					return decisions, nil
