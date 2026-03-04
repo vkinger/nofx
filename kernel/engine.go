@@ -3070,7 +3070,6 @@ func formatFloatSlice(values []float64) string {
 // ============================================================================
 
 func parseFullDecisionResponse(aiResponse string, accountEquity float64, btcEthLeverage, altcoinLeverage int, btcEthPosRatio, altcoinPosRatio float64, excludedCoins []string) (*FullDecision, error) {
-	logger.Infof("AI call Response: %s", aiResponse)
 	cotTrace := extractCoTTrace(aiResponse)
 
 	decisions, err := extractDecisions(aiResponse)
