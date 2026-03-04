@@ -183,10 +183,10 @@ func (s *DecisionStore) LogDecision(record *DecisionRecord) error {
 
 // ListDecisionOptions 最近决策列表查询选项（有效操作过滤、币种过滤、分页）
 type ListDecisionOptions struct {
-	EffectiveOnly bool   // 仅有效操作（Success == true）
-	Symbol       string // 按币种过滤，空表示不过滤
-	Page         int    // 页码，从 1 开始
-	PageSize     int    // 每页条数
+	EffectiveOnly bool   // 仅有效操作：决策数组中至少包含一个 open_long/open_short/close_long/close_short（与前端一致）
+	Symbol        string // 按币种过滤，空表示不过滤
+	Page          int    // 页码，从 1 开始
+	PageSize      int    // 每页条数
 }
 
 // ListRecords 分页查询决策记录，支持有效操作过滤、币种过滤
@@ -205,15 +205,23 @@ func (s *DecisionStore) ListRecords(traderID string, opts ListDecisionOptions) (
 
 	base := s.db.Model(&DecisionRecordDB{}).Where("trader_id = ?", traderID)
 	if opts.EffectiveOnly {
-		base = base.Where("success = ?", true)
+		dialect := s.db.Dialector.Name()
+		jsonExpr := "(COALESCE(NULLIF(TRIM(decision_records.decisions), ''), '[]'))"
+		if dialect == "postgres" {
+			// 至少包含一个 action 为 open_long / open_short / close_long / close_short
+			base = base.Where("EXISTS (SELECT 1 FROM jsonb_array_elements("+jsonExpr+"::jsonb) AS elem WHERE elem->>'action' IN ('open_long', 'open_short', 'close_long', 'close_short'))")
+		} else {
+			base = base.Where("EXISTS (SELECT 1 FROM json_each("+jsonExpr+") WHERE json_extract(value, '$.action') IN ('open_long', 'open_short', 'close_long', 'close_short'))")
+		}
 	}
 	if opts.Symbol != "" {
 		dialect := s.db.Dialector.Name()
 		if dialect == "postgres" {
-			base = base.Where("EXISTS (SELECT 1 FROM jsonb_array_elements(decision_records.decisions::jsonb) AS elem WHERE elem->>'symbol' = ?)", opts.Symbol)
+			// 空字符串或 NULL 转为 '[]' 再 ::jsonb，避免 invalid input syntax for type json
+			base = base.Where("EXISTS (SELECT 1 FROM jsonb_array_elements((COALESCE(NULLIF(TRIM(decision_records.decisions), ''), '[]'))::jsonb) AS elem WHERE elem->>'symbol' = ?)", opts.Symbol)
 		} else {
-			// sqlite
-			base = base.Where("EXISTS (SELECT 1 FROM json_each(decision_records.decisions) WHERE json_extract(value, '$.symbol') = ?)", opts.Symbol)
+			// sqlite：空字符串或 NULL 转为 '[]'，避免 json_each 报错
+			base = base.Where("EXISTS (SELECT 1 FROM json_each(COALESCE(NULLIF(TRIM(decision_records.decisions), ''), '[]')) WHERE json_extract(value, '$.symbol') = ?)", opts.Symbol)
 		}
 	}
 
