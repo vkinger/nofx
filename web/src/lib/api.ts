@@ -372,16 +372,17 @@ export const api = {
     return result.data!
   },
 
-  // 获取最新决策（支持trader_id和limit参数）
+  // 获取最新决策（支持 trader_id、limit、symbol 筛选）
   async getLatestDecisions(
     traderId?: string,
-    limit: number = 5
+    limit: number = 5,
+    opts?: { symbol?: string; effective_only?: boolean }
   ): Promise<DecisionRecord[]> {
     const params = new URLSearchParams()
-    if (traderId) {
-      params.append('trader_id', traderId)
-    }
+    if (traderId) params.append('trader_id', traderId)
     params.append('limit', limit.toString())
+    if (opts?.symbol?.trim()) params.append('symbol', opts.symbol.trim())
+    if (opts?.effective_only === true) params.append('effective_only', 'true')
 
     const result = await httpClient.get<DecisionRecord[]>(
       `${API_BASE}/decisions/latest?${params}`

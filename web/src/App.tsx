@@ -140,6 +140,7 @@ function App() {
   }
   const [lastUpdate, setLastUpdate] = useState<string>('--:--:--')
   const [decisionsLimit, setDecisionsLimit] = useState<number>(5)
+  const [decisionSymbolFilter, setDecisionSymbolFilter] = useState<string>('')
 
   // 监听URL变化，同步页面状态
   useEffect(() => {
@@ -272,11 +273,14 @@ function App() {
 
   const { data: decisions } = useSWR<DecisionRecord[]>(
     currentPage === 'trader' && selectedTraderId
-      ? `decisions/latest-${selectedTraderId}-${decisionsLimit}`
+      ? `decisions/latest-${selectedTraderId}-${decisionsLimit}-${decisionSymbolFilter}`
       : null,
-    () => api.getLatestDecisions(selectedTraderId, decisionsLimit),
+    () =>
+      api.getLatestDecisions(selectedTraderId, decisionsLimit, {
+        symbol: decisionSymbolFilter || undefined,
+      }),
     {
-      refreshInterval: 30000, // 30秒刷新（决策更新频率较低）
+      refreshInterval: 30000,
       revalidateOnFocus: false,
       dedupingInterval: 20000,
     }
@@ -488,6 +492,8 @@ function App() {
                 decisions={decisions}
                 decisionsLimit={decisionsLimit}
                 onDecisionsLimitChange={setDecisionsLimit}
+                decisionSymbolFilter={decisionSymbolFilter}
+                onDecisionSymbolFilterChange={setDecisionSymbolFilter}
                 stats={stats}
                 lastUpdate={lastUpdate}
                 language={language}
