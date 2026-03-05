@@ -1,8 +1,6 @@
 package store
 
 import (
-	"crypto/rand"
-	"encoding/base32"
 	"time"
 
 	"gorm.io/gorm"
@@ -26,16 +24,6 @@ type User struct {
 }
 
 func (User) TableName() string { return "users" }
-
-// GenerateOTPSecret generates OTP secret
-func GenerateOTPSecret() (string, error) {
-	secret := make([]byte, 20)
-	_, err := rand.Read(secret)
-	if err != nil {
-		return "", err
-	}
-	return base32.StdEncoding.EncodeToString(secret), nil
-}
 
 // NewUserStore creates a new UserStore
 func NewUserStore(db *gorm.DB) *UserStore {
@@ -125,11 +113,6 @@ func (s *UserStore) GetAllIDs() ([]string, error) {
 	var userIDs []string
 	err := s.db.Model(&User{}).Order("id").Pluck("id", &userIDs).Error
 	return userIDs, err
-}
-
-// UpdateOTPVerified updates OTP verification status
-func (s *UserStore) UpdateOTPVerified(userID string, verified bool) error {
-	return s.db.Model(&User{}).Where("id = ?", userID).Update("otp_verified", verified).Error
 }
 
 // UpdatePassword updates password
