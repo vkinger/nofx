@@ -12,6 +12,15 @@ import (
 	"nofx/mcp"
 	"nofx/notification"
 	"nofx/store"
+	"nofx/trader/aster"
+	"nofx/trader/binance"
+	"nofx/trader/bitget"
+	"nofx/trader/bybit"
+	"nofx/trader/gate"
+	"nofx/trader/hyperliquid"
+	"nofx/trader/kucoin"
+	"nofx/trader/lighter"
+	"nofx/trader/okx"
 	"strings"
 	"sync"
 	"time"
@@ -25,7 +34,7 @@ type AutoTraderConfig struct {
 	AIModel string // AI model: "qwen" or "deepseek"
 
 	// Trading platform selection
-	Exchange   string // Exchange type: "binance", "bybit", "okx", "bitget", "hyperliquid", "aster" or "lighter"
+	Exchange   string // Exchange type: "binance", "bybit", "okx", "bitget", "gate", "hyperliquid", "aster" or "lighter"
 	ExchangeID string // Exchange account UUID (for multi-account support)
 
 	// Binance API configuration
@@ -45,6 +54,15 @@ type AutoTraderConfig struct {
 	BitgetAPIKey    string
 	BitgetSecretKey string
 	BitgetPassphrase string
+
+	// Gate API configuration
+	GateAPIKey    string
+	GateSecretKey string
+
+	// KuCoin API configuration
+	KuCoinAPIKey    string
+	KuCoinSecretKey string
+	KuCoinPassphrase string
 
 	// Hyperliquid configuration
 	HyperliquidPrivateKey string
@@ -260,25 +278,31 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 	switch config.Exchange {
 	case "binance":
 		logger.Infof("🏦 [%s] Using Binance Futures trading", config.Name)
-		trader = NewFuturesTrader(config.BinanceAPIKey, config.BinanceSecretKey, userID)
+		trader = binance.NewFuturesTrader(config.BinanceAPIKey, config.BinanceSecretKey, userID)
 	case "bybit":
 		logger.Infof("🏦 [%s] Using Bybit Futures trading", config.Name)
-		trader = NewBybitTrader(config.BybitAPIKey, config.BybitSecretKey)
+		trader = bybit.NewBybitTrader(config.BybitAPIKey, config.BybitSecretKey)
 	case "okx":
 		logger.Infof("🏦 [%s] Using OKX Futures trading", config.Name)
-		trader = NewOKXTrader(config.OKXAPIKey, config.OKXSecretKey, config.OKXPassphrase)
+		trader = okx.NewOKXTrader(config.OKXAPIKey, config.OKXSecretKey, config.OKXPassphrase)
 	case "bitget":
 		logger.Infof("🏦 [%s] Using Bitget Futures trading", config.Name)
-		trader = NewBitgetTrader(config.BitgetAPIKey, config.BitgetSecretKey, config.BitgetPassphrase)
+		trader = bitget.NewBitgetTrader(config.BitgetAPIKey, config.BitgetSecretKey, config.BitgetPassphrase)
+	case "gate":
+		logger.Infof("🏦 [%s] Using Gate.io Futures trading", config.Name)
+		trader = gate.NewGateTrader(config.GateAPIKey, config.GateSecretKey)
+	case "kucoin":
+		logger.Infof("🏦 [%s] Using KuCoin Futures trading", config.Name)
+		trader = kucoin.NewKuCoinTrader(config.KuCoinAPIKey, config.KuCoinSecretKey, config.KuCoinPassphrase)
 	case "hyperliquid":
 		logger.Infof("🏦 [%s] Using Hyperliquid trading", config.Name)
-		trader, err = NewHyperliquidTrader(config.HyperliquidPrivateKey, config.HyperliquidWalletAddr, config.HyperliquidTestnet)
+		trader, err = hyperliquid.NewHyperliquidTrader(config.HyperliquidPrivateKey, config.HyperliquidWalletAddr, config.HyperliquidTestnet)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize Hyperliquid trader: %w", err)
 		}
 	case "aster":
 		logger.Infof("🏦 [%s] Using Aster trading", config.Name)
-		trader, err = NewAsterTrader(config.AsterUser, config.AsterSigner, config.AsterPrivateKey)
+		trader, err = aster.NewAsterTrader(config.AsterUser, config.AsterSigner, config.AsterPrivateKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize Aster trader: %w", err)
 		}
@@ -290,7 +314,7 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 		}
 
 		// Lighter only supports mainnet (testnet disabled)
-		trader, err = NewLighterTraderV2(
+		trader, err = lighter.NewLighterTraderV2(
 			config.LighterWalletAddr,
 			config.LighterAPIKeyPrivateKey,
 			config.LighterAPIKeyIndex,
@@ -446,7 +470,7 @@ func (at *AutoTrader) Run() error {
 
 	// Start Lighter order sync if using Lighter exchange
 	if at.exchange == "lighter" {
-		if lighterTrader, ok := at.trader.(*LighterTraderV2); ok && at.store != nil {
+		if lighterTrader, ok := at.trader.(*lighter.LighterTraderV2); ok && at.store != nil {
 			lighterTrader.StartOrderSync(at.id, at.exchangeID, at.exchange, at.store, 30*time.Second)
 			logger.Infof("🔄 [%s] Lighter order+position sync enabled (every 30s)", at.name)
 		}
@@ -454,7 +478,7 @@ func (at *AutoTrader) Run() error {
 
 	// Start Hyperliquid order sync if using Hyperliquid exchange
 	if at.exchange == "hyperliquid" {
-		if hyperliquidTrader, ok := at.trader.(*HyperliquidTrader); ok && at.store != nil {
+		if hyperliquidTrader, ok := at.trader.(*hyperliquid.HyperliquidTrader); ok && at.store != nil {
 			hyperliquidTrader.StartOrderSync(at.id, at.exchangeID, at.exchange, at.store, 30*time.Second)
 			logger.Infof("🔄 [%s] Hyperliquid order+position sync enabled (every 30s)", at.name)
 		}
@@ -462,7 +486,7 @@ func (at *AutoTrader) Run() error {
 
 	// Start Bybit order sync if using Bybit exchange
 	if at.exchange == "bybit" {
-		if bybitTrader, ok := at.trader.(*BybitTrader); ok && at.store != nil {
+		if bybitTrader, ok := at.trader.(*bybit.BybitTrader); ok && at.store != nil {
 			bybitTrader.StartOrderSync(at.id, at.exchangeID, at.exchange, at.store, 30*time.Second)
 			logger.Infof("🔄 [%s] Bybit order+position sync enabled (every 30s)", at.name)
 		}
@@ -470,7 +494,7 @@ func (at *AutoTrader) Run() error {
 
 	// Start OKX order sync if using OKX exchange
 	if at.exchange == "okx" {
-		if okxTrader, ok := at.trader.(*OKXTrader); ok && at.store != nil {
+		if okxTrader, ok := at.trader.(*okx.OKXTrader); ok && at.store != nil {
 			okxTrader.StartOrderSync(at.id, at.exchangeID, at.exchange, at.store, 30*time.Second)
 			logger.Infof("🔄 [%s] OKX order+position sync enabled (every 30s)", at.name)
 		}
@@ -478,7 +502,7 @@ func (at *AutoTrader) Run() error {
 
 	// Start Bitget order sync if using Bitget exchange
 	if at.exchange == "bitget" {
-		if bitgetTrader, ok := at.trader.(*BitgetTrader); ok && at.store != nil {
+		if bitgetTrader, ok := at.trader.(*bitget.BitgetTrader); ok && at.store != nil {
 			bitgetTrader.StartOrderSync(at.id, at.exchangeID, at.exchange, at.store, 30*time.Second)
 			logger.Infof("🔄 [%s] Bitget order+position sync enabled (every 30s)", at.name)
 		}
@@ -486,7 +510,7 @@ func (at *AutoTrader) Run() error {
 
 	// Start Aster order sync if using Aster exchange
 	if at.exchange == "aster" {
-		if asterTrader, ok := at.trader.(*AsterTrader); ok && at.store != nil {
+		if asterTrader, ok := at.trader.(*aster.AsterTrader); ok && at.store != nil {
 			asterTrader.StartOrderSync(at.id, at.exchangeID, at.exchange, at.store, 30*time.Second)
 			logger.Infof("🔄 [%s] Aster order+position sync enabled (every 30s)", at.name)
 		}
@@ -494,9 +518,25 @@ func (at *AutoTrader) Run() error {
 
 	// Start Binance order sync if using Binance exchange
 	if at.exchange == "binance" {
-		if binanceTrader, ok := at.trader.(*FuturesTrader); ok && at.store != nil {
+		if binanceTrader, ok := at.trader.(*binance.FuturesTrader); ok && at.store != nil {
 			binanceTrader.StartOrderSync(at.id, at.exchangeID, at.exchange, at.store, 30*time.Second)
 			logger.Infof("🔄 [%s] Binance order+position sync enabled (every 30s)", at.name)
+		}
+	}
+
+	// Start Gate order sync if using Gate exchange
+	if at.exchange == "gate" {
+		if gateTrader, ok := at.trader.(*gate.GateTrader); ok && at.store != nil {
+			gateTrader.StartOrderSync(at.id, at.exchangeID, at.exchange, at.store, 30*time.Second)
+			logger.Infof("🔄 [%s] Gate order+position sync enabled (every 30s)", at.name)
+		}
+	}
+
+	// Start KuCoin order sync if using KuCoin exchange
+	if at.exchange == "kucoin" {
+		if kucoinTrader, ok := at.trader.(*kucoin.KuCoinTrader); ok && at.store != nil {
+			kucoinTrader.StartOrderSync(at.id, at.exchangeID, at.exchange, at.store, 30*time.Second)
+			logger.Infof("🔄 [%s] KuCoin order+position sync enabled (every 30s)", at.name)
 		}
 	}
 
@@ -618,7 +658,24 @@ func (at *AutoTrader) runCycle() error {
 	}
 
 	// Save equity snapshot independently (decoupled from AI decision, used for drawing profit curve)
+	// NOTE: Must be called BEFORE candidate coins check to ensure equity is always recorded
 	at.saveEquitySnapshot(ctx)
+
+	// 如果没有候选币种，记录但不报错
+	if len(ctx.CandidateCoins) == 0 {
+		logger.Infof("ℹ️  No candidate coins available, skipping this cycle")
+		record.Success = true // 不是错误，只是没有候选币
+		record.ExecutionLog = append(record.ExecutionLog, "No candidate coins available, cycle skipped")
+		record.AccountState = store.AccountSnapshot{
+			TotalBalance:          ctx.Account.TotalEquity,
+			AvailableBalance:      ctx.Account.AvailableBalance,
+			TotalUnrealizedProfit: ctx.Account.UnrealizedPnL,
+			PositionCount:         ctx.Account.PositionCount,
+			InitialBalance:        at.initialBalance,
+		}
+		at.saveDecision(record)
+		return nil
+	}
 
 	logger.Info(strings.Repeat("=", 70))
 	for _, coin := range ctx.CandidateCoins {
@@ -901,14 +958,19 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 	}
 
 	// 3. Use strategy engine to get candidate coins (must have strategy engine)
+	var candidateCoins []kernel.CandidateCoin
 	if at.strategyEngine == nil {
-		return nil, fmt.Errorf("trader has no strategy engine configured")
+		logger.Infof("⚠️ [%s] No strategy engine configured, skipping candidate coins", at.name)
+	} else {
+		coins, err := at.strategyEngine.GetCandidateCoins()
+		if err != nil {
+			// Log warning but don't fail - equity snapshot should still be saved
+			logger.Infof("⚠️ [%s] Failed to get candidate coins: %v (will use empty list)", at.name, err)
+		} else {
+			candidateCoins = coins
+			logger.Infof("📋 [%s] Strategy engine fetched candidate coins: %d", at.name, len(candidateCoins))
+		}
 	}
-	candidateCoins, err := at.strategyEngine.GetCandidateCoins()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get candidate coins: %w", err)
-	}
-	logger.Infof("📋 [%s] Strategy engine fetched candidate coins: %d", at.name, len(candidateCoins))
 
 	// 4. Calculate total P&L
 	totalPnL := totalEquity - at.initialBalance
@@ -1138,7 +1200,7 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *kernel.Decision, actio
 	}
 
 	// Get current price
-	marketData, err := market.Get(decision.Symbol)
+	marketData, err := market.GetWithExchange(decision.Symbol, at.exchange)
 	if err != nil {
 		return err
 	}
@@ -1255,7 +1317,7 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *kernel.Decision, acti
 	}
 
 	// Get current price
-	marketData, err := market.Get(decision.Symbol)
+	marketData, err := market.GetWithExchange(decision.Symbol, at.exchange)
 	if err != nil {
 		return err
 	}
@@ -1354,7 +1416,7 @@ func (at *AutoTrader) executeCloseLongWithRecord(decision *kernel.Decision, acti
 	logger.Infof("  🔄 Close long: %s", decision.Symbol)
 
 	// Get current price
-	marketData, err := market.Get(decision.Symbol)
+	marketData, err := market.GetWithExchange(decision.Symbol, at.exchange)
 	if err != nil {
 		return err
 	}
@@ -1418,7 +1480,7 @@ func (at *AutoTrader) executeCloseShortWithRecord(decision *kernel.Decision, act
 	logger.Infof("  🔄 Close short: %s", decision.Symbol)
 
 	// Get current price
-	marketData, err := market.Get(decision.Symbol)
+	marketData, err := market.GetWithExchange(decision.Symbol, at.exchange)
 	if err != nil {
 		return err
 	}
@@ -2494,7 +2556,7 @@ func (at *AutoTrader) recordAndConfirmOrder(orderResult map[string]interface{}, 
 	// Exchanges with OrderSync: Skip immediate order recording, let OrderSync handle it
 	// This ensures accurate data from GetTrades API and avoids duplicate records
 	switch at.exchange {
-	case "binance", "lighter", "hyperliquid", "bybit", "okx", "bitget", "aster":
+	case "binance", "lighter", "hyperliquid", "bybit", "okx", "bitget", "aster", "kucoin", "gate":
 		logger.Infof("  📝 Order submitted (id: %s), will be synced by OrderSync", orderID)
 		return
 	}
