@@ -155,6 +155,8 @@ interface TraderDashboardPageProps {
     decisions?: DecisionRecord[]
     decisionsLimit: number
     onDecisionsLimitChange: (limit: number) => void
+    decisionSymbolFilter?: string
+    onDecisionSymbolFilterChange?: (symbol: string) => void
     stats?: Statistics
     lastUpdate: string
     language: Language
@@ -169,6 +171,8 @@ export function TraderDashboardPage({
     decisions,
     decisionsLimit,
     onDecisionsLimitChange,
+    decisionSymbolFilter = '',
+    onDecisionSymbolFilterChange,
     lastUpdate,
     language,
     traders,
@@ -871,8 +875,8 @@ export function TraderDashboardPage({
                             </select>
                         </div>
 
-                        {/* Filter Toggle */}
-                        <div className="flex items-center justify-between mb-4 px-1">
+                        {/* Filters: valid actions + symbol */}
+                        <div className="flex flex-wrap items-center justify-between gap-3 mb-4 px-1">
                             <label className="flex items-center gap-2 cursor-pointer group">
                                 <input
                                     type="checkbox"
@@ -897,6 +901,38 @@ export function TraderDashboardPage({
                                     {t('showOnlyValidActions', language)}
                                 </span>
                             </label>
+                            {onDecisionSymbolFilterChange && (
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
+                                        {t('filterBySymbol', language)}
+                                    </span>
+                                    <select
+                                        value={decisionSymbolFilter}
+                                        onChange={(e) => onDecisionSymbolFilterChange(e.target.value)}
+                                        className="px-2.5 py-1.5 rounded-lg text-sm cursor-pointer min-w-[120px]"
+                                        style={{
+                                            background: 'var(--panel-bg)',
+                                            color: 'var(--text-primary)',
+                                            border: '1px solid var(--panel-border)',
+                                        }}
+                                    >
+                                        <option value="">{t('allSymbols', language)}</option>
+                                        {(() => {
+                                            const symbols = new Set<string>()
+                                            decisions?.forEach((d) => {
+                                                d.decisions?.forEach((a) => {
+                                                    if (a.symbol) symbols.add(a.symbol)
+                                                })
+                                            })
+                                            return Array.from(symbols).sort()
+                                        })().map((sym) => (
+                                            <option key={sym} value={sym}>
+                                                {sym.replace('USDT', '')}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
                             {showOnlyValidActions && decisions && (
                                 <span className="text-xs text-nofx-text-muted">
                                     {(() => {

@@ -281,8 +281,6 @@ func (client *Client) CallWithMessages(systemPrompt, userPrompt string) (string,
 		}
 		// Call the fixed single-call flow
 		result, err := client.hooks.call(systemPrompt, userPrompt)
-		client.logger.Infof("✓ AI API calling response: %s", result)
-
 		if err == nil {
 			if attempt > 1 {
 				client.logger.Infof("✓ AI API retry succeeded")
@@ -396,7 +394,8 @@ func (client *Client) parseMCPResponse(body []byte) (string, error) {
 	var result struct {
 		Choices []struct {
 			Message struct {
-				Content string `json:"content"`
+				Content          string `json:"content"`
+				ReasoningContent string `json:"reasoning_content"`
 			} `json:"message"`
 		} `json:"choices"`
 		Usage struct {
@@ -425,7 +424,12 @@ func (client *Client) parseMCPResponse(body []byte) (string, error) {
 		})
 	}
 
-	return result.Choices[0].Message.Content, nil
+	msg := &result.Choices[0].Message
+	// 兼容 content 为空、实际内容在 reasoning_content 的格式（如 qwen3.5-35b-a3b）
+	if msg.Content != "" {
+		return msg.Content, nil
+	}
+	return msg.ReasoningContent, nil
 }
 
 func (client *Client) buildUrl() string {

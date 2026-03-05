@@ -281,8 +281,9 @@ type ChatCompletionResponse struct {
 	Model   string `json:"model"`
 	Choices []struct {
 		Message struct {
-			Role    string `json:"role"`
-			Content string `json:"content"`
+			Role             string `json:"role"`
+			Content          string `json:"content"`
+			ReasoningContent string `json:"reasoning_content"`
 		} `json:"message"`
 		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
@@ -342,10 +343,14 @@ func (a *QwenAgent) ChatWithModel(ctx context.Context, model, prompt string) (*C
 	return &result, nil
 }
 
-// GetContent 从响应中获取内容
+// GetContent 从响应中获取内容。当 content 为空时使用 reasoning_content（兼容 qwen3.5 等返回 reasoning_content 的格式）。
 func (r *ChatCompletionResponse) GetContent() string {
-	if len(r.Choices) > 0 {
-		return r.Choices[0].Message.Content
+	if len(r.Choices) == 0 {
+		return ""
 	}
-	return ""
+	msg := &r.Choices[0].Message
+	if msg.Content != "" {
+		return msg.Content
+	}
+	return msg.ReasoningContent
 }

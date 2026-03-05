@@ -442,49 +442,62 @@ export function DecisionCard({ decision, language, onSymbolClick }: DecisionCard
           </div>
         )}
 
-        {/* AI Thinking */}
-        {decision.cot_trace && (
-          <div>
-            <button
-              onClick={() => setShowCoT(!showCoT)}
-              className="flex items-center gap-2 text-sm transition-colors w-full justify-between p-2 rounded"
+        {/* AI Thinking - always show section; display cot_trace or fallback */}
+        <div>
+          <button
+            onClick={() => setShowCoT(!showCoT)}
+            className="flex items-center gap-2 text-sm transition-colors w-full justify-between p-2 rounded"
+            style={{
+              background: 'transparent',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--panel-bg-hover)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent'
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-base">🧠</span>
+              <span className="font-semibold" style={{ color: '#F0B90B' }}>
+                {t('aiThinking', language)}
+              </span>
+            </div>
+            <span
+              className="text-xs px-2 py-0.5 rounded"
+              style={{ background: 'rgba(240, 185, 11, 0.15)', color: '#F0B90B' }}
+            >
+              {showCoT ? t('collapse', language) : t('expand', language)}
+            </span>
+          </button>
+          {showCoT && (
+            <div
+              className="mt-2 rounded-lg p-4 text-sm font-mono max-h-96 overflow-y-auto break-words"
               style={{
-                background: 'transparent',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'var(--panel-bg-hover)'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'transparent'
+                background: 'var(--panel-bg)',
+                border: `1px solid var(--panel-border)`,
+                color: 'var(--text-primary)',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
               }}
             >
-              <div className="flex items-center gap-2">
-                <span className="text-base">🧠</span>
-                <span className="font-semibold" style={{ color: '#F0B90B' }}>
-                  {t('aiThinking', language)}
+              {decision.cot_trace && decision.cot_trace.trim() ? (
+                decision.cot_trace
+              ) : decision.raw_response && decision.raw_response.trim() ? (
+                <>
+                  <div className="text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
+                    {t('cotEmptyFallback', language)}
+                  </div>
+                  <div className="whitespace-pre-wrap break-words">{decision.raw_response}</div>
+                </>
+              ) : (
+                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                  {t('cotEmpty', language)}
                 </span>
-              </div>
-              <span
-                className="text-xs px-2 py-0.5 rounded"
-                style={{ background: 'rgba(240, 185, 11, 0.15)', color: '#F0B90B' }}
-              >
-                {showCoT ? t('collapse', language) : t('expand', language)}
-              </span>
-            </button>
-            {showCoT && (
-              <div
-                className="mt-2 rounded-lg p-4 text-sm font-mono whitespace-pre-wrap max-h-96 overflow-y-auto"
-                style={{
-                  background: 'var(--panel-bg)',
-                  border: `1px solid var(--panel-border)`,
-                  color: 'var(--text-primary)',
-                }}
-              >
-                {decision.cot_trace}
-              </div>
-            )}
-          </div>
-        )}
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Execution Log */}

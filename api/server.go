@@ -2972,7 +2972,7 @@ func (s *Server) handleDecisions(c *gin.Context) {
 	})
 }
 
-// handleLatestDecisions Latest decision logs (newest first, supports limit parameter)
+// handleLatestDecisions Latest decision logs (newest first, supports limit, symbol, effective_only)
 func (s *Server) handleLatestDecisions(c *gin.Context) {
 	_, traderID, err := s.getTraderFromQuery(c)
 	if err != nil {
@@ -2986,27 +2986,45 @@ func (s *Server) handleLatestDecisions(c *gin.Context) {
 		return
 	}
 
-	// Get limit from query parameter, default to 5
 	limit := 5
 	if limitStr := c.Query("limit"); limitStr != "" {
 		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
 			limit = parsedLimit
 			if limit > 100 {
-				limit = 100 // Max 100 to prevent abuse
+				limit = 100
 			}
 		}
 	}
 
-	records, err := trader.GetStore().Decision().GetLatestRecords(trader.GetID(), limit)
-	if err != nil {
-		SafeInternalError(c, "Get decision log", err)
-		return
+	symbol := strings.TrimSpace(c.Query("symbol"))
+	effectiveOnly := false
+	if v := c.Query("effective_only"); v != "" {
+		effectiveOnly = strings.ToLower(v) == "true" || v == "1"
 	}
 
-	// Reverse array to put newest first (for list display)
-	// GetLatestRecords returns oldest to newest (for charts), here we need newest to oldest
-	for i, j := 0, len(records)-1; i < j; i, j = i+1, j-1 {
-		records[i], records[j] = records[j], records[i]
+	var records []*store.DecisionRecord
+	if symbol != "" || effectiveOnly {
+		opts := store.ListDecisionOptions{
+			Page:          1,
+			PageSize:      limit,
+			EffectiveOnly: effectiveOnly,
+			Symbol:        symbol,
+		}
+		records, _, err = trader.GetStore().Decision().ListRecords(trader.GetID(), opts)
+		if err != nil {
+			SafeInternalError(c, "Get decision log", err)
+			return
+		}
+		// ListRecords returns newest first (Order timestamp DESC), no need to reverse
+	} else {
+		records, err = trader.GetStore().Decision().GetLatestRecords(trader.GetID(), limit)
+		if err != nil {
+			SafeInternalError(c, "Get decision log", err)
+			return
+		}
+		for i, j := 0, len(records)-1; i < j; i, j = i+1, j-1 {
+			records[i], records[j] = records[j], records[i]
+		}
 	}
 
 	c.JSON(http.StatusOK, records)

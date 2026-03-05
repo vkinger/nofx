@@ -92,6 +92,7 @@ export interface DecisionRecord {
   system_prompt: string
   input_prompt: string
   cot_trace: string
+  raw_response?: string
   decision_json: string
   account_state: AccountSnapshot
   positions: any[]
