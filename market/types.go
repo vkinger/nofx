@@ -20,16 +20,44 @@ type Data struct {
 	LongerTermContext *LongerTermData
 	// Multi-timeframe data (new)
 	TimeframeData map[string]*TimeframeSeriesData `json:"timeframe_data,omitempty"`
+	// Liquidation data (contract-specific)
+	LiquidationData *LiquidationInfo `json:"liquidation_data,omitempty"`
+	// Long/Short person ratio (contract-specific)
+	LongShortRatio *LongShortInfo `json:"long_short_ratio,omitempty"`
+}
+
+// LiquidationInfo aggregated liquidation data for a symbol
+type LiquidationInfo struct {
+	Liq1hTotal     float64 `json:"liq_1h_total"`      // 1h total liquidation (USD)
+	Liq1hLong      float64 `json:"liq_1h_long"`       // 1h long liquidation (USD)
+	Liq1hShort     float64 `json:"liq_1h_short"`      // 1h short liquidation (USD)
+	Liq4hTotal     float64 `json:"liq_4h_total"`
+	Liq4hLong      float64 `json:"liq_4h_long"`
+	Liq4hShort     float64 `json:"liq_4h_short"`
+	Liq24hTotal    float64 `json:"liq_24h_total"`
+	Liq24hLong     float64 `json:"liq_24h_long"`
+	Liq24hShort    float64 `json:"liq_24h_short"`
+	PriceChangeH24 float64 `json:"price_change_h24"`
+}
+
+// LongShortInfo long/short person ratio
+type LongShortInfo struct {
+	Ratio       float64 `json:"ratio"`          // current long/short person ratio
+	Chg5m       float64 `json:"chg_5m"`         // 5min change
+	Chg15m      float64 `json:"chg_15m"`        // 15min change
+	Chg1h       float64 `json:"chg_1h"`         // 1h change
+	Chg4h       float64 `json:"chg_4h"`         // 4h change
 }
 
 // KlineBar single kline bar with OHLCV data
 type KlineBar struct {
-	Time   int64   `json:"time"`   // Unix timestamp in milliseconds
-	Open   float64 `json:"open"`   // Open price
-	High   float64 `json:"high"`   // High price
-	Low    float64 `json:"low"`    // Low price
-	Close  float64 `json:"close"`  // Close price
-	Volume float64 `json:"volume"` // Volume
+	Time          int64   `json:"time"`            // Unix timestamp in milliseconds
+	Open          float64 `json:"open"`            // Open price
+	High          float64 `json:"high"`            // High price
+	Low           float64 `json:"low"`             // Low price
+	Close         float64 `json:"close"`           // Close price
+	Volume        float64 `json:"volume"`          // Volume
+	TakerBuyRatio float64 `json:"taker_buy_ratio"` // Taker buy volume / total volume (0-1, >0.6 bullish, <0.4 bearish)
 }
 
 // TimeframeSeriesData series data for a single timeframe
@@ -43,7 +71,8 @@ type TimeframeSeriesData struct {
 	RSI7Values  []float64  `json:"rsi7_values"`  // RSI7 series
 	RSI14Values []float64  `json:"rsi14_values"` // RSI14 series
 	Volume      []float64  `json:"volume"`       // Volume series (deprecated, use Klines)
-	ATR14       float64    `json:"atr14"`        // ATR14
+	ATR14          float64    `json:"atr14"`           // ATR14
+	ATR14Percentile float64   `json:"atr14_percentile"` // ATR14 percentile rank (0-100) over recent history
 	// Bollinger Bands (period 20, std dev multiplier 2)
 	BOLLUpper  []float64 `json:"boll_upper"`  // Upper band
 	BOLLMiddle []float64 `json:"boll_middle"` // Middle band (SMA)

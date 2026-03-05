@@ -483,14 +483,19 @@ func calculateTimeframeSeries(klines []Kline, timeframe string, count int) *Time
 	}
 
 	for i := start; i < len(klines); i++ {
-		// Store full OHLCV kline data
+		// Store full OHLCV kline data with taker buy ratio
+		takerBuyRatio := 0.0
+		if klines[i].Volume > 0 && klines[i].TakerBuyBaseVolume > 0 {
+			takerBuyRatio = klines[i].TakerBuyBaseVolume / klines[i].Volume
+		}
 		data.Klines = append(data.Klines, KlineBar{
-			Time:   klines[i].OpenTime,
-			Open:   klines[i].Open,
-			High:   klines[i].High,
-			Low:    klines[i].Low,
-			Close:  klines[i].Close,
-			Volume: klines[i].Volume,
+			Time:          klines[i].OpenTime,
+			Open:          klines[i].Open,
+			High:          klines[i].High,
+			Low:           klines[i].Low,
+			Close:         klines[i].Close,
+			Volume:        klines[i].Volume,
+			TakerBuyRatio: takerBuyRatio,
 		})
 
 		// Keep MidPrices and Volume for backward compatibility
@@ -536,6 +541,9 @@ func calculateTimeframeSeries(klines []Kline, timeframe string, count int) *Time
 
 	// Calculate ATR14
 	data.ATR14 = calculateATR(klines, 14)
+
+	// Calculate ATR14 percentile over recent history (rolling ATR values)
+	data.ATR14Percentile = calculateATRPercentile(klines, 14, 100)
 
 	return data
 }
@@ -719,6 +727,36 @@ func calculateATR(klines []Kline, period int) float64 {
 	}
 
 	return atr
+}
+
+// calculateATRPercentile calculates the percentile rank of current ATR14 over the last `window` bars.
+// Returns 0-100: 90 means current ATR is higher than 90% of recent ATR values (high volatility).
+func calculateATRPercentile(klines []Kline, period int, window int) float64 {
+	n := len(klines)
+	if n <= period+window {
+		return 50 // not enough data, return neutral
+	}
+
+	currentATR := calculateATR(klines, period)
+	if currentATR <= 0 {
+		return 50
+	}
+
+	count := 0
+	below := 0
+	for end := n - 1; end >= period+1 && count < window; end-- {
+		atr := calculateATR(klines[:end+1], period)
+		if atr > 0 {
+			count++
+			if atr < currentATR {
+				below++
+			}
+		}
+	}
+	if count == 0 {
+		return 50
+	}
+	return float64(below) / float64(count) * 100
 }
 
 // calculateBOLL calculates Bollinger Bands (upper, middle, lower)

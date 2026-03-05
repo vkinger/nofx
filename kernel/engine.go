@@ -1,6 +1,7 @@
 package kernel
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,11 +9,14 @@ import (
 	"nofx/logger"
 	"nofx/market"
 	"nofx/mcp"
+	"nofx/provider/coinank"
+	"nofx/provider/coinank/coinank_enum"
 	"nofx/provider/nofxos"
 	"nofx/security"
 	"nofx/store"
 	"reflect"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -533,6 +537,57 @@ func fetchMarketDataWithStrategy(ctx *Context, engine *StrategyEngine) error {
 			data.MakerFeeRate = makerRate
 			data.TakerFeeRate = takerRate
 			data.FeeSource = source
+		}
+	}
+
+	// 4. Fetch contract-specific data: liquidation + long/short ratio (via CoinAnk authenticated API)
+	apiKey := engine.config.Indicators.NofxOSAPIKey
+	if apiKey == "" {
+		apiKey = nofxos.DefaultAuthKey
+	}
+	if apiKey != "" {
+		coinankClient := coinank.NewCoinankClient(coinank_enum.MainUrl, apiKey)
+		fetchCtx, fetchCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer fetchCancel()
+
+		// Batch fetch long/short rank (one call for all symbols)
+		lsItems, lsErr := coinankClient.LongShortRank(fetchCtx, coinank_enum.LongShortPerson, coinank_enum.Desc, 1, 100)
+		lsMap := make(map[string]*market.LongShortInfo)
+		if lsErr == nil {
+			for _, item := range lsItems {
+				lsMap[strings.ToUpper(item.BaseCoin)] = &market.LongShortInfo{
+					Ratio:  item.LongShortPerson,
+					Chg5m:  item.LsPersonChg5M,
+					Chg15m: item.LsPersonChg15M,
+					Chg1h:  item.LsPersonChg1H,
+					Chg4h:  item.LsPersonChg4H,
+				}
+			}
+		}
+
+		for symbol, data := range ctx.MarketDataMap {
+			if market.IsXyzDexAsset(symbol) {
+				continue
+			}
+			baseCoin := strings.TrimSuffix(strings.ToUpper(symbol), "USDT")
+
+			// Long/Short ratio (from batch result)
+			if ls, ok := lsMap[baseCoin]; ok {
+				data.LongShortRatio = ls
+			}
+
+			// Liquidation data (per-symbol)
+			liqData, liqErr := coinankClient.LiquidationExchangeStatistics(fetchCtx, baseCoin)
+			if liqErr == nil && liqData != nil {
+				data.LiquidationData = &market.LiquidationInfo{
+					Liq1hTotal:  liqData.OneH.TotalTurnover,
+					Liq1hLong:   liqData.OneH.LongTurnover,
+					Liq1hShort:  liqData.OneH.ShortTurnover,
+					Liq24hTotal: liqData.Two4H.TotalTurnover,
+					Liq24hLong:  liqData.Two4H.LongTurnover,
+					Liq24hShort: liqData.Two4H.ShortTurnover,
+				}
+			}
 		}
 	}
 
@@ -2252,6 +2307,45 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 		sb.WriteString("\n")
 	}
 
+	// Liquidation data (contract-specific, high signal value for reversals)
+	if data.LiquidationData != nil && (data.LiquidationData.Liq1hTotal > 0 || data.LiquidationData.Liq24hTotal > 0) {
+		liq := data.LiquidationData
+		sb.WriteString(fmt.Sprintf("--- %s Liquidation ---\n", data.Symbol))
+		if liq.Liq1hTotal > 0 {
+			liqSignal := ""
+			if liq.Liq1hLong > liq.Liq1hShort*3 {
+				liqSignal = " [LONG_FLUSH: potential bounce]"
+			} else if liq.Liq1hShort > liq.Liq1hLong*3 {
+				liqSignal = " [SHORT_SQUEEZE: potential pullback]"
+			}
+			sb.WriteString(fmt.Sprintf("1h: Total=%s (Long=%s, Short=%s)%s\n",
+				formatFlowValue(liq.Liq1hTotal), formatFlowValue(liq.Liq1hLong), formatFlowValue(liq.Liq1hShort), liqSignal))
+		}
+		if liq.Liq24hTotal > 0 {
+			sb.WriteString(fmt.Sprintf("24h: Total=%s (Long=%s, Short=%s)\n",
+				formatFlowValue(liq.Liq24hTotal), formatFlowValue(liq.Liq24hLong), formatFlowValue(liq.Liq24hShort)))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Long/Short ratio (contract-specific, contrarian indicator at extremes)
+	if data.LongShortRatio != nil && data.LongShortRatio.Ratio > 0 {
+		ls := data.LongShortRatio
+		lsSignal := ""
+		if ls.Ratio > 2.5 {
+			lsSignal = " [EXTREME_LONG: contrarian bearish]"
+		} else if ls.Ratio < 0.5 {
+			lsSignal = " [EXTREME_SHORT: contrarian bullish]"
+		} else if ls.Ratio > 1.8 {
+			lsSignal = " [CROWDED_LONG: caution]"
+		} else if ls.Ratio < 0.7 {
+			lsSignal = " [CROWDED_SHORT: caution]"
+		}
+		sb.WriteString(fmt.Sprintf("--- %s Long/Short Person Ratio ---\n", data.Symbol))
+		sb.WriteString(fmt.Sprintf("Ratio=%.3f%s | Chg: 5m=%+.2f%%, 15m=%+.2f%%, 1h=%+.2f%%, 4h=%+.2f%%\n\n",
+			ls.Ratio, lsSignal, ls.Chg5m*100, ls.Chg15m*100, ls.Chg1h*100, ls.Chg4h*100))
+	}
+
 	if len(data.TimeframeData) > 0 {
 		// 优先使用策略配置的时间框架
 		timeframes := indicators.Klines.SelectedTimeframes
@@ -2260,6 +2354,48 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 			if tfData, ok := data.TimeframeData[tf]; ok {
 				sb.WriteString(fmt.Sprintf("=== %s Timeframe (oldest → latest) ===\n\n", strings.ToUpper(tf)))
 				e.formatTimeframeSeriesData(&sb, tfData, indicators, tf)
+			}
+		}
+
+		// Multi-timeframe resonance analysis
+		if len(timeframes) >= 2 {
+			bullish, bearish, total := 0, 0, 0
+			for _, tf := range timeframes {
+				tfData, ok := data.TimeframeData[tf]
+				if !ok || len(tfData.Klines) < 3 {
+					continue
+				}
+				total++
+				kls := tfData.Klines
+				latest := kls[len(kls)-1].Close
+				oldest := kls[0].Close
+				emaBull := false
+				if len(tfData.EMA20Values) > 0 {
+					emaBull = latest > tfData.EMA20Values[len(tfData.EMA20Values)-1]
+				}
+				priceBull := latest > oldest
+				if priceBull && emaBull {
+					bullish++
+				} else if !priceBull && !emaBull {
+					bearish++
+				}
+			}
+			if total >= 2 {
+				resonance := ""
+				if bullish == total {
+					resonance = fmt.Sprintf("BULLISH_RESONANCE (%d/%d TF aligned bullish)", bullish, total)
+				} else if bearish == total {
+					resonance = fmt.Sprintf("BEARISH_RESONANCE (%d/%d TF aligned bearish)", bearish, total)
+				} else if bullish > 0 && bearish > 0 {
+					resonance = fmt.Sprintf("DIVERGENCE (bull:%d bear:%d of %d TF - conflicting, caution)", bullish, bearish, total)
+				} else {
+					resonance = fmt.Sprintf("MIXED (bull:%d bear:%d neutral:%d)", bullish, bearish, total-bullish-bearish)
+				}
+				if lang == LangChinese {
+					sb.WriteString(fmt.Sprintf("多周期共振: %s\n\n", resonance))
+				} else {
+					sb.WriteString(fmt.Sprintf("Multi-TF Resonance: %s\n\n", resonance))
+				}
 			}
 		}
 	} else {
@@ -2457,8 +2593,44 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 			} else if volRatio < 0.5 {
 				volLabel = " [-vol]"
 			}
-			sb.WriteString(fmt.Sprintf("  %s: O:%s H:%s L:%s C:%s (%s)%s\n",
-				timeStr, fmtPrice(k.Open), fmtPrice(k.High), fmtPrice(k.Low), fmtPrice(k.Close), candleTypeDisplay, volLabel))
+			// Taker Buy Ratio: >0.6 bullish (buyers aggressive), <0.4 bearish (sellers aggressive)
+			tbLabel := ""
+			if k.TakerBuyRatio > 0 {
+				if k.TakerBuyRatio > 0.65 {
+					tbLabel = fmt.Sprintf(" TB:%.0f%%↑", k.TakerBuyRatio*100)
+				} else if k.TakerBuyRatio < 0.35 {
+					tbLabel = fmt.Sprintf(" TB:%.0f%%↓", k.TakerBuyRatio*100)
+				} else if k.TakerBuyRatio > 0.55 || k.TakerBuyRatio < 0.45 {
+					tbLabel = fmt.Sprintf(" TB:%.0f%%", k.TakerBuyRatio*100)
+				}
+			}
+			sb.WriteString(fmt.Sprintf("  %s: O:%s H:%s L:%s C:%s (%s)%s%s\n",
+				timeStr, fmtPrice(k.Open), fmtPrice(k.High), fmtPrice(k.Low), fmtPrice(k.Close), candleTypeDisplay, volLabel, tbLabel))
+		}
+
+		// Taker Buy Ratio summary for recent N candles (aggregate signal)
+		{
+			var tbSum float64
+			var tbCount int
+			for i := recentCount; i > 0; i-- {
+				k := klines[len(klines)-i]
+				if k.TakerBuyRatio > 0 {
+					tbSum += k.TakerBuyRatio
+					tbCount++
+				}
+			}
+			if tbCount > 0 {
+				avgTB := tbSum / float64(tbCount)
+				tbSignal := ""
+				if avgTB > 0.60 {
+					tbSignal = " [BUYERS_DOMINANT]"
+				} else if avgTB < 0.40 {
+					tbSignal = " [SELLERS_DOMINANT]"
+				}
+				if tbSignal != "" || avgTB > 0.55 || avgTB < 0.45 {
+					sb.WriteString(fmt.Sprintf("Taker Buy Avg (recent %d): %.1f%%%s\n", tbCount, avgTB*100, tbSignal))
+				}
+			}
 		}
 
 		// K线组合形态识别（完整清单见 kernel/candlestick.go），提示词双语且形态名与字典对应
@@ -2829,7 +3001,18 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 			}
 		}
 
-		sb.WriteString(fmt.Sprintf("ATR14: %s (%.2f%%) [%s%s]\n", fmtPrice(data.ATR14), atrPct, volStatus, volTrend))
+		// ATR percentile context
+		atrPctile := ""
+		if data.ATR14Percentile > 0 {
+			if data.ATR14Percentile >= 80 {
+				atrPctile = fmt.Sprintf(" P%d(high vs history→may contract)", int(data.ATR14Percentile))
+			} else if data.ATR14Percentile <= 20 {
+				atrPctile = fmt.Sprintf(" P%d(low vs history→breakout brewing)", int(data.ATR14Percentile))
+			} else {
+				atrPctile = fmt.Sprintf(" P%d", int(data.ATR14Percentile))
+			}
+		}
+		sb.WriteString(fmt.Sprintf("ATR14: %s (%.2f%%) [%s%s]%s\n", fmtPrice(data.ATR14), atrPct, volStatus, volTrend, atrPctile))
 	}
 
 	if indicators.EnableBOLL && len(data.BOLLUpper) > 0 {
@@ -2866,6 +3049,92 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 
 			sb.WriteString(fmt.Sprintf("BOLL: [%s | %s | %s] Width: %.2f%% (%s) | Price: %s\n",
 				fmtPrice(lower), fmtPrice(middle), fmtPrice(upper), bandwidth, bandwidthLabel, position))
+		}
+	}
+
+	// Key Price Levels: consolidate EMA/BOLL/recent range into structured support/resistance
+	if currentPrice > 0 && len(klines) > 0 {
+		type priceLevel struct {
+			price float64
+			label string
+		}
+		var supports, resistances []priceLevel
+
+		// Recalculate range from klines for this scope
+		rangeHigh, rangeLow := klines[0].High, klines[0].Low
+		for _, k := range klines {
+			if k.High > rangeHigh {
+				rangeHigh = k.High
+			}
+			if k.Low < rangeLow {
+				rangeLow = k.Low
+			}
+		}
+		if rangeHigh > currentPrice {
+			resistances = append(resistances, priceLevel{rangeHigh, "Range High"})
+		}
+		if rangeLow < currentPrice && rangeLow > 0 {
+			supports = append(supports, priceLevel{rangeLow, "Range Low"})
+		}
+
+		// EMA levels
+		if indicators.EnableEMA && len(data.EMA20Values) > 0 {
+			ema20 := data.EMA20Values[len(data.EMA20Values)-1]
+			if ema20 > currentPrice {
+				resistances = append(resistances, priceLevel{ema20, "EMA20"})
+			} else if ema20 < currentPrice {
+				supports = append(supports, priceLevel{ema20, "EMA20"})
+			}
+		}
+		if indicators.EnableEMA && len(data.EMA50Values) > 0 {
+			ema50 := data.EMA50Values[len(data.EMA50Values)-1]
+			if ema50 > currentPrice {
+				resistances = append(resistances, priceLevel{ema50, "EMA50"})
+			} else if ema50 < currentPrice {
+				supports = append(supports, priceLevel{ema50, "EMA50"})
+			}
+		}
+
+		// BOLL levels
+		if indicators.EnableBOLL && len(data.BOLLUpper) > 0 {
+			upper := data.BOLLUpper[len(data.BOLLUpper)-1]
+			lower := data.BOLLLower[len(data.BOLLLower)-1]
+			if upper > currentPrice {
+				resistances = append(resistances, priceLevel{upper, "BOLL Upper"})
+			}
+			if lower < currentPrice && lower > 0 {
+				supports = append(supports, priceLevel{lower, "BOLL Lower"})
+			}
+		}
+
+		// Sort and format (supports descending = nearest first, resistances ascending = nearest first)
+		if len(supports) > 0 || len(resistances) > 0 {
+			sort.Slice(supports, func(i, j int) bool { return supports[i].price > supports[j].price })
+			sort.Slice(resistances, func(i, j int) bool { return resistances[i].price < resistances[j].price })
+
+			if lang == LangChinese {
+				sb.WriteString("关键价位: ")
+			} else {
+				sb.WriteString("Key Levels: ")
+			}
+			if len(resistances) > 0 {
+				parts := make([]string, 0, len(resistances))
+				for _, r := range resistances {
+					parts = append(parts, fmt.Sprintf("%s(%s)", fmtPrice(r.price), r.label))
+				}
+				sb.WriteString("R: " + strings.Join(parts, " > "))
+			}
+			if len(supports) > 0 {
+				if len(resistances) > 0 {
+					sb.WriteString(" | ")
+				}
+				parts := make([]string, 0, len(supports))
+				for _, s := range supports {
+					parts = append(parts, fmt.Sprintf("%s(%s)", fmtPrice(s.price), s.label))
+				}
+				sb.WriteString("S: " + strings.Join(parts, " > "))
+			}
+			sb.WriteString("\n")
 		}
 	}
 
