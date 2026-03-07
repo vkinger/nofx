@@ -1560,15 +1560,23 @@ func (s *Server) recordClosePositionOrder(traderID, exchangeID, exchangeType, sy
 		orderAction = "close_short"
 	}
 
-	// Use entry price if exit price not available
+	// Use result fill data when available (e.g. paper returns avgPrice, executedQty, commission)
+	if avgPrice, ok := result["avgPrice"].(float64); ok && avgPrice > 0 {
+		exitPrice = avgPrice
+	}
 	if exitPrice == 0 {
 		exitPrice = quantity * 100 // Rough estimate if we don't have price
 	}
-
-	// Estimate fee (0.04% for Lighter taker)
+	if execQty, ok := result["executedQty"].(float64); ok && execQty > 0 {
+		quantity = execQty
+	}
+	// Fee: use result commission when available (paper), else estimate (e.g. 0.04% taker)
 	fee := exitPrice * quantity * 0.0004
+	if commission, ok := result["commission"].(float64); ok && commission >= 0 {
+		fee = commission
+	}
 
-	// Create order record - DIRECTLY as FILLED (Lighter market orders fill immediately)
+	// Create order record - DIRECTLY as FILLED (paper / Lighter market orders fill immediately)
 	orderRecord := &store.TraderOrder{
 		TraderID:        traderID,
 		ExchangeID:      exchangeID,
@@ -1598,6 +1606,10 @@ func (s *Server) recordClosePositionOrder(traderID, exchangeID, exchangeType, sy
 	logger.Infof("  ✅ Order recorded as FILLED: %s [%s] %s qty=%.6f price=%.6f", orderID, orderAction, symbol, quantity, exitPrice)
 
 	// Create fill record immediately
+	realizedPnL := 0.0
+	if pnl, ok := result["realizedPnl"].(float64); ok {
+		realizedPnL = pnl
+	}
 	tradeID := fmt.Sprintf("%s-%d", orderID, time.Now().UnixNano())
 	fillRecord := &store.TraderFill{
 		TraderID:        traderID,
@@ -1613,7 +1625,7 @@ func (s *Server) recordClosePositionOrder(traderID, exchangeID, exchangeType, sy
 		QuoteQuantity:   exitPrice * quantity,
 		Commission:      fee,
 		CommissionAsset: "USDT",
-		RealizedPnL:     0,
+		RealizedPnL:     realizedPnL,
 		IsMaker:         false,
 		CreatedAt:       time.Now().UTC().UnixMilli(),
 	}
