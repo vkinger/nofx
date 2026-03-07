@@ -30,6 +30,8 @@ import type {
   DebateVote,
   DebatePersonalityInfo,
   PositionHistoryResponse,
+  RoundsListResponse,
+  RoundDetailResponse,
 } from '../types'
 import { CryptoService } from './crypto'
 import { httpClient } from './httpClient'
@@ -388,6 +390,31 @@ export const api = {
       `${API_BASE}/decisions/latest?${params}`
     )
     if (!result.success) throw new Error('获取最新决策失败')
+    return result.data!
+  },
+
+  /** P4-3 轮次列表：分页获取「分析→决策→审计」轮次（含 analyst_report_id / compliance_audit_id） */
+  async getRoundsList(
+    traderId: string,
+    page: number = 1,
+    pageSize: number = 20
+  ): Promise<RoundsListResponse> {
+    const params = new URLSearchParams()
+    params.append('page', String(page))
+    params.append('page_size', String(pageSize))
+    const result = await httpClient.get<RoundsListResponse>(
+      `${API_BASE}/traders/${encodeURIComponent(traderId)}/rounds?${params}`
+    )
+    if (!result.success) throw new Error('获取轮次列表失败')
+    return result.data!
+  },
+
+  /** P4-3 单轮详情：分析师报告 → 交易员 CoT/decisions → 风控审计 */
+  async getRoundDetail(traderId: string, roundId: number): Promise<RoundDetailResponse> {
+    const result = await httpClient.get<RoundDetailResponse>(
+      `${API_BASE}/traders/${encodeURIComponent(traderId)}/rounds/${roundId}`
+    )
+    if (!result.success) throw new Error('获取轮次详情失败')
     return result.data!
   },
 

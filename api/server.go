@@ -185,6 +185,9 @@ func (s *Server) setupRoutes() {
 			protected.POST("/traders/:id/close-position", s.handleClosePosition)
 			protected.PUT("/traders/:id/competition", s.handleToggleCompetition)
 			protected.GET("/traders/:id/grid-risk", s.handleGetGridRiskInfo)
+			// P4-3 Dashboard 三阶段展示：按轮次查看 分析师报告 → 交易员决策 → 风控审计
+			protected.GET("/traders/:id/rounds", s.handleRoundsList)
+			protected.GET("/traders/:id/rounds/:roundId", s.handleRoundDetail)
 
 			// AI model configuration
 			protected.GET("/models", s.handleGetModelConfigs)
@@ -430,6 +433,10 @@ type CreateTraderRequest struct {
 	ScanIntervalMinutes int     `json:"scan_interval_minutes"`
 	IsCrossMargin       *bool   `json:"is_cross_margin"`     // Pointer type, nil means use default value true
 	ShowInCompetition   *bool   `json:"show_in_competition"` // Pointer type, nil means use default value true
+	UseAnalystFlow      bool    `json:"use_analyst_flow"`    // false=原有单流程（默认），true=多 Agent（分析师→黑板→交易员）
+	UseComplianceFlow   bool    `json:"use_compliance_flow"` // false=直接执行，true=风控官审计通过才执行
+	AnalystModelID      string  `json:"analyst_model_id"`    // 分析师专用模型 ID，空=与交易员同模型
+	ComplianceModelID   string  `json:"compliance_model_id"` // 风控官专用模型 ID，空=与交易员同模型
 	// The following fields are kept for backward compatibility, new version uses strategy config
 	BTCETHLeverage       int    `json:"btc_eth_leverage"`
 	AltcoinLeverage      int    `json:"altcoin_leverage"`
@@ -728,6 +735,10 @@ func (s *Server) handleCreateTrader(c *gin.Context) {
 		IsCrossMargin:        isCrossMargin,
 		ShowInCompetition:    showInCompetition,
 		ScanIntervalMinutes:  scanIntervalMinutes,
+		UseAnalystFlow:       req.UseAnalystFlow,
+		UseComplianceFlow:    req.UseComplianceFlow,
+		AnalystModelID:       req.AnalystModelID,
+		ComplianceModelID:    req.ComplianceModelID,
 		IsRunning:            false,
 	}
 
@@ -770,6 +781,10 @@ type UpdateTraderRequest struct {
 	ScanIntervalMinutes int     `json:"scan_interval_minutes"`
 	IsCrossMargin       *bool   `json:"is_cross_margin"`
 	ShowInCompetition   *bool   `json:"show_in_competition"`
+	UseAnalystFlow      *bool   `json:"use_analyst_flow"`    // nil=保持原值，false=单流程，true=多 Agent
+	UseComplianceFlow   *bool   `json:"use_compliance_flow"` // nil=保持原值，true=风控审计通过才执行
+	AnalystModelID      *string `json:"analyst_model_id"`    // 分析师专用模型 ID，nil=保持原值
+	ComplianceModelID   *string `json:"compliance_model_id"` // 风控官专用模型 ID，nil=保持原值
 	// The following fields are kept for backward compatibility, new version uses strategy config
 	BTCETHLeverage       int    `json:"btc_eth_leverage"`
 	AltcoinLeverage      int    `json:"altcoin_leverage"`
@@ -819,6 +834,23 @@ func (s *Server) handleUpdateTrader(c *gin.Context) {
 	showInCompetition := existingTrader.ShowInCompetition // Keep original value
 	if req.ShowInCompetition != nil {
 		showInCompetition = *req.ShowInCompetition
+	}
+
+	useAnalystFlow := existingTrader.UseAnalystFlow // Keep original value
+	if req.UseAnalystFlow != nil {
+		useAnalystFlow = *req.UseAnalystFlow
+	}
+	useComplianceFlow := existingTrader.UseComplianceFlow
+	if req.UseComplianceFlow != nil {
+		useComplianceFlow = *req.UseComplianceFlow
+	}
+	analystModelID := existingTrader.AnalystModelID
+	if req.AnalystModelID != nil {
+		analystModelID = *req.AnalystModelID
+	}
+	complianceModelID := existingTrader.ComplianceModelID
+	if req.ComplianceModelID != nil {
+		complianceModelID = *req.ComplianceModelID
 	}
 
 	// Set leverage default values
@@ -871,6 +903,10 @@ func (s *Server) handleUpdateTrader(c *gin.Context) {
 		IsCrossMargin:        isCrossMargin,
 		ShowInCompetition:    showInCompetition,
 		ScanIntervalMinutes:  scanIntervalMinutes,
+		UseAnalystFlow:       useAnalystFlow,
+		UseComplianceFlow:    useComplianceFlow,
+		AnalystModelID:       analystModelID,
+		ComplianceModelID:   complianceModelID,
 		IsRunning:            existingTrader.IsRunning, // Keep original value
 	}
 
@@ -3040,6 +3076,95 @@ func (s *Server) handleLatestDecisions(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, records)
+}
+
+// handleRoundsList P4-3：分页列出轮次（每轮含 analyst_report_id / pending_decision_id / compliance_audit_id 便于前端关联）
+func (s *Server) handleRoundsList(c *gin.Context) {
+	traderID := c.Param("id")
+	if traderID == "" {
+		SafeBadRequest(c, "Invalid trader ID")
+		return
+	}
+	trader, err := s.traderManager.GetTrader(traderID)
+	if err != nil {
+		SafeNotFound(c, "Trader")
+		return
+	}
+	opts := store.ListDecisionOptions{Page: 1, PageSize: 20}
+	if v := c.Query("page"); v != "" {
+		if p, err := strconv.Atoi(v); err == nil && p >= 1 {
+			opts.Page = p
+		}
+	}
+	if v := c.Query("page_size"); v != "" {
+		if ps, err := strconv.Atoi(v); err == nil && ps >= 1 {
+			opts.PageSize = ps
+			if opts.PageSize > 100 {
+				opts.PageSize = 100
+			}
+		}
+	}
+	records, total, err := trader.GetStore().Decision().ListRecords(trader.GetID(), opts)
+	if err != nil {
+		SafeInternalError(c, "List rounds", err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"list":      records,
+		"total":     total,
+		"page":      opts.Page,
+		"page_size": opts.PageSize,
+	})
+}
+
+// handleRoundDetail P4-3：单轮详情（分析师报告 → 交易员 CoT/decisions → 风控审计结果）
+func (s *Server) handleRoundDetail(c *gin.Context) {
+	traderID := c.Param("id")
+	roundIDStr := c.Param("roundId")
+	if traderID == "" || roundIDStr == "" {
+		SafeBadRequest(c, "Invalid trader ID or round ID")
+		return
+	}
+	roundID, err := strconv.ParseInt(roundIDStr, 10, 64)
+	if err != nil || roundID <= 0 {
+		SafeBadRequest(c, "Invalid round ID")
+		return
+	}
+	trader, err := s.traderManager.GetTrader(traderID)
+	if err != nil {
+		SafeNotFound(c, "Trader")
+		return
+	}
+	st := trader.GetStore()
+	rec, err := st.Decision().GetByID(roundID)
+	if err != nil {
+		SafeNotFound(c, "Round")
+		return
+	}
+	if rec.TraderID != trader.GetID() {
+		SafeBadRequest(c, "Round does not belong to this trader")
+		return
+	}
+	out := gin.H{"decision_record": rec}
+	if rec.AnalystReportID > 0 {
+		if ar, err := st.AgentBlackboard().GetAnalystReportByID(rec.AnalystReportID); err == nil {
+			out["analyst_report"] = ar
+		}
+	}
+	if rec.ComplianceAuditID > 0 {
+		if audit, err := st.AgentCompliance().GetByID(rec.ComplianceAuditID); err == nil {
+			out["compliance_audit"] = gin.H{
+				"id":               audit.ID,
+				"pending_id":       audit.PendingID,
+				"trader_id":        audit.TraderID,
+				"approved":         audit.Approved,
+				"reason":           audit.Reason,
+				"violations_json":  audit.ViolationsJSON,
+				"created_at":       audit.CreatedAt,
+			}
+		}
+	}
+	c.JSON(http.StatusOK, out)
 }
 
 // handleStatistics Statistics information

@@ -29,10 +29,21 @@ type Strategy struct {
 
 func (Strategy) TableName() string { return "strategies" }
 
+// MarketType 市场类型（P3-1）
+const (
+	MarketTypeCryptoPerpetual = "crypto_perpetual" // 合约
+	MarketTypeCryptoSpot      = "crypto_spot"      // 现货
+)
+
 // StrategyConfig strategy configuration details (JSON structure)
 type StrategyConfig struct {
 	// Strategy type: "ai_trading" (default) or "grid_trading"
 	StrategyType string `json:"strategy_type,omitempty"`
+	// Market type (P3-1): "crypto_perpetual" | "crypto_spot"
+	MarketType string `json:"market_type,omitempty"`
+	// P3-5 可选：现货+合约双流，同一 base 的 spot 与 perp 标的，用于算基差写入 Context
+	SpotSymbol string `json:"spot_symbol,omitempty"` // e.g. BTCUSDT (spot)
+	PerpSymbol string `json:"perp_symbol,omitempty"` // e.g. BTCUSDT (perp)
 
 	// language setting: "zh" for Chinese, "en" for English
 	// This determines the language used for data formatting and prompt generation
@@ -45,6 +56,9 @@ type StrategyConfig struct {
 	CustomPrompt string `json:"custom_prompt,omitempty"`
 	// risk control configuration
 	RiskControl RiskControlConfig `json:"risk_control"`
+	// P4-2 可选：策略/模型权重，复盘或 Self-evolving 可更新；下一轮分析师/交易员可读取（如置信度系数，0 表示未设置，1.0 为默认）
+	AnalystWeight float64 `json:"analyst_weight,omitempty"`
+	TraderWeight  float64 `json:"trader_weight,omitempty"`
 	// editable sections of System Prompt
 	PromptSections PromptSectionsConfig `json:"prompt_sections,omitempty"`
 	// Telegram notification configuration

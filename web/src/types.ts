@@ -87,6 +87,8 @@ export interface AccountSnapshot {
 }
 
 export interface DecisionRecord {
+  id?: number
+  trader_id?: string
   timestamp: string
   cycle_number: number
   system_prompt: string
@@ -101,6 +103,49 @@ export interface DecisionRecord {
   execution_log: string[]
   success: boolean
   error_message?: string
+  analyst_report_id?: number
+  pending_decision_id?: number
+  compliance_audit_id?: number
+}
+
+/** P4-3 轮次列表响应（分析师→决策→审计 按轮查看） */
+export interface RoundsListResponse {
+  list: DecisionRecord[]
+  total: number
+  page: number
+  page_size: number
+}
+
+/** 分析师报告（agent_analyst_reports） */
+export interface AgentAnalystReport {
+  id: number
+  trader_id: string
+  strategy_id: string
+  user_id: string
+  symbol?: string
+  bias: string
+  confidence: number
+  report_text: string
+  raw_json?: string
+  created_at: string
+}
+
+/** 风控审计（agent_compliance_audits） */
+export interface ComplianceAudit {
+  id: number
+  pending_id: number
+  trader_id: string
+  approved: boolean
+  reason: string
+  violations_json: string
+  created_at: string
+}
+
+/** P4-3 单轮详情：分析师报告 → 交易员 CoT/decisions → 风控审计 */
+export interface RoundDetailResponse {
+  decision_record: DecisionRecord
+  analyst_report?: AgentAnalystReport
+  compliance_audit?: ComplianceAudit
 }
 
 export interface Statistics {

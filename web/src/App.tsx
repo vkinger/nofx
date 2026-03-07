@@ -141,6 +141,7 @@ function App() {
   const [lastUpdate, setLastUpdate] = useState<string>('--:--:--')
   const [decisionsLimit, setDecisionsLimit] = useState<number>(5)
   const [decisionSymbolFilter, setDecisionSymbolFilter] = useState<string>('')
+  const [showOnlyValidActions, setShowOnlyValidActions] = useState<boolean>(false)
 
   // 监听URL变化，同步页面状态
   useEffect(() => {
@@ -273,11 +274,12 @@ function App() {
 
   const { data: decisions } = useSWR<DecisionRecord[]>(
     currentPage === 'trader' && selectedTraderId
-      ? `decisions/latest-${selectedTraderId}-${decisionsLimit}-${decisionSymbolFilter}`
+      ? `decisions/latest-${selectedTraderId}-${decisionsLimit}-${decisionSymbolFilter}-${showOnlyValidActions}`
       : null,
     () =>
       api.getLatestDecisions(selectedTraderId, decisionsLimit, {
         symbol: decisionSymbolFilter || undefined,
+        effective_only: showOnlyValidActions,
       }),
     {
       refreshInterval: 30000,
@@ -494,6 +496,8 @@ function App() {
                 onDecisionsLimitChange={setDecisionsLimit}
                 decisionSymbolFilter={decisionSymbolFilter}
                 onDecisionSymbolFilterChange={setDecisionSymbolFilter}
+                showOnlyValidActions={showOnlyValidActions}
+                onShowOnlyValidActionsChange={setShowOnlyValidActions}
                 stats={stats}
                 lastUpdate={lastUpdate}
                 language={language}

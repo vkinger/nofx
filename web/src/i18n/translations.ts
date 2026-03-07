@@ -77,6 +77,11 @@ export const translations = {
     cotEmptyFallback: 'Showing raw AI response (reasoning could not be extracted):',
     collapse: 'Collapse',
     expand: 'Expand',
+    roundDetailView: 'Round detail',
+    analystReport: 'Analyst report',
+    traderCoTDecisions: 'Trader reasoning & decisions',
+    complianceAudit: 'Compliance audit',
+    phaseNone: '—',
 
     // Equity Chart
     accountEquityCurve: 'Account Equity Curve',
@@ -1301,6 +1306,11 @@ export const translations = {
     cotEmptyFallback: '以下为原始 AI 响应（未能解析出思维链）：',
     collapse: '▼ 收起',
     expand: '▶ 展开',
+    roundDetailView: '本轮详情',
+    analystReport: '分析师报告',
+    traderCoTDecisions: '交易员推理与决策',
+    complianceAudit: '风控审计',
+    phaseNone: '无',
 
     // Equity Chart
     accountEquityCurve: '账户净值曲线',

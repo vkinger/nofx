@@ -30,6 +30,10 @@ type Store struct {
 	order    *OrderStore
 	grid     *GridStore
 	paper    *PaperStore
+	agentBB        *AgentBlackboardStore
+	klineBar       *KlineBarStore       // P0-4 K 线落库（可选）
+	agentPending   *AgentPendingStore   // P2-3 待执行 decisions
+	agentCompliance *AgentComplianceStore // P2-2 风控审计记录
 
 	mu sync.RWMutex
 }
@@ -163,6 +167,18 @@ func (s *Store) initTables() error {
 	}
 	if err := s.Paper().InitTables(); err != nil {
 		return fmt.Errorf("failed to initialize paper tables: %w", err)
+	}
+	if err := s.AgentBlackboard().initTables(); err != nil {
+		return fmt.Errorf("failed to initialize agent blackboard tables: %w", err)
+	}
+	if err := s.KlineBar().initTables(); err != nil {
+		return fmt.Errorf("failed to initialize kline bar tables: %w", err)
+	}
+	if err := s.AgentPending().initTables(); err != nil {
+		return fmt.Errorf("failed to initialize agent pending tables: %w", err)
+	}
+	if err := s.AgentCompliance().initTables(); err != nil {
+		return fmt.Errorf("failed to initialize agent compliance tables: %w", err)
 	}
 	return nil
 }
@@ -305,6 +321,46 @@ func (s *Store) Paper() *PaperStore {
 		s.paper = NewPaperStore(s.gdb)
 	}
 	return s.paper
+}
+
+// AgentBlackboard gets agent blackboard storage (analyst reports, etc.)
+func (s *Store) AgentBlackboard() *AgentBlackboardStore {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.agentBB == nil {
+		s.agentBB = NewAgentBlackboardStore(s.gdb)
+	}
+	return s.agentBB
+}
+
+// KlineBar gets K-line bar persistence store (P0-4 optional)
+func (s *Store) KlineBar() *KlineBarStore {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.klineBar == nil {
+		s.klineBar = NewKlineBarStore(s.gdb)
+	}
+	return s.klineBar
+}
+
+// AgentPending gets pending decisions store (P2-3)
+func (s *Store) AgentPending() *AgentPendingStore {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.agentPending == nil {
+		s.agentPending = NewAgentPendingStore(s.gdb)
+	}
+	return s.agentPending
+}
+
+// AgentCompliance gets compliance audit store (P2-2)
+func (s *Store) AgentCompliance() *AgentComplianceStore {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.agentCompliance == nil {
+		s.agentCompliance = NewAgentComplianceStore(s.gdb)
+	}
+	return s.agentCompliance
 }
 
 // Close closes database connection

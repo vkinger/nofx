@@ -7,6 +7,8 @@ interface DecisionCardProps {
   decision: DecisionRecord
   language: Language
   onSymbolClick?: (symbol: string) => void
+  /** P4-3 本轮详情：打开「分析师报告 → 交易员推理与决策 → 风控审计」弹窗 */
+  onViewRoundDetail?: () => void
 }
 
 // Action type configuration
@@ -222,7 +224,7 @@ function ActionCard({ action, language, onSymbolClick }: { action: DecisionActio
   )
 }
 
-export function DecisionCard({ decision, language, onSymbolClick }: DecisionCardProps) {
+export function DecisionCard({ decision, language, onSymbolClick, onViewRoundDetail }: DecisionCardProps) {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
   const [showSystemPrompt, setShowSystemPrompt] = useState(false)
@@ -283,15 +285,31 @@ export function DecisionCard({ decision, language, onSymbolClick }: DecisionCard
             </div>
           </div>
         </div>
-        <div
-          className="px-4 py-1.5 rounded-full text-xs font-bold tracking-wider"
-          style={
-            decision.success
-              ? { background: 'rgba(14, 203, 129, 0.15)', color: '#0ECB81', border: '1px solid rgba(14, 203, 129, 0.3)' }
-              : { background: 'rgba(246, 70, 93, 0.15)', color: '#F6465D', border: '1px solid rgba(246, 70, 93, 0.3)' }
-          }
-        >
-          {t(decision.success ? 'success' : 'failed', language)}
+        <div className="flex items-center gap-2">
+          {onViewRoundDetail && (decision.id != null) && (
+            <button
+              type="button"
+              onClick={onViewRoundDetail}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium transition-opacity hover:opacity-90"
+              style={{
+                background: 'var(--panel-bg-hover)',
+                color: 'var(--text-secondary)',
+                border: '1px solid var(--panel-border)',
+              }}
+            >
+              {t('roundDetailView', language)}
+            </button>
+          )}
+          <div
+            className="px-4 py-1.5 rounded-full text-xs font-bold tracking-wider"
+            style={
+              decision.success
+                ? { background: 'rgba(14, 203, 129, 0.15)', color: '#0ECB81', border: '1px solid rgba(14, 203, 129, 0.3)' }
+                : { background: 'rgba(246, 70, 93, 0.15)', color: '#F6465D', border: '1px solid rgba(246, 70, 93, 0.3)' }
+            }
+          >
+            {t(decision.success ? 'success' : 'failed', language)}
+          </div>
         </div>
       </div>
 

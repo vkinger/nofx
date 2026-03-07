@@ -10,6 +10,7 @@ import { t, type Language } from '../i18n/translations'
 import { LogOut, Loader2, Eye, EyeOff, Copy, Check } from 'lucide-react'
 import { DeepVoidBackground } from '../components/DeepVoidBackground'
 import { GridRiskPanel } from '../components/strategy/GridRiskPanel'
+import { RoundDetailModal } from '../components/RoundDetailModal'
 import { useTheme } from '../contexts/ThemeContext'
 import type {
     SystemStatus,
@@ -157,6 +158,8 @@ interface TraderDashboardPageProps {
     onDecisionsLimitChange: (limit: number) => void
     decisionSymbolFilter?: string
     onDecisionSymbolFilterChange?: (symbol: string) => void
+    showOnlyValidActions?: boolean
+    onShowOnlyValidActionsChange?: (value: boolean) => void
     stats?: Statistics
     lastUpdate: string
     language: Language
@@ -173,6 +176,8 @@ export function TraderDashboardPage({
     onDecisionsLimitChange,
     decisionSymbolFilter = '',
     onDecisionSymbolFilterChange,
+    showOnlyValidActions = false,
+    onShowOnlyValidActionsChange,
     lastUpdate,
     language,
     traders,
@@ -185,8 +190,8 @@ export function TraderDashboardPage({
     const { theme } = useTheme()
     const isDark = theme === 'dark'
     const [closingPosition, setClosingPosition] = useState<string | null>(null)
+    const [roundDetail, setRoundDetail] = useState<{ traderId: string; roundId: number } | null>(null)
     const [selectedChartSymbol, setSelectedChartSymbol] = useState<string | undefined>(undefined)
-    const [showOnlyValidActions, setShowOnlyValidActions] = useState<boolean>(false)
     const [chartUpdateKey, setChartUpdateKey] = useState<number>(0)
     const chartSectionRef = useRef<HTMLDivElement>(null)
     const [showWalletAddress, setShowWalletAddress] = useState<boolean>(false)
@@ -881,7 +886,7 @@ export function TraderDashboardPage({
                                 <input
                                     type="checkbox"
                                     checked={showOnlyValidActions}
-                                    onChange={(e) => setShowOnlyValidActions(e.target.checked)}
+                                    onChange={(e) => onShowOnlyValidActionsChange?.(e.target.checked)}
                                     className="sr-only"
                                 />
                                 <div
@@ -935,22 +940,7 @@ export function TraderDashboardPage({
                             )}
                             {showOnlyValidActions && decisions && (
                                 <span className="text-xs text-nofx-text-muted">
-                                    {(() => {
-                                        const filtered = decisions.filter((decision) => {
-                                            if (!decision.decisions || decision.decisions.length === 0) return false
-                                            return decision.decisions.some((action) => {
-                                                const actionType = action.action
-                                                return (
-                                                    actionType === 'open_long' ||
-                                                    actionType === 'open_short' ||
-                                                    actionType === 'close_long' ||
-                                                    actionType === 'close_short'
-                                                )
-                                            })
-                                        })
-                                        return filtered.length
-                                    })()}{' '}
-                                    {t('validDecisions', language)}
+                                    {decisions.length} {t('validDecisions', language)}
                                 </span>
                             )}
                         </div>
@@ -961,27 +951,21 @@ export function TraderDashboardPage({
                             style={{ maxHeight: 'calc(100vh - 280px)' }}
                         >
                             {(() => {
-                                // Filter decisions based on showOnlyValidActions
-                                const filteredDecisions = decisions
-                                    ? showOnlyValidActions
-                                        ? decisions.filter((decision) => {
-                                              if (!decision.decisions || decision.decisions.length === 0) return false
-                                              return decision.decisions.some((action) => {
-                                                  const actionType = action.action
-                                                  return (
-                                                      actionType === 'open_long' ||
-                                                      actionType === 'open_short' ||
-                                                      actionType === 'close_long' ||
-                                                      actionType === 'close_short'
-                                                  )
-                                              })
-                                          })
-                                        : decisions
-                                    : []
-
-                                return filteredDecisions.length > 0 ? (
-                                    filteredDecisions.map((decision, i) => (
-                                        <DecisionCard key={i} decision={decision} language={language} onSymbolClick={handleSymbolClick} />
+                                // 有效操作 / 币种 已由接口过滤，直接使用 decisions
+                                const list = decisions ?? []
+                                return list.length > 0 ? (
+                                    list.map((decision, i) => (
+                                        <DecisionCard
+                                            key={i}
+                                            decision={decision}
+                                            language={language}
+                                            onSymbolClick={handleSymbolClick}
+                                            onViewRoundDetail={
+                                                selectedTraderId && decision.id != null
+                                                    ? () => setRoundDetail({ traderId: selectedTraderId, roundId: decision.id! })
+                                                    : undefined
+                                            }
+                                        />
                                     ))
                                 ) : (
                                     <div className="py-16 text-center text-nofx-text-muted opacity-60">
@@ -1019,6 +1003,14 @@ export function TraderDashboardPage({
                     </div>
                 )}
             </div>
+            {roundDetail && (
+                <RoundDetailModal
+                    traderId={roundDetail.traderId}
+                    roundId={roundDetail.roundId}
+                    onClose={() => setRoundDetail(null)}
+                    language={language}
+                />
+            )}
         </DeepVoidBackground>
     )
 }

@@ -30,6 +30,9 @@ type DecisionRecordDB struct {
 	Success             bool      `gorm:"default:false"`
 	ErrorMessage        string    `gorm:"column:error_message;default:''"`
 	AIRequestDurationMs int64     `gorm:"column:ai_request_duration_ms;default:0"`
+	AnalystReportID     int64     `gorm:"column:analyst_report_id;default:0"`   // P1-6: 关联本轮分析师报告
+	PendingDecisionID   int64     `gorm:"column:pending_decision_id;default:0"`  // P4-1: 关联 agent_pending_decisions.id，0 表示未走风控
+	ComplianceAuditID   int64     `gorm:"column:compliance_audit_id;default:0"`  // P4-1: 关联 agent_compliance_audits.id
 	CreatedAt           time.Time `json:"created_at"`
 }
 
@@ -51,6 +54,9 @@ type DecisionRecord struct {
 	Success             bool               `json:"success"`
 	ErrorMessage        string             `json:"error_message"`
 	AIRequestDurationMs int64              `json:"ai_request_duration_ms"`
+	AnalystReportID     int64              `json:"analyst_report_id,omitempty"`   // P1-6: 关联分析师报告 ID
+	PendingDecisionID   int64              `json:"pending_decision_id,omitempty"` // P4-1: 关联待执行决策批次 ID
+	ComplianceAuditID   int64              `json:"compliance_audit_id,omitempty"`   // P4-1: 关联风控审计 ID
 	AccountState        AccountSnapshot    `json:"account_state"`
 	Positions           []PositionSnapshot `json:"positions"`
 	Decisions           []DecisionAction   `json:"decisions"`
@@ -137,6 +143,9 @@ func (db *DecisionRecordDB) toRecord() *DecisionRecord {
 		Success:             db.Success,
 		ErrorMessage:        db.ErrorMessage,
 		AIRequestDurationMs: db.AIRequestDurationMs,
+		AnalystReportID:     db.AnalystReportID,
+		PendingDecisionID:   db.PendingDecisionID,
+		ComplianceAuditID:   db.ComplianceAuditID,
 	}
 	json.Unmarshal([]byte(db.CandidateCoins), &record.CandidateCoins)
 	json.Unmarshal([]byte(db.ExecutionLog), &record.ExecutionLog)
@@ -172,6 +181,9 @@ func (s *DecisionStore) LogDecision(record *DecisionRecord) error {
 		Success:             record.Success,
 		ErrorMessage:        record.ErrorMessage,
 		AIRequestDurationMs: record.AIRequestDurationMs,
+		AnalystReportID:     record.AnalystReportID,
+		PendingDecisionID:   record.PendingDecisionID,
+		ComplianceAuditID:   record.ComplianceAuditID,
 	}
 
 	if err := s.db.Create(dbRecord).Error; err != nil {
@@ -189,6 +201,15 @@ type ListDecisionOptions struct {
 	PageSize      int    // 每页条数
 }
 
+// GetByID 按主键获取单条决策记录（P4-3 Dashboard 单轮详情用）
+func (s *DecisionStore) GetByID(id int64) (*DecisionRecord, error) {
+	var db DecisionRecordDB
+	if err := s.db.Where("id = ?", id).First(&db).Error; err != nil {
+		return nil, err
+	}
+	return db.toRecord(), nil
+}
+
 // ListRecords 分页查询决策记录，支持有效操作过滤、币种过滤
 // 返回 records（按时间倒序，即最新在前）、total 总数
 func (s *DecisionStore) ListRecords(traderID string, opts ListDecisionOptions) (records []*DecisionRecord, total int64, err error) {
@@ -204,24 +225,27 @@ func (s *DecisionStore) ListRecords(traderID string, opts ListDecisionOptions) (
 	offset := (opts.Page - 1) * opts.PageSize
 
 	base := s.db.Model(&DecisionRecordDB{}).Where("trader_id = ?", traderID)
+	dialect := s.db.Dialector.Name()
+	// 安全 JSON 表达式：空/NULL/空串视为 '[]'；PostgreSQL 若非数组（如标量/对象）也视为 '[]'，避免 "cannot extract elements from a scalar"
+	var jsonArrayExpr string
+	if dialect == "postgres" {
+		raw := `(COALESCE(NULLIF(TRIM("decision_records".decisions::text), ''), '[]'))::jsonb`
+		jsonArrayExpr = `(CASE WHEN jsonb_typeof(` + raw + `) = 'array' THEN ` + raw + ` ELSE '[]'::jsonb END)`
+	} else {
+		jsonArrayExpr = `COALESCE(NULLIF(TRIM(decision_records.decisions), ''), '[]')`
+	}
 	if opts.EffectiveOnly {
-		dialect := s.db.Dialector.Name()
-		jsonExpr := "(COALESCE(NULLIF(TRIM(decision_records.decisions), ''), '[]'))"
 		if dialect == "postgres" {
-			// 至少包含一个 action 为 open_long / open_short / close_long / close_short
-			base = base.Where("EXISTS (SELECT 1 FROM jsonb_array_elements("+jsonExpr+"::jsonb) AS elem WHERE elem->>'action' IN ('open_long', 'open_short', 'close_long', 'close_short'))")
+			base = base.Where("EXISTS (SELECT 1 FROM jsonb_array_elements("+jsonArrayExpr+") AS elem WHERE elem->>'action' IN ('open_long', 'open_short', 'close_long', 'close_short'))")
 		} else {
-			base = base.Where("EXISTS (SELECT 1 FROM json_each("+jsonExpr+") WHERE json_extract(value, '$.action') IN ('open_long', 'open_short', 'close_long', 'close_short'))")
+			base = base.Where("EXISTS (SELECT 1 FROM json_each("+jsonArrayExpr+") WHERE json_extract(value, '$.action') IN ('open_long', 'open_short', 'close_long', 'close_short'))")
 		}
 	}
 	if opts.Symbol != "" {
-		dialect := s.db.Dialector.Name()
 		if dialect == "postgres" {
-			// 空字符串或 NULL 转为 '[]' 再 ::jsonb，避免 invalid input syntax for type json
-			base = base.Where("EXISTS (SELECT 1 FROM jsonb_array_elements((COALESCE(NULLIF(TRIM(decision_records.decisions), ''), '[]'))::jsonb) AS elem WHERE elem->>'symbol' = ?)", opts.Symbol)
+			base = base.Where("EXISTS (SELECT 1 FROM jsonb_array_elements("+jsonArrayExpr+") AS elem WHERE elem->>'symbol' = ?)", opts.Symbol)
 		} else {
-			// sqlite：空字符串或 NULL 转为 '[]'，避免 json_each 报错
-			base = base.Where("EXISTS (SELECT 1 FROM json_each(COALESCE(NULLIF(TRIM(decision_records.decisions), ''), '[]')) WHERE json_extract(value, '$.symbol') = ?)", opts.Symbol)
+			base = base.Where("EXISTS (SELECT 1 FROM json_each("+jsonArrayExpr+") WHERE json_extract(value, '$.symbol') = ?)", opts.Symbol)
 		}
 	}
 

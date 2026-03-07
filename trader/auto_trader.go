@@ -22,6 +22,8 @@ import (
 	"nofx/trader/lighter"
 	"nofx/trader/okx"
 	"nofx/trader/types"
+	"nofx/agent/compliance"
+	"nofx/agent/orchestrator"
 	"strings"
 	"sync"
 	"time"
@@ -114,6 +116,14 @@ type AutoTraderConfig struct {
 
 	// PrebuiltTrader 可选：已创建好的 Trader 实例（如 PaperTrader），若设置则不再根据 Exchange 创建
 	PrebuiltTrader types.Trader
+
+	// UseAnalystFlow 为 true 时走多 Agent 流程：先跑分析师写黑板，再让交易员带分析师报告做决策（原流程保留为默认）
+	UseAnalystFlow bool
+	// UseComplianceFlow 为 true 时：交易员产出 decisions 后先写待审计，风控官审计通过才执行
+	UseComplianceFlow bool
+	// 多 Agent 可选独立模型（nil 则交易员/分析师/风控共用主模型）
+	AnalystClient    mcp.AIClient
+	ComplianceClient mcp.AIClient
 }
 
 // MonitoringStats 监控统计信息
@@ -145,8 +155,11 @@ type AutoTrader struct {
 	showInCompetition     bool   // Whether to show in competition page
 	config                AutoTraderConfig
 	trader                Trader // Use Trader interface (supports multiple platforms)
-	mcpClient             mcp.AIClient
-	store                 *store.Store             // Data storage (decision records, etc.)
+	mcpClient             mcp.AIClient            // 交易员主模型
+	analystClient         mcp.AIClient            // 分析师专用（nil 则用 mcpClient）
+	complianceClient      mcp.AIClient            // 风控官专用（nil 则用 mcpClient）
+	priceService          *market.PriceService    // P3-2/P3-3 实时价/标记价服务，每轮拉取后写入，风控与执行使用
+	store                 *store.Store            // Data storage (decision records, etc.)
 	strategyEngine        *kernel.StrategyEngine // Strategy engine (uses strategy configuration)
 	cycleNumber           int                      // Current cycle number
 	initialBalance        float64
@@ -457,6 +470,9 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 		config:                config,
 		trader:                trader,
 		mcpClient:             mcpClient,
+		analystClient:         config.AnalystClient,
+		complianceClient:      config.ComplianceClient,
+		priceService:         market.NewPriceService(), // P3-2 每轮由 buildTradingContext 写入
 		store:                 st,
 		strategyEngine:        strategyEngine,
 		cycleNumber:           cycleNumber,
@@ -726,9 +742,20 @@ func (at *AutoTrader) runCycle() error {
 	logger.Infof("📊 Account equity: %.2f USDT | Available: %.2f USDT | Positions: %d",
 		ctx.Account.TotalEquity, ctx.Account.AvailableBalance, ctx.Account.PositionCount)
 
-	// 5. Use strategy engine to call AI for decision
-	logger.Infof("🤖 Requesting AI analysis and decision... [Strategy Engine]")
-	aiDecision, err := kernel.GetFullDecisionWithStrategy(ctx, at.mcpClient, at.strategyEngine, "balanced")
+	// 5. AI 决策：兼容两种模式——默认单流程，或创建时勾选「多 Agent」走分析师→黑板→交易员
+	var aiDecision *kernel.FullDecision
+	var analystReportID int64
+	logger.Infof("[Phase] trader_start trader_id=%s cycle=%d", at.id, at.callCount)
+	if at.config.UseAnalystFlow && at.store != nil {
+		logger.Infof("🤖 [Multi-Agent] Analyst → Blackboard → Trader...")
+		_, analystReportID, aiDecision, err = orchestrator.RunOneRound(ctx, at.strategyEngine, at.getAnalystClient(), at.mcpClient, at.store, at.id, "", at.userID)
+		if analystReportID > 0 {
+			record.AnalystReportID = analystReportID
+		}
+	} else {
+		logger.Infof("🤖 Requesting AI analysis and decision... [Strategy Engine]")
+		aiDecision, err = kernel.GetFullDecisionWithStrategy(ctx, at.mcpClient, at.strategyEngine, "balanced")
+	}
 
 	if aiDecision != nil && aiDecision.AIRequestDurationMs > 0 {
 		record.AIRequestDurationMs = aiDecision.AIRequestDurationMs
@@ -771,8 +798,10 @@ func (at *AutoTrader) runCycle() error {
 		}
 
 		at.saveDecision(record)
+		logger.Infof("[Phase] trader_end trader_id=%s error=1", at.id)
 		return fmt.Errorf("failed to get AI decision: %w", err)
 	}
+	logger.Infof("[Phase] trader_end trader_id=%s decisions=%d", at.id, len(aiDecision.Decisions))
 
 	// // 5. Print system prompt
 	// logger.Infof("\n" + strings.Repeat("=", 70))
@@ -799,10 +828,84 @@ func (at *AutoTrader) runCycle() error {
 	// }
 	logger.Info()
 	logger.Info(strings.Repeat("-", 70))
-	// 8. Sort decisions: ensure close positions first, then open positions (prevent position stacking overflow)
-	logger.Info(strings.Repeat("-", 70))
+
+	// P2-4 风控官审计 + P2-6 强制指令：若开启 UseComplianceFlow，先写待执行→风控审计→通过则先执行 force_actions 再执行 decisions
+	var complianceOutput *compliance.ComplianceOutput
+	if at.config.UseComplianceFlow && at.store != nil && len(aiDecision.Decisions) > 0 {
+		pending, pendErr := at.store.AgentPending().Create(at.id, "", record.AnalystReportID, aiDecision.Decisions)
+		if pendErr != nil {
+			record.ExecutionLog = append(record.ExecutionLog, "Failed to write pending decisions: "+pendErr.Error())
+			at.saveDecision(record)
+			return pendErr
+		}
+		record.PendingDecisionID = pending.ID // P4-1 复盘关联
+		input := &compliance.ComplianceInput{
+			Thinking:  aiDecision.CoTTrace,
+			Decisions: aiDecision.Decisions,
+			Account: compliance.AccountSnapshot{
+				TotalEquity:          ctx.Account.TotalEquity,
+				AvailableBalance:     ctx.Account.AvailableBalance,
+				TotalUnrealizedProfit: ctx.Account.UnrealizedPnL,
+				PositionCount:        ctx.Account.PositionCount,
+				InitialBalance:       at.initialBalance,
+			},
+			Positions: make([]compliance.PositionSnapshot, 0, len(ctx.Positions)),
+			Rules:     compliance.ComplianceRules{},
+		}
+		for _, p := range ctx.Positions {
+			markPrice := p.MarkPrice
+			if at.priceService != nil {
+				if m := at.priceService.GetMarkPrice(p.Symbol); m > 0 {
+					markPrice = m // P3-3 风控使用实时价服务的 mark 价
+				}
+			}
+			input.Positions = append(input.Positions, compliance.PositionSnapshot{
+				Symbol: p.Symbol, Side: p.Side, PositionAmt: p.Quantity, EntryPrice: p.EntryPrice,
+				MarkPrice: markPrice, UnrealizedProfit: p.UnrealizedPnL, Leverage: float64(p.Leverage), LiquidationPrice: p.LiquidationPrice,
+			})
+		}
+		if at.strategyEngine != nil && at.strategyEngine.GetConfig() != nil {
+			cfg := at.strategyEngine.GetConfig()
+			input.Rules.FromStrategyRiskControl(cfg)
+			if cfg.MarketType != "" {
+				input.MarketType = cfg.MarketType
+				compliance.ApplyMarketTypeToComplianceRules(&input.Rules, cfg.MarketType) // P3-4 现货无杠杆等
+			}
+		}
+		complianceClient := at.getComplianceClient()
+		logger.Infof("[Phase] compliance_start trader_id=%s pending_id=%d", at.id, pending.ID)
+		output, compErr := compliance.RunCompliance(input, complianceClient)
+		if compErr != nil {
+			logger.Infof("[Phase] compliance_end trader_id=%s error=%v", at.id, compErr)
+			_ = at.store.AgentPending().UpdateStatus(pending.ID, store.PendingStatusRejected, compErr.Error())
+			record.ExecutionLog = append(record.ExecutionLog, "Compliance run failed: "+compErr.Error())
+			at.saveDecision(record)
+			return compErr
+		}
+		violationsJSON, _ := json.Marshal(output.Violations)
+		auditID, _ := at.store.AgentCompliance().Create(pending.ID, at.id, output.Approved, output.Reason, string(violationsJSON))
+		record.ComplianceAuditID = auditID // P4-1 复盘关联
+		if !output.Approved {
+			logger.Infof("[Phase] compliance_end trader_id=%s approved=false reason=%s", at.id, output.Reason)
+			_ = at.store.AgentPending().UpdateStatus(pending.ID, store.PendingStatusRejected, output.Reason)
+			record.ExecutionLog = append(record.ExecutionLog, "Compliance rejected: "+output.Reason)
+			at.saveDecision(record)
+			logger.Infof("🛑 Compliance rejected: %s", output.Reason)
+			return nil
+		}
+		logger.Infof("[Phase] compliance_end trader_id=%s approved=true", at.id)
+		_ = at.store.AgentPending().UpdateStatus(pending.ID, store.PendingStatusApproved, "")
+		logger.Infof("✓ Compliance approved: %s", output.Reason)
+		complianceOutput = output
+	}
+
+	// P2-6 风控官强制指令：优先执行 force_actions（close_all / close_position / pause_trading）
+	if complianceOutput != nil && len(complianceOutput.ForceActions) > 0 {
+		at.executeForceActions(complianceOutput.ForceActions, record, ctx)
+	}
 
 	// 8. Sort decisions: ensure close positions first, then open positions (prevent position stacking overflow)
+	logger.Info(strings.Repeat("-", 70))
 	sortedDecisions := sortDecisionsByPriority(aiDecision.Decisions)
 
 	logger.Info("🔄 Execution order (optimized): Close positions first → Open positions later")
@@ -1189,9 +1292,45 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 	ctx.Exchange = at.exchange
 	ctx.ExchangeCredentials = at.getExchangeCredentials()
 
-	// 13. Set realtime price getter so prompt can show 实时价 (exchange ticker for execution reference)
-	ctx.RealtimePriceGetter = func(symbol string) (float64, error) {
-		return at.trader.GetMarketPrice(symbol)
+	// 13. P3-2/P3-3 实时价服务：写入 PriceService（供风控/执行用 mark 价），并作为 RealtimePriceGetter 优先源
+	if at.priceService != nil {
+		allSymbols := make(map[string]bool)
+		for _, p := range ctx.Positions {
+			allSymbols[market.Normalize(p.Symbol)] = true
+		}
+		for _, c := range ctx.CandidateCoins {
+			allSymbols[market.Normalize(c.Symbol)] = true
+		}
+		for sym := range allSymbols {
+			if price, err := at.trader.GetMarketPrice(sym); err == nil && price > 0 {
+				at.priceService.Set(sym, price, price) // 合约场景可后续接入 mark 价 API
+			}
+		}
+		ctx.RealtimePriceGetter = func(symbol string) (float64, error) {
+			if p := at.priceService.GetLastPrice(symbol); p > 0 {
+				return p, nil
+			}
+			return at.trader.GetMarketPrice(symbol)
+		}
+	} else {
+		ctx.RealtimePriceGetter = func(symbol string) (float64, error) {
+			return at.trader.GetMarketPrice(symbol)
+		}
+	}
+
+	// P3-5 可选：现货+合约双流基差写入 Context
+	if at.priceService != nil && at.strategyEngine != nil && at.strategyEngine.GetConfig() != nil {
+		cfg := at.strategyEngine.GetConfig()
+		if cfg.SpotSymbol != "" && cfg.PerpSymbol != "" {
+			spotP := at.priceService.GetLastPrice(cfg.SpotSymbol)
+			perpP := at.priceService.GetLastPrice(cfg.PerpSymbol)
+			if spotP > 0 && perpP > 0 {
+				if ctx.SpotPerpBasis == nil {
+					ctx.SpotPerpBasis = make(map[string]float64)
+				}
+				ctx.SpotPerpBasis["default"] = perpP - spotP
+			}
+		}
 	}
 
 	return ctx, nil
@@ -1237,6 +1376,98 @@ func (at *AutoTrader) getExchangeCredentials() *market.ExchangeCredentials {
 		//     These use wallet-based auth, trading fees are typically fixed/known
 	}
 	return nil
+}
+
+// executeForceActions P2-6：执行风控官强制指令（优先于本轮回测 decisions）
+func (at *AutoTrader) executeForceActions(forceActions []compliance.ForceAction, record *store.DecisionRecord, ctx *kernel.Context) {
+	for _, fa := range forceActions {
+		actionRecord := store.DecisionAction{
+			Action: "force_" + fa.Action, Symbol: fa.Symbol, Timestamp: time.Now().UTC(), Success: false,
+		}
+		switch strings.ToLower(fa.Action) {
+		case "close_all":
+			for _, p := range ctx.Positions {
+				symbol := market.Normalize(p.Symbol)
+				var d kernel.Decision
+				d.Symbol = symbol
+				d.Reasoning = "compliance force_action: close_all"
+				if strings.ToLower(p.Side) == "long" {
+					d.Action = "close_long"
+				} else {
+					d.Action = "close_short"
+				}
+				ar := store.DecisionAction{Action: d.Action, Symbol: symbol, Timestamp: time.Now().UTC(), Success: false}
+				if err := at.executeDecisionWithRecord(&d, &ar); err != nil {
+					logger.Warnf("[ForceAction] close_all %s failed: %v", symbol, err)
+					ar.Error = err.Error()
+					record.ExecutionLog = append(record.ExecutionLog, "Force close_all "+symbol+": "+err.Error())
+				} else {
+					ar.Success = true
+					record.ExecutionLog = append(record.ExecutionLog, "Force close_all "+symbol+" OK")
+				}
+				record.Decisions = append(record.Decisions, ar)
+				time.Sleep(500 * time.Millisecond)
+			}
+			actionRecord.Success = true
+		case "close_position":
+			if fa.Symbol == "" {
+				continue
+			}
+			symbol := market.Normalize(fa.Symbol)
+			for _, p := range ctx.Positions {
+				if market.Normalize(p.Symbol) != symbol {
+					continue
+				}
+				var d kernel.Decision
+				d.Symbol = symbol
+				d.Reasoning = "compliance force_action: close_position"
+				if strings.ToLower(p.Side) == "long" {
+					d.Action = "close_long"
+				} else {
+					d.Action = "close_short"
+				}
+				ar := store.DecisionAction{Action: d.Action, Symbol: symbol, Timestamp: time.Now().UTC(), Success: false}
+				if err := at.executeDecisionWithRecord(&d, &ar); err != nil {
+					ar.Error = err.Error()
+					record.ExecutionLog = append(record.ExecutionLog, "Force close_position "+symbol+": "+err.Error())
+				} else {
+					ar.Success = true
+					record.ExecutionLog = append(record.ExecutionLog, "Force close_position "+symbol+" OK")
+				}
+				record.Decisions = append(record.Decisions, ar)
+				break
+			}
+			actionRecord.Success = true
+		case "pause_trading":
+			minutes := fa.Param
+			if minutes <= 0 {
+				minutes = 60
+			}
+			at.stopUntil = time.Now().Add(time.Duration(minutes) * time.Minute)
+			record.ExecutionLog = append(record.ExecutionLog, fmt.Sprintf("Force pause_trading: %.0f min", minutes))
+			logger.Infof("🛑 Compliance force_action: pause_trading for %.0f minutes", minutes)
+			actionRecord.Success = true
+		default:
+			record.ExecutionLog = append(record.ExecutionLog, "ForceAction unknown: "+fa.Action)
+		}
+		record.Decisions = append(record.Decisions, actionRecord)
+	}
+}
+
+// getComplianceClient 返回风控官专用 client（若配置了单独模型则用 complianceClient，否则用主 mcpClient）
+func (at *AutoTrader) getComplianceClient() mcp.AIClient {
+	if at.complianceClient != nil {
+		return at.complianceClient
+	}
+	return at.mcpClient
+}
+
+// getAnalystClient 返回分析师专用 client（若配置了单独模型则用 analystClient，否则用主 mcpClient）
+func (at *AutoTrader) getAnalystClient() mcp.AIClient {
+	if at.analystClient != nil {
+		return at.analystClient
+	}
+	return at.mcpClient
 }
 
 // executeDecisionWithRecord executes AI decision and records detailed information
@@ -1305,6 +1536,22 @@ func (at *AutoTrader) ExecuteDecision(d *kernel.Decision) error {
 	return nil
 }
 
+// getExecutionPrice P3-3：执行时优先用实时价服务（mark/last），再回退到 marketData
+func (at *AutoTrader) getExecutionPrice(symbol string, marketData *market.Data) float64 {
+	if at.priceService != nil {
+		if p := at.priceService.GetMarkPrice(symbol); p > 0 {
+			return p
+		}
+		if p := at.priceService.GetLastPrice(symbol); p > 0 {
+			return p
+		}
+	}
+	if marketData != nil && marketData.CurrentPrice > 0 {
+		return marketData.CurrentPrice
+	}
+	return 0
+}
+
 // executeOpenLongWithRecord executes open long position and records detailed information
 func (at *AutoTrader) executeOpenLongWithRecord(decision *kernel.Decision, actionRecord *store.DecisionAction) error {
 	logger.Infof("  📈 Open long: %s", decision.Symbol)
@@ -1327,10 +1574,14 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *kernel.Decision, actio
 		}
 	}
 
-	// Get current price
+	// Get current price (P3-3 优先实时价服务)
 	marketData, err := market.GetWithExchange(decision.Symbol, at.exchange)
 	if err != nil {
 		return err
+	}
+	execPrice := at.getExecutionPrice(decision.Symbol, marketData)
+	if execPrice <= 0 {
+		return fmt.Errorf("cannot get execution price for %s", decision.Symbol)
 	}
 
 	// Get balance (needed for multiple checks)
@@ -1380,10 +1631,10 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *kernel.Decision, actio
 		return err
 	}
 
-	// Calculate quantity with adjusted position size
-	quantity := actualPositionSize / marketData.CurrentPrice
+	// Calculate quantity with adjusted position size (P3-3 使用实时价)
+	quantity := actualPositionSize / execPrice
 	actionRecord.Quantity = quantity
-	actionRecord.Price = marketData.CurrentPrice
+	actionRecord.Price = execPrice
 
 	// Set margin mode
 	if err := at.trader.SetMarginMode(decision.Symbol, at.config.IsCrossMargin); err != nil {
@@ -1405,7 +1656,7 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *kernel.Decision, actio
 	logger.Infof("  ✓ Position opened successfully, order ID: %v, quantity: %.4f", order["orderId"], quantity)
 
 	// Record order to database and poll for confirmation
-	at.recordAndConfirmOrder(order, decision.Symbol, "open_long", quantity, marketData.CurrentPrice, decision.Leverage, 0)
+	at.recordAndConfirmOrder(order, decision.Symbol, "open_long", quantity, execPrice, decision.Leverage, 0)
 
 	// Record position opening time
 	posKey := decision.Symbol + "_long"
@@ -1444,10 +1695,14 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *kernel.Decision, acti
 		}
 	}
 
-	// Get current price
+	// Get current price (P3-3 优先实时价服务)
 	marketData, err := market.GetWithExchange(decision.Symbol, at.exchange)
 	if err != nil {
 		return err
+	}
+	execPrice := at.getExecutionPrice(decision.Symbol, marketData)
+	if execPrice <= 0 {
+		return fmt.Errorf("cannot get execution price for %s", decision.Symbol)
 	}
 
 	// Get balance (needed for multiple checks)
@@ -1497,10 +1752,10 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *kernel.Decision, acti
 		return err
 	}
 
-	// Calculate quantity with adjusted position size
-	quantity := actualPositionSize / marketData.CurrentPrice
+	// Calculate quantity with adjusted position size (P3-3 使用实时价)
+	quantity := actualPositionSize / execPrice
 	actionRecord.Quantity = quantity
-	actionRecord.Price = marketData.CurrentPrice
+	actionRecord.Price = execPrice
 
 	// Set margin mode
 	if err := at.trader.SetMarginMode(decision.Symbol, at.config.IsCrossMargin); err != nil {
@@ -1522,7 +1777,7 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *kernel.Decision, acti
 	logger.Infof("  ✓ Position opened successfully, order ID: %v, quantity: %.4f", order["orderId"], quantity)
 
 	// Record order to database and poll for confirmation
-	at.recordAndConfirmOrder(order, decision.Symbol, "open_short", quantity, marketData.CurrentPrice, decision.Leverage, 0)
+	at.recordAndConfirmOrder(order, decision.Symbol, "open_short", quantity, execPrice, decision.Leverage, 0)
 
 	// Record position opening time
 	posKey := decision.Symbol + "_short"
@@ -1543,12 +1798,16 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *kernel.Decision, acti
 func (at *AutoTrader) executeCloseLongWithRecord(decision *kernel.Decision, actionRecord *store.DecisionAction) error {
 	logger.Infof("  🔄 Close long: %s", decision.Symbol)
 
-	// Get current price
+	// Get current price (P3-3 优先实时价服务)
 	marketData, err := market.GetWithExchange(decision.Symbol, at.exchange)
 	if err != nil {
 		return err
 	}
-	actionRecord.Price = marketData.CurrentPrice
+	execPrice := at.getExecutionPrice(decision.Symbol, marketData)
+	if execPrice <= 0 {
+		execPrice = marketData.CurrentPrice
+	}
+	actionRecord.Price = execPrice
 
 	// Normalize symbol for database lookup
 	normalizedSymbol := market.Normalize(decision.Symbol)
@@ -1630,7 +1889,7 @@ func (at *AutoTrader) executeCloseLongWithRecord(decision *kernel.Decision, acti
 	}
 
 	// Record order to database and poll for confirmation
-	at.recordAndConfirmOrder(order, decision.Symbol, "close_long", quantity, marketData.CurrentPrice, 0, entryPrice)
+	at.recordAndConfirmOrder(order, decision.Symbol, "close_long", quantity, execPrice, 0, entryPrice)
 
 	logger.Infof("  ✓ Position closed successfully")
 	return nil
@@ -1640,12 +1899,16 @@ func (at *AutoTrader) executeCloseLongWithRecord(decision *kernel.Decision, acti
 func (at *AutoTrader) executeCloseShortWithRecord(decision *kernel.Decision, actionRecord *store.DecisionAction) error {
 	logger.Infof("  🔄 Close short: %s", decision.Symbol)
 
-	// Get current price
+	// Get current price (P3-3 优先实时价服务)
 	marketData, err := market.GetWithExchange(decision.Symbol, at.exchange)
 	if err != nil {
 		return err
 	}
-	actionRecord.Price = marketData.CurrentPrice
+	execPrice := at.getExecutionPrice(decision.Symbol, marketData)
+	if execPrice <= 0 {
+		execPrice = marketData.CurrentPrice
+	}
+	actionRecord.Price = execPrice
 
 	// Normalize symbol for database lookup
 	normalizedSymbol := market.Normalize(decision.Symbol)
@@ -1716,7 +1979,7 @@ func (at *AutoTrader) executeCloseShortWithRecord(decision *kernel.Decision, act
 	}
 
 	// Record order to database and poll for confirmation
-	at.recordAndConfirmOrder(order, decision.Symbol, "close_short", quantity, marketData.CurrentPrice, 0, entryPrice)
+	at.recordAndConfirmOrder(order, decision.Symbol, "close_short", quantity, execPrice, 0, entryPrice)
 
 	logger.Infof("  ✓ Position closed successfully")
 	return nil

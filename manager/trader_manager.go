@@ -671,6 +671,25 @@ func (tm *TraderManager) addTraderFromStore(traderCfg *store.Trader, aiModelCfg 
 		IsCrossMargin:        traderCfg.IsCrossMargin,
 		ShowInCompetition:    traderCfg.ShowInCompetition,
 		StrategyConfig:       strategyConfig,
+		UseAnalystFlow:       traderCfg.UseAnalystFlow,
+		UseComplianceFlow:    traderCfg.UseComplianceFlow,
+	}
+	// 多 Agent 独立模型：分析师/风控官可配置不同模型
+	if traderCfg.AnalystModelID != "" || traderCfg.ComplianceModelID != "" {
+		agentModels, _ := st.AIModel().List(traderCfg.UserID)
+		for _, m := range agentModels {
+			if !m.Enabled {
+				continue
+			}
+			if m.ID == traderCfg.AnalystModelID {
+				traderConfig.AnalystClient = trader.BuildMCPClientFromAIModel(m)
+				logger.Infof("📊 Trader %s: analyst model %s (%s)", traderCfg.Name, m.Name, m.Provider)
+			}
+			if m.ID == traderCfg.ComplianceModelID {
+				traderConfig.ComplianceClient = trader.BuildMCPClientFromAIModel(m)
+				logger.Infof("📊 Trader %s: compliance model %s (%s)", traderCfg.Name, m.Name, m.Provider)
+			}
+		}
 	}
 
 	logger.Infof("📊 Loading trader %s: ScanIntervalMinutes=%d (from DB), ScanInterval=%v",

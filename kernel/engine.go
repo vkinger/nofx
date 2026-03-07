@@ -175,6 +175,8 @@ type Context struct {
 	Exchange            string                             `json:"-"` // Exchange type for market data (binance, bybit, okx, hyperliquid, etc.); used so K-line/funding/OI match trading venue
 	RealtimePriceGetter func(symbol string) (float64, error) `json:"-"` // Optional: if set, used to fill RealtimePrice after market data fetch (e.g. exchange ticker for execution reference)
 	RealtimePrice       map[string]float64                  `json:"-"` // Symbol -> live ticker price; filled when RealtimePriceGetter is set (for prompt: "实时价")
+	// P3-5 可选：同一 base 现货+合约双流价差/基差，key=base（如 "BTC"），value=perp_price - spot_price
+	SpotPerpBasis map[string]float64 `json:"-"`
 }
 
 // Decision AI trading decision
@@ -302,8 +304,9 @@ func GetFullDecision(ctx *Context, mcpClient mcp.AIClient) (*FullDecision, error
 	return GetFullDecisionWithStrategy(ctx, mcpClient, engine, "")
 }
 
-// GetFullDecisionWithStrategy uses StrategyEngine to get AI decision (unified prompt generation)
-func GetFullDecisionWithStrategy(ctx *Context, mcpClient mcp.AIClient, engine *StrategyEngine, variant string) (*FullDecision, error) {
+// GetFullDecisionWithStrategy uses StrategyEngine to get AI decision (unified prompt generation).
+// Optional analystSuffix: when provided (e.g. from multi-agent analyst report), appended to user prompt for trader reference.
+func GetFullDecisionWithStrategy(ctx *Context, mcpClient mcp.AIClient, engine *StrategyEngine, variant string, analystSuffix ...string) (*FullDecision, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("context is nil")
 	}
@@ -352,6 +355,9 @@ func GetFullDecisionWithStrategy(ctx *Context, mcpClient mcp.AIClient, engine *S
 
 	// 3. Build User Prompt using strategy engine
 	userPrompt := engine.BuildUserPrompt(ctx)
+	if len(analystSuffix) > 0 && analystSuffix[0] != "" {
+		userPrompt += "\n\n## Current analyst report (reference)\n" + analystSuffix[0]
+	}
 
 	// 3.5. Set JSON Schema for structured output if model supports it
 	if mcpClient != nil {

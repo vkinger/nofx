@@ -30,6 +30,10 @@ type Trader struct {
 	IsRunning           bool      `gorm:"column:is_running;default:false" json:"is_running"`
 	IsCrossMargin       bool      `gorm:"column:is_cross_margin;default:true" json:"is_cross_margin"`
 	ShowInCompetition   bool      `gorm:"column:show_in_competition;default:true" json:"show_in_competition"`
+	UseAnalystFlow      bool      `gorm:"column:use_analyst_flow;default:false" json:"use_analyst_flow"`       // true=多 Agent（分析师→黑板→交易员）
+	UseComplianceFlow   bool      `gorm:"column:use_compliance_flow;default:false" json:"use_compliance_flow"` // true=交易员→风控官审计→通过才执行
+	AnalystModelID      string    `gorm:"column:analyst_model_id;default:''" json:"analyst_model_id"`           // 分析师专用模型 ID，空则与交易员同模型
+	ComplianceModelID   string    `gorm:"column:compliance_model_id;default:''" json:"compliance_model_id"`     // 风控官专用模型 ID，空则与交易员同模型
 	CreatedAt           time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
 	UpdatedAt           time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
 
@@ -110,12 +114,16 @@ func (s *TraderStore) Update(trader *Trader) error {
 		trader.ID, trader.Name, trader.AIModelID, trader.StrategyID)
 
 	updates := map[string]interface{}{
-		"name":           trader.Name,
-		"ai_model_id":    trader.AIModelID,
-		"exchange_id":    trader.ExchangeID,
-		"strategy_id":    trader.StrategyID,
-		"is_cross_margin": trader.IsCrossMargin,
+		"name":              trader.Name,
+		"ai_model_id":       trader.AIModelID,
+		"exchange_id":      trader.ExchangeID,
+		"strategy_id":      trader.StrategyID,
+		"is_cross_margin":   trader.IsCrossMargin,
 		"show_in_competition": trader.ShowInCompetition,
+		"use_analyst_flow":    trader.UseAnalystFlow,
+		"use_compliance_flow": trader.UseComplianceFlow,
+		"analyst_model_id":    trader.AnalystModelID,
+		"compliance_model_id": trader.ComplianceModelID,
 	}
 
 	// Only update these if > 0
