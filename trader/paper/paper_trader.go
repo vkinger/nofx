@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"nofx/logger"
+	"nofx/market"
 	"nofx/store"
 	"nofx/trader/types"
 	"sync"
@@ -45,16 +46,22 @@ func WithFeeRateByExchange(exchangeType string) Option {
 	return WithFeeRate(rate)
 }
 
+// WithFeeRateFromExchange 从价格源交易所实时获取吃单费率（与实盘一致，有缓存）
+func WithFeeRateFromExchange(creds *market.ExchangeCredentials) Option {
+	return func(t *Trader) { t.feeCredentials = creds }
+}
+
 // Trader 虚拟盘交易实现：使用真实交易所盘口模拟成交，余额与持仓持久化到 DB
 type Trader struct {
-	priceSource types.Trader       // 价格与盘口来源（实盘或 testnet）
-	gridSource  types.GridTrader   // 若 priceSource 实现了 GridTrader 则用盘口模拟成交
-	paperStore  *store.PaperStore
-	userID      string
-	traderID    string
-	initialBal  float64
-	feeRate     float64
-	mu          sync.Mutex
+	priceSource     types.Trader       // 价格与盘口来源（实盘或 testnet）
+	gridSource      types.GridTrader   // 若 priceSource 实现了 GridTrader 则用盘口模拟成交
+	paperStore      *store.PaperStore
+	userID          string
+	traderID        string
+	initialBal      float64
+	feeRate         float64            // 静态费率（当 feeCredentials 为空时使用）
+	feeCredentials *market.ExchangeCredentials // 非空时从交易所 API 实时获取 taker 费率（有缓存）
+	mu              sync.Mutex
 }
 
 // NewTrader 创建虚拟盘 Trader。priceSource 用于 GetMarketPrice（以及若实现 GridTrader 则 GetOrderBook）。可选 WithFeeRate / WithFeeRateByExchange 与交易所费率一致。
@@ -87,6 +94,17 @@ func NewTrader(priceSource types.Trader, paperStore *store.PaperStore, userID, t
 // ensureAccount 获取或创建虚拟盘账户
 func (t *Trader) ensureAccount() (*store.PaperAccount, error) {
 	return t.paperStore.GetOrCreateAccount(t.userID, t.traderID, t.initialBal)
+}
+
+// getTakerRate 返回吃单费率：若配置了 feeCredentials 则从交易所实时获取（有缓存），否则用静态 feeRate
+func (t *Trader) getTakerRate(symbol string) float64 {
+	if t.feeCredentials != nil {
+		_, taker, _ := market.FetchTradingFeeRates(symbol, t.feeCredentials)
+		if taker > 0 {
+			return taker
+		}
+	}
+	return t.feeRate
 }
 
 // GetBalance 从 DB 读取余额：availableBalance=可用（不含持仓占用），total_equity=可用+占用保证金+未实现盈亏
@@ -232,6 +250,7 @@ func (t *Trader) OpenLong(symbol string, quantity float64, leverage int) (map[st
 	if quantity <= 0 {
 		return nil, fmt.Errorf("quantity must be > 0")
 	}
+	symbolNorm := market.Normalize(symbol)
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	acc, err := t.ensureAccount()
@@ -240,18 +259,19 @@ func (t *Trader) OpenLong(symbol string, quantity float64, leverage int) (map[st
 	}
 	var avgPrice float64
 	if t.gridSource != nil {
-		_, asks, err := t.gridSource.GetOrderBook(symbol, defaultOrderBookDepth)
+		_, asks, err := t.gridSource.GetOrderBook(symbolNorm, defaultOrderBookDepth)
 		if err == nil && len(asks) > 0 {
 			avgPrice, _ = t.simulateBuyFromBook(asks, quantity)
 		}
 	}
 	if avgPrice <= 0 {
-		avgPrice, err = t.priceSource.GetMarketPrice(symbol)
+		avgPrice, err = t.priceSource.GetMarketPrice(symbolNorm)
 		if err != nil || avgPrice <= 0 {
-			return nil, fmt.Errorf("paper: cannot get price for %s: %w", symbol, err)
+			return nil, fmt.Errorf("paper: cannot get price for %s: %w", symbolNorm, err)
 		}
 	}
-	fee := avgPrice * quantity * t.feeRate
+	rate := t.getTakerRate(symbolNorm)
+	fee := avgPrice * quantity * rate
 	lev := leverage
 	if lev <= 0 {
 		lev = 1
@@ -264,7 +284,7 @@ func (t *Trader) OpenLong(symbol string, quantity float64, leverage int) (map[st
 	}
 	pos := &store.PaperPosition{
 		AccountID:    acc.ID,
-		Symbol:       symbol,
+		Symbol:       symbolNorm,
 		Side:         "long",
 		Quantity:     quantity,
 		EntryPrice:   avgPrice,
@@ -278,7 +298,7 @@ func (t *Trader) OpenLong(symbol string, quantity float64, leverage int) (map[st
 	if err := t.paperStore.UpdateBalance(acc.ID, newBalance); err != nil {
 		return nil, err
 	}
-	logger.Infof("📄 [Paper] OpenLong %s qty=%.6f avgPrice=%.4f margin=%.2f fee=%.4f balance %.2f→%.2f", symbol, quantity, avgPrice, marginUsed, fee, acc.Balance, newBalance)
+	logger.Infof("📄 [Paper] OpenLong %s qty=%.6f avgPrice=%.4f margin=%.2f fee=%.4f balance %.2f→%.2f", symbolNorm, quantity, avgPrice, marginUsed, fee, acc.Balance, newBalance)
 	return map[string]interface{}{
 		"orderId":   pos.EntryOrderID,
 		"avgPrice":  avgPrice,
@@ -292,6 +312,7 @@ func (t *Trader) OpenShort(symbol string, quantity float64, leverage int) (map[s
 	if quantity <= 0 {
 		return nil, fmt.Errorf("quantity must be > 0")
 	}
+	symbolNorm := market.Normalize(symbol)
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	acc, err := t.ensureAccount()
@@ -300,18 +321,19 @@ func (t *Trader) OpenShort(symbol string, quantity float64, leverage int) (map[s
 	}
 	var avgPrice float64
 	if t.gridSource != nil {
-		bids, _, err := t.gridSource.GetOrderBook(symbol, defaultOrderBookDepth)
+		bids, _, err := t.gridSource.GetOrderBook(symbolNorm, defaultOrderBookDepth)
 		if err == nil && len(bids) > 0 {
 			avgPrice, _ = t.simulateSellFromBook(bids, quantity)
 		}
 	}
 	if avgPrice <= 0 {
-		avgPrice, err = t.priceSource.GetMarketPrice(symbol)
+		avgPrice, err = t.priceSource.GetMarketPrice(symbolNorm)
 		if err != nil || avgPrice <= 0 {
-			return nil, fmt.Errorf("paper: cannot get price for %s: %w", symbol, err)
+			return nil, fmt.Errorf("paper: cannot get price for %s: %w", symbolNorm, err)
 		}
 	}
-	fee := avgPrice * quantity * t.feeRate
+	rate := t.getTakerRate(symbolNorm)
+	fee := avgPrice * quantity * rate
 	lev := leverage
 	if lev <= 0 {
 		lev = 1
@@ -324,7 +346,7 @@ func (t *Trader) OpenShort(symbol string, quantity float64, leverage int) (map[s
 	}
 	pos := &store.PaperPosition{
 		AccountID:    acc.ID,
-		Symbol:       symbol,
+		Symbol:       symbolNorm,
 		Side:         "short",
 		Quantity:     quantity,
 		EntryPrice:   avgPrice,
@@ -338,7 +360,7 @@ func (t *Trader) OpenShort(symbol string, quantity float64, leverage int) (map[s
 	if err := t.paperStore.UpdateBalance(acc.ID, newBalance); err != nil {
 		return nil, err
 	}
-	logger.Infof("📄 [Paper] OpenShort %s qty=%.6f avgPrice=%.4f margin=%.2f fee=%.4f balance %.2f→%.2f", symbol, quantity, avgPrice, marginUsed, fee, acc.Balance, newBalance)
+	logger.Infof("📄 [Paper] OpenShort %s qty=%.6f avgPrice=%.4f margin=%.2f fee=%.4f balance %.2f→%.2f", symbolNorm, quantity, avgPrice, marginUsed, fee, acc.Balance, newBalance)
 	return map[string]interface{}{
 		"orderId":   pos.EntryOrderID,
 		"avgPrice":  avgPrice,
@@ -349,6 +371,7 @@ func (t *Trader) OpenShort(symbol string, quantity float64, leverage int) (map[s
 
 // CloseLong 平多：盘口模拟卖出，更新余额并关闭/减持仓
 func (t *Trader) CloseLong(symbol string, quantity float64) (map[string]interface{}, error) {
+	symbolNorm := market.Normalize(symbol)
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	acc, err := t.ensureAccount()
@@ -361,13 +384,13 @@ func (t *Trader) CloseLong(symbol string, quantity float64) (map[string]interfac
 	}
 	var target *store.PaperPosition
 	for _, p := range positions {
-		if p.Symbol == symbol && p.Side == "long" {
+		if p.Symbol == symbolNorm && p.Side == "long" {
 			target = p
 			break
 		}
 	}
 	if target == nil {
-		return nil, fmt.Errorf("paper: no long position for %s", symbol)
+		return nil, fmt.Errorf("paper: no long position for %s", symbolNorm)
 	}
 	closeQty := quantity
 	if closeQty <= 0 || closeQty > target.Quantity {
@@ -375,19 +398,20 @@ func (t *Trader) CloseLong(symbol string, quantity float64) (map[string]interfac
 	}
 	var exitPrice float64
 	if t.gridSource != nil {
-		bids, _, err := t.gridSource.GetOrderBook(symbol, defaultOrderBookDepth)
+		bids, _, err := t.gridSource.GetOrderBook(symbolNorm, defaultOrderBookDepth)
 		if err == nil && len(bids) > 0 {
 			exitPrice, _ = t.simulateSellFromBook(bids, closeQty)
 		}
 	}
 	if exitPrice <= 0 {
-		exitPrice, err = t.priceSource.GetMarketPrice(symbol)
+		exitPrice, err = t.priceSource.GetMarketPrice(symbolNorm)
 		if err != nil || exitPrice <= 0 {
-			return nil, fmt.Errorf("paper: cannot get price for %s: %w", symbol, err)
+			return nil, fmt.Errorf("paper: cannot get price for %s: %w", symbolNorm, err)
 		}
 	}
+	rate := t.getTakerRate(symbolNorm)
+	fee := exitPrice * closeQty * rate
 	realizedPnL := (exitPrice - target.EntryPrice) * closeQty
-	fee := exitPrice * closeQty * t.feeRate
 	realizedPnL -= fee
 	lev := target.Leverage
 	if lev <= 0 {
@@ -406,7 +430,7 @@ func (t *Trader) CloseLong(symbol string, quantity float64) (map[string]interfac
 	if err := t.paperStore.UpdateBalance(acc.ID, newBalance); err != nil {
 		return nil, err
 	}
-	logger.Infof("📄 [Paper] CloseLong %s closeQty=%.6f exit=%.4f realizedPnL=%.4f marginReleased=%.2f balance %.2f→%.2f", symbol, closeQty, exitPrice, realizedPnL, marginReleased, acc.Balance, newBalance)
+	logger.Infof("📄 [Paper] CloseLong %s closeQty=%.6f exit=%.4f realizedPnL=%.4f marginReleased=%.2f balance %.2f→%.2f", symbolNorm, closeQty, exitPrice, realizedPnL, marginReleased, acc.Balance, newBalance)
 	return map[string]interface{}{
 		"orderId":      fmt.Sprintf("paper-close-%d", time.Now().UnixNano()),
 		"avgPrice":     exitPrice,
@@ -418,6 +442,7 @@ func (t *Trader) CloseLong(symbol string, quantity float64) (map[string]interfac
 
 // CloseShort 平空：盘口模拟买入，更新余额并关闭/减持仓
 func (t *Trader) CloseShort(symbol string, quantity float64) (map[string]interface{}, error) {
+	symbolNorm := market.Normalize(symbol)
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	acc, err := t.ensureAccount()
@@ -430,13 +455,13 @@ func (t *Trader) CloseShort(symbol string, quantity float64) (map[string]interfa
 	}
 	var target *store.PaperPosition
 	for _, p := range positions {
-		if p.Symbol == symbol && p.Side == "short" {
+		if p.Symbol == symbolNorm && p.Side == "short" {
 			target = p
 			break
 		}
 	}
 	if target == nil {
-		return nil, fmt.Errorf("paper: no short position for %s", symbol)
+		return nil, fmt.Errorf("paper: no short position for %s", symbolNorm)
 	}
 	closeQty := quantity
 	if closeQty <= 0 || closeQty > target.Quantity {
@@ -444,19 +469,20 @@ func (t *Trader) CloseShort(symbol string, quantity float64) (map[string]interfa
 	}
 	var exitPrice float64
 	if t.gridSource != nil {
-		_, asks, err := t.gridSource.GetOrderBook(symbol, defaultOrderBookDepth)
+		_, asks, err := t.gridSource.GetOrderBook(symbolNorm, defaultOrderBookDepth)
 		if err == nil && len(asks) > 0 {
 			exitPrice, _ = t.simulateBuyFromBook(asks, closeQty)
 		}
 	}
 	if exitPrice <= 0 {
-		exitPrice, err = t.priceSource.GetMarketPrice(symbol)
+		exitPrice, err = t.priceSource.GetMarketPrice(symbolNorm)
 		if err != nil || exitPrice <= 0 {
-			return nil, fmt.Errorf("paper: cannot get price for %s: %w", symbol, err)
+			return nil, fmt.Errorf("paper: cannot get price for %s: %w", symbolNorm, err)
 		}
 	}
+	rate := t.getTakerRate(symbolNorm)
+	fee := exitPrice * closeQty * rate
 	realizedPnL := (target.EntryPrice - exitPrice) * closeQty
-	fee := exitPrice * closeQty * t.feeRate
 	realizedPnL -= fee
 	lev := target.Leverage
 	if lev <= 0 {
@@ -475,7 +501,7 @@ func (t *Trader) CloseShort(symbol string, quantity float64) (map[string]interfa
 	if err := t.paperStore.UpdateBalance(acc.ID, newBalance); err != nil {
 		return nil, err
 	}
-	logger.Infof("📄 [Paper] CloseShort %s closeQty=%.6f exit=%.4f realizedPnL=%.4f marginReleased=%.2f balance %.2f→%.2f", symbol, closeQty, exitPrice, realizedPnL, marginReleased, acc.Balance, newBalance)
+	logger.Infof("📄 [Paper] CloseShort %s closeQty=%.6f exit=%.4f realizedPnL=%.4f marginReleased=%.2f balance %.2f→%.2f", symbolNorm, closeQty, exitPrice, realizedPnL, marginReleased, acc.Balance, newBalance)
 	return map[string]interface{}{
 		"orderId":     fmt.Sprintf("paper-close-%d", time.Now().UnixNano()),
 		"avgPrice":    exitPrice,

@@ -6,6 +6,7 @@ import (
 	"nofx/debate"
 	"nofx/kernel"
 	"nofx/logger"
+	"nofx/market"
 	"nofx/store"
 	"nofx/trader"
 	"nofx/trader/paper"
@@ -764,13 +765,20 @@ func (tm *TraderManager) addTraderFromStore(traderCfg *store.Trader, aiModelCfg 
 		if err != nil {
 			return fmt.Errorf("failed to create paper price source trader: %w", err)
 		}
+		// 费率：优先从价格源交易所 API 实时获取（与实盘一致），无凭证或获取失败时用静态费率
+		feeCreds := &market.ExchangeCredentials{
+			ExchangeType: priceSourceExchange.ExchangeType,
+			APIKey:       string(priceSourceExchange.APIKey),
+			SecretKey:    string(priceSourceExchange.SecretKey),
+		}
 		paperTrader, err := paper.NewTrader(priceSourceTrader, st.Paper(), traderCfg.UserID, traderCfg.ID, traderConfig.InitialBalance,
-			paper.WithFeeRateByExchange(priceSourceExchange.ExchangeType))
+			paper.WithFeeRateByExchange(priceSourceExchange.ExchangeType),
+			paper.WithFeeRateFromExchange(feeCreds))
 		if err != nil {
 			return fmt.Errorf("failed to create paper trader: %w", err)
 		}
 		traderConfig.PrebuiltTrader = paperTrader
-		logger.Infof("📄 Paper trader '%s' using price source: %s (%s)", traderCfg.Name, priceSourceExchange.AccountName, priceSourceExchange.ExchangeType)
+		logger.Infof("📄 Paper trader '%s' using price source: %s (%s), fee from exchange when available", traderCfg.Name, priceSourceExchange.AccountName, priceSourceExchange.ExchangeType)
 	}
 
 	// Set API keys based on exchange type (convert EncryptedString to string)

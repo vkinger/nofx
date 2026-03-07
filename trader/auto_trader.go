@@ -2734,17 +2734,32 @@ func (at *AutoTrader) recordAndConfirmOrder(orderResult map[string]interface{}, 
 		if err == nil {
 			statusStr, _ := status["status"].(string)
 			if statusStr == "FILLED" {
-				// Get actual fill price
+				// Get actual fill price (from status or fallback to orderResult e.g. paper)
 				if avgPrice, ok := status["avgPrice"].(float64); ok && avgPrice > 0 {
 					actualPrice = avgPrice
+				}
+				if actualPrice <= 0 {
+					if avgPrice, ok := orderResult["avgPrice"].(float64); ok && avgPrice > 0 {
+						actualPrice = avgPrice
+					}
 				}
 				// Get actual executed quantity
 				if execQty, ok := status["executedQty"].(float64); ok && execQty > 0 {
 					actualQty = execQty
 				}
-				// Get commission/fee
+				if actualQty <= 0 {
+					if execQty, ok := orderResult["executedQty"].(float64); ok && execQty > 0 {
+						actualQty = execQty
+					}
+				}
+				// Get commission/fee (from status or fallback to orderResult e.g. paper)
 				if commission, ok := status["commission"].(float64); ok {
 					fee = commission
+				}
+				if fee == 0 {
+					if commission, ok := orderResult["commission"].(float64); ok && commission >= 0 {
+						fee = commission
+					}
 				}
 				logger.Infof("  ✅ Order filled: avgPrice=%.6f, qty=%.6f, fee=%.6f", actualPrice, actualQty, fee)
 
