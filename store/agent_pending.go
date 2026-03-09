@@ -3,6 +3,7 @@ package store
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
@@ -56,6 +57,15 @@ func (s *AgentPendingStore) initTables() error {
 		var n int64
 		s.db.Raw(`SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'agent_pending_decisions'`).Scan(&n)
 		if n > 0 {
+			// 已有表：补 Agent 相关列
+			for _, q := range []string{
+				`ALTER TABLE agent_pending_decisions ADD COLUMN IF NOT EXISTS strategy_id varchar(255) DEFAULT ''`,
+				`ALTER TABLE agent_pending_decisions ADD COLUMN IF NOT EXISTS analyst_report_id bigint DEFAULT 0`,
+			} {
+				if err := s.db.Exec(q).Error; err != nil {
+					return fmt.Errorf("failed to migrate agent_pending_decisions: %w", err)
+				}
+			}
 			return nil
 		}
 	}

@@ -2,6 +2,7 @@
 package store
 
 import (
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
@@ -63,6 +64,15 @@ func (s *AgentBlackboardStore) initTables() error {
 		var tableExists int64
 		s.db.Raw(`SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'agent_analyst_reports'`).Scan(&tableExists)
 		if tableExists > 0 {
+			// 已有表：补可选列
+			for _, q := range []string{
+				`ALTER TABLE agent_analyst_reports ADD COLUMN IF NOT EXISTS strategy_id varchar(255) DEFAULT ''`,
+				`ALTER TABLE agent_analyst_reports ADD COLUMN IF NOT EXISTS symbol varchar(255) DEFAULT ''`,
+			} {
+				if err := s.db.Exec(q).Error; err != nil {
+					return fmt.Errorf("failed to migrate agent_analyst_reports: %w", err)
+				}
+			}
 			return nil
 		}
 	}

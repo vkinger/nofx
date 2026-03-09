@@ -62,15 +62,25 @@ type TraderFullConfig struct {
 }
 
 func (s *TraderStore) initTables() error {
-	// For PostgreSQL with existing table, skip AutoMigrate
 	if s.db.Dialector.Name() == "postgres" {
 		var tableExists int64
 		s.db.Raw(`SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'traders'`).Scan(&tableExists)
 		if tableExists > 0 {
+			// 已有表：补 Agent 相关列，兼容旧库
+			for _, q := range []string{
+				`ALTER TABLE traders ADD COLUMN IF NOT EXISTS use_analyst_flow boolean DEFAULT false`,
+				`ALTER TABLE traders ADD COLUMN IF NOT EXISTS use_compliance_flow boolean DEFAULT false`,
+				`ALTER TABLE traders ADD COLUMN IF NOT EXISTS analyst_model_id varchar(255) DEFAULT ''`,
+				`ALTER TABLE traders ADD COLUMN IF NOT EXISTS compliance_model_id varchar(255) DEFAULT ''`,
+			} {
+				if err := s.db.Exec(q).Error; err != nil {
+					return fmt.Errorf("failed to migrate traders table (agent columns): %w", err)
+				}
+			}
 			return nil
 		}
 	}
-	// Use GORM AutoMigrate
+	// SQLite 或 Postgres 新表：GORM AutoMigrate
 	if err := s.db.AutoMigrate(&Trader{}); err != nil {
 		return fmt.Errorf("failed to migrate traders table: %w", err)
 	}

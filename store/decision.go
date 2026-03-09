@@ -117,11 +117,20 @@ func NewDecisionStore(db *gorm.DB) *DecisionStore {
 
 // initTables initializes AI decision log tables
 func (s *DecisionStore) initTables() error {
-	// For PostgreSQL with existing table, skip AutoMigrate
 	if s.db.Dialector.Name() == "postgres" {
 		var tableExists int64
 		s.db.Raw(`SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'decision_records'`).Scan(&tableExists)
 		if tableExists > 0 {
+			// 已有表：补 Agent 相关列
+			for _, q := range []string{
+				`ALTER TABLE decision_records ADD COLUMN IF NOT EXISTS analyst_report_id bigint DEFAULT 0`,
+				`ALTER TABLE decision_records ADD COLUMN IF NOT EXISTS pending_decision_id bigint DEFAULT 0`,
+				`ALTER TABLE decision_records ADD COLUMN IF NOT EXISTS compliance_audit_id bigint DEFAULT 0`,
+			} {
+				if err := s.db.Exec(q).Error; err != nil {
+					return fmt.Errorf("failed to migrate decision_records (agent columns): %w", err)
+				}
+			}
 			return nil
 		}
 	}
