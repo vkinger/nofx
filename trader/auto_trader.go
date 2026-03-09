@@ -910,6 +910,17 @@ func (at *AutoTrader) runCycle() error {
 			logger.Infof("[Phase] compliance_end trader_id=%s approved=false reason=%s", at.id, output.Reason)
 			_ = at.store.AgentPending().UpdateStatus(pending.ID, store.PendingStatusRejected, output.Reason)
 			record.ExecutionLog = append(record.ExecutionLog, "Compliance rejected: "+output.Reason)
+			// 整批驳回时仍写入交易员决策到 record，便于列表展示决策信息 + 驳回原因
+			rejectMsg := output.Reason
+			if rejectMsg == "" {
+				rejectMsg = "batch rejected by compliance"
+			}
+			for _, d := range aiDecision.Decisions {
+				record.Decisions = append(record.Decisions, store.DecisionAction{
+					Action: d.Action, Symbol: d.Symbol, Confidence: d.Confidence, Reasoning: d.Reasoning,
+					Timestamp: time.Now().UTC(), Success: false, Error: "Compliance: " + rejectMsg,
+				})
+			}
 			at.saveDecision(record)
 			logger.Infof("🛑 Compliance rejected: %s", output.Reason)
 			return nil
@@ -929,12 +940,27 @@ func (at *AutoTrader) runCycle() error {
 	decisionsToExecute := aiDecision.Decisions
 	if complianceOutput != nil && len(complianceOutput.DecisionsAudit) == len(aiDecision.Decisions) {
 		approvedSet := make(map[int]bool)
+		rejectReason := make(map[int]string)
 		for _, da := range complianceOutput.DecisionsAudit {
 			if da.Approved {
 				approvedSet[da.Index] = true
 			} else {
-				logger.Infof("🛑 Compliance rejected [%d] %s: %s", da.Index, aiDecision.Decisions[da.Index].Symbol, da.Reason)
-				record.ExecutionLog = append(record.ExecutionLog, fmt.Sprintf("Compliance rejected [%d] %s: %s", da.Index+1, aiDecision.Decisions[da.Index].Symbol, da.Reason))
+				reason := da.Reason
+				if reason == "" {
+					reason = "rejected by compliance (no reason given)"
+				}
+				rejectReason[da.Index] = reason
+				logger.Infof("🛑 Compliance rejected [%d] %s: %s", da.Index, aiDecision.Decisions[da.Index].Symbol, reason)
+				record.ExecutionLog = append(record.ExecutionLog, fmt.Sprintf("Compliance rejected [%d] %s: %s", da.Index+1, aiDecision.Decisions[da.Index].Symbol, reason))
+			}
+		}
+		// 将风控驳回的决策也写入 record.Decisions，便于列表展示交易员决策 + 驳回原因
+		for i, d := range aiDecision.Decisions {
+			if rejectReason[i] != "" {
+				record.Decisions = append(record.Decisions, store.DecisionAction{
+					Action: d.Action, Symbol: d.Symbol, Confidence: d.Confidence, Reasoning: d.Reasoning,
+					Timestamp: time.Now().UTC(), Success: false, Error: "Compliance: " + rejectReason[i],
+				})
 			}
 		}
 		decisionsToExecute = make([]kernel.Decision, 0, len(approvedSet))

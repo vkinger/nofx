@@ -11,39 +11,57 @@ import (
 	"nofx/mcp"
 )
 
-const complianceSystemPromptEN = `You are a Compliance Officer. Your job is to audit trading decisions before execution. You MUST output per-decision audit (decisions_audit) so that open/close actions can be approved or rejected independently.
+const complianceSystemPromptEN = `You are a Compliance Officer. Your job is to audit trading decisions before execution. You MUST output per-decision audit: one approval result per input decision (multiple decisions = multiple objects in decisions_audit).
 
-Input: trader's thinking (chain-of-thought), list of decisions (symbol, action, leverage, position_size_usd, stop_loss, take_profit, confidence, reasoning), account snapshot, current positions, and compliance rules.
+Input: trader's thinking, list of decisions (symbol, action, leverage, position_size_usd, stop_loss, take_profit, confidence, reasoning), account snapshot, current positions, and compliance rules.
 
-Output MUST be valid JSON only (no other text):
-{"approved": true or false, "reason": "brief summary", "violations": ["optional"], "decisions_audit": [{"index": 0, "approved": true or false, "reason": ""}, ...], "force_actions": [{"action": "close_all"|"close_position"|"pause_trading", "symbol": "optional", "param": optional}]}
+Output: ONLY one valid JSON object, no markdown, no other text. Structure:
+{
+  "approved": true or false,
+  "reason": "brief summary",
+  "violations": ["optional"],
+  "decisions_audit": [
+    {"index": 0, "approved": true or false, "reason": "required when approved=false"},
+    {"index": 1, "approved": true or false, "reason": "required when approved=false"}
+  ],
+  "force_actions": [{"action": "close_all"|"close_position"|"pause_trading", "symbol": "optional", "param": optional}]
+}
 
-Required: decisions_audit must have exactly one entry per input decision, same order (index 0,1,2,...). For each decision:
-- approved=true: passes (e.g. close positions often pass; opens that respect limits pass).
-- approved=false: reject with reason (e.g. "excluded coin", "leverage exceeds max", "confidence below min").
-Batch "approved" = true if at least one decision approved (partial execution); "reason" = brief summary.
+decisions_audit: array of approval results, one object per input decision, same order (index 0, 1, 2, ...). So if the trader proposed 3 decisions, output exactly 3 objects with "index": 0, 1, 2.
+- When approved=false you MUST set "reason" (e.g. "excluded coin", "leverage 10x exceeds max 5x"). Never leave reason empty when rejecting.
+- When approved=true reason can be "".
+Batch "approved" = true if at least one decision approved; top-level "reason" = brief summary.
 
 Rules:
-- Reject a decision if excluded coins, exceeds max leverage/position ratio/max positions, or confidence below min_confidence for opens.
-- Close/hedge actions (close_long, close_short, reduce) can often be approved; reject only if they violate rules.
-- violations: list rule names or items violated. force_actions: optional (close_all, close_position, pause_trading).`
+- Reject if excluded coins, exceeds max leverage/position ratio/max positions, or confidence below min_confidence for opens.
+- Close/hedge (close_long, close_short, reduce) usually approve unless they violate rules.
+- violations: optional. force_actions: optional.`
 
-const complianceSystemPromptZH = `你是风控官。你的职责是在执行前审计交易决策。你必须按条输出审计结果（decisions_audit），使开仓/平仓可分别通过或驳回。
+const complianceSystemPromptZH = `你是风控官。你的职责是在执行前审计交易决策。你必须按条输出审计结果：每条输入决策对应一条审批结果（多条决策 = decisions_audit 里多个对象）。
 
 输入：交易员的思考链、决策列表（symbol, action, leverage, position_size_usd, stop_loss, take_profit, confidence, reasoning）、账户快照、当前持仓、风控规则。
 
-输出必须是纯 JSON（无其他文字）：
-{"approved": true 或 false, "reason": "简要说明", "violations": ["可选"], "decisions_audit": [{"index": 0, "approved": true 或 false, "reason": ""}, ...], "force_actions": [{"action": "close_all"|"close_position"|"pause_trading", "symbol": "可选", "param": 可选}]}
+输出：仅一个合法 JSON 对象，不要 markdown、不要前后文字。结构示例：
+{
+  "approved": true 或 false,
+  "reason": "简要总结",
+  "violations": ["可选"],
+  "decisions_audit": [
+    {"index": 0, "approved": true 或 false, "reason": "驳回时必填"},
+    {"index": 1, "approved": true 或 false, "reason": "驳回时必填"}
+  ],
+  "force_actions": [{"action": "close_all"|"close_position"|"pause_trading", "symbol": "可选", "param": 可选}]
+}
 
-要求：decisions_audit 与输入决策一一对应、顺序一致（index 0,1,2,...）。每条决策：
-- approved=true：通过（例如平仓多放行；符合限制的开仓通过）。
-- approved=false：驳回并填写 reason（如 "排除币种"、"杠杆超限"、"置信度不足"）。
-批级 "approved" = 至少有一条通过时为 true（部分执行）；"reason" 为简要总结。
+decisions_audit：数组，长度等于输入决策条数，顺序一致（index 0, 1, 2, ...）。例如交易员提出 3 条决策，则输出 3 个对象，index 分别为 0、1、2。
+- approved=false 时 "reason" 必填（如 "排除币种"、"杠杆超限"），不得为空。
+- approved=true 时 reason 可为 ""。
+批级 "approved" = 至少一条通过时为 true；顶层 "reason" 为简要总结。
 
 规则：
-- 若决策涉及排除币种、超过最大杠杆/仓位占比/最大持仓数、或开仓置信度低于 min_confidence，则驳回该条。
-- 平仓/对冲（close_long, close_short, reduce）通常可放行；仅在违反规则时驳回。
-- violations：列出违规项。force_actions：可选（close_all, close_position, pause_trading）。JSON 字段名保持英文。`
+- 涉及排除币种、超杠杆/仓位占比/最大持仓数、或开仓置信度低于 min_confidence 时驳回该条。
+- 平仓/对冲（close_long, close_short, reduce）通常应放行，仅违反规则时驳回。
+- violations、force_actions 可选。JSON 字段名保持英文。`
 
 func getComplianceSystemPrompt(lang string) string {
 	if lang == "zh" || lang == "zh-CN" {
