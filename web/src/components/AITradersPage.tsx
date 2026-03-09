@@ -400,6 +400,8 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
         scan_interval_minutes: data.scan_interval_minutes,
         is_cross_margin: data.is_cross_margin,
         show_in_competition: data.show_in_competition,
+        use_analyst_flow: data.use_analyst_flow,
+        use_compliance_flow: data.use_compliance_flow,
       }
 
       console.log('🔥 handleSaveEditTrader - data:', data)

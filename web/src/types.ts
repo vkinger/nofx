@@ -231,11 +231,15 @@ export interface CreateTraderRequest {
   name: string
   ai_model_id: string
   exchange_id: string
-  strategy_id?: string // 策略ID（新版，使用保存的策略配置）
+  strategy_id?: string // 策略ID（必填：创建后加载交易员依赖策略配置）
   initial_balance?: number // 可选：创建时由后端自动获取，编辑时可手动更新
   scan_interval_minutes?: number
   is_cross_margin?: boolean
   show_in_competition?: boolean // 是否在竞技场显示
+  use_analyst_flow?: boolean // true=多 Agent（分析师→黑板→交易员）
+  use_compliance_flow?: boolean // true=交易员→风控官审计→通过才执行
+  analyst_model_id?: string // 分析师专用模型 ID，空=与交易员同模型
+  compliance_model_id?: string // 风控官专用模型 ID，空=与交易员同模型
   // 以下字段为向后兼容保留，新版使用策略配置
   btc_eth_leverage?: number
   altcoin_leverage?: number
@@ -313,6 +317,10 @@ export interface TraderConfigData {
   scan_interval_minutes: number
   initial_balance: number
   is_running: boolean
+  use_analyst_flow?: boolean  // 多 Agent（分析师→交易员）
+  use_compliance_flow?: boolean  // 风控官审计
+  analyst_model_id?: string
+  compliance_model_id?: string
   // 以下为旧版字段（向后兼容）
   btc_eth_leverage?: number
   altcoin_leverage?: number

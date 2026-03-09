@@ -2254,6 +2254,8 @@ func (s *Server) handleTraderList(c *gin.Context) {
 			"initial_balance":     trader.InitialBalance,
 			"strategy_id":         trader.StrategyID,
 			"strategy_name":       strategyName,
+			"use_analyst_flow":    trader.UseAnalystFlow,
+			"use_compliance_flow": trader.UseComplianceFlow,
 		})
 	}
 
@@ -2303,8 +2305,13 @@ func (s *Server) handleGetTraderConfig(c *gin.Context) {
 		"custom_prompt":         traderConfig.CustomPrompt,
 		"override_base_prompt":  traderConfig.OverrideBasePrompt,
 		"is_cross_margin":       traderConfig.IsCrossMargin,
+		"show_in_competition":   traderConfig.ShowInCompetition,
 		"use_ai500":             traderConfig.UseAI500,
 		"use_oi_top":            traderConfig.UseOITop,
+		"use_analyst_flow":      traderConfig.UseAnalystFlow,
+		"use_compliance_flow":   traderConfig.UseComplianceFlow,
+		"analyst_model_id":      traderConfig.AnalystModelID,
+		"compliance_model_id":   traderConfig.ComplianceModelID,
 		"is_running":            isRunning,
 	}
 

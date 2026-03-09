@@ -36,6 +36,8 @@ interface FormState {
   show_in_competition: boolean
   scan_interval_minutes: number
   initial_balance?: number
+  use_analyst_flow: boolean
+  use_compliance_flow: boolean
 }
 
 interface TraderConfigModalProps {
@@ -68,6 +70,8 @@ export function TraderConfigModal({
     is_cross_margin: true,
     show_in_competition: true,
     scan_interval_minutes: 3,
+    use_analyst_flow: false,
+    use_compliance_flow: false,
   })
   const [isSaving, setIsSaving] = useState(false)
   const [strategies, setStrategies] = useState<Strategy[]>([])
@@ -116,6 +120,8 @@ export function TraderConfigModal({
         is_cross_margin: true,
         show_in_competition: true,
         scan_interval_minutes: 3,
+        use_analyst_flow: false,
+        use_compliance_flow: false,
       })
     }
   }, [traderData, isEditMode, availableModels, availableExchanges])
@@ -163,6 +169,10 @@ export function TraderConfigModal({
 
   const handleSave = async () => {
     if (!onSave) return
+    if (!isEditMode && !formData.strategy_id) {
+      toast.error('请先选择交易策略，创建后交易员将使用该策略配置运行')
+      return
+    }
 
     setIsSaving(true)
     try {
@@ -170,10 +180,12 @@ export function TraderConfigModal({
         name: formData.trader_name,
         ai_model_id: formData.ai_model,
         exchange_id: formData.exchange_id,
-        strategy_id: formData.strategy_id,
+        strategy_id: formData.strategy_id || undefined,
         is_cross_margin: formData.is_cross_margin,
         show_in_competition: formData.show_in_competition,
         scan_interval_minutes: formData.scan_interval_minutes,
+        use_analyst_flow: formData.use_analyst_flow,
+        use_compliance_flow: formData.use_compliance_flow,
       }
 
       // 编辑模式：提交已填写的初始余额；创建虚拟盘：必须带初始资金（默认 10000）
@@ -463,7 +475,7 @@ export function TraderConfigModal({
             <div className="space-y-4">
               <div>
                 <label className="text-sm block mb-2" style={{ color: 'var(--text-primary)' }}>
-                  使用策略
+                  使用策略 {!isEditMode && <span className="text-red-500">*</span>}
                 </label>
                 <select
                   value={formData.strategy_id}
@@ -495,7 +507,7 @@ export function TraderConfigModal({
                     }
                   }}
                 >
-                  <option value="">-- 不使用策略（手动配置）--</option>
+                  <option value="">{isEditMode ? '-- 不使用策略（不推荐）--' : '-- 请选择策略（必选）--'}</option>
                   {strategies.map((strategy) => (
                     <option key={strategy.id} value={strategy.id}>
                       {strategy.name}
@@ -545,6 +557,50 @@ export function TraderConfigModal({
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* Agent 流程（多 Agent / 风控官） */}
+          <div 
+            className="border rounded-lg p-5"
+            style={{
+              background: isDark ? 'rgba(11, 14, 17, 0.6)' : 'var(--panel-bg)',
+              border: '1px solid var(--panel-border)',
+            }}
+          >
+            <h3 className="text-lg font-semibold mb-5 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+              <span style={{ color: 'var(--nofx-gold)' }}>2.5</span> Agent 流程
+            </h3>
+            <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
+              策略配置决定风控、指标、币种来源等；此处选择是否启用多 Agent（分析师→交易员）与风控官审计。
+            </p>
+            <div className="space-y-3">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.use_analyst_flow}
+                  onChange={(e) => handleInputChange('use_analyst_flow', e.target.checked)}
+                  className="w-4 h-4 rounded border-2"
+                  style={{ accentColor: 'var(--nofx-gold)' }}
+                />
+                <span style={{ color: 'var(--text-primary)' }}>多 Agent（分析师 → 黑板 → 交易员）</span>
+              </label>
+              <p className="text-xs pl-7" style={{ color: 'var(--text-secondary)' }}>
+                先跑宏观分析师写黑板，交易员再结合分析师报告与完整数据做决策
+              </p>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.use_compliance_flow}
+                  onChange={(e) => handleInputChange('use_compliance_flow', e.target.checked)}
+                  className="w-4 h-4 rounded border-2"
+                  style={{ accentColor: 'var(--nofx-gold)' }}
+                />
+                <span style={{ color: 'var(--text-primary)' }}>风控官审计（通过后才执行）</span>
+              </label>
+              <p className="text-xs pl-7" style={{ color: 'var(--text-secondary)' }}>
+                交易员产出决策后先由风控官审计，通过后再执行
+              </p>
             </div>
           </div>
 
