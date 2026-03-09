@@ -1361,6 +1361,7 @@ func (at *AutoTrader) getExchangeCredentials() *market.ExchangeCredentials {
 				ExchangeType: "okx",
 				APIKey:       at.config.OKXAPIKey,
 				SecretKey:    at.config.OKXSecretKey,
+				Passphrase:   at.config.OKXPassphrase,
 			}
 		}
 	case "bitget":

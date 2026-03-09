@@ -5,8 +5,12 @@ import (
 	"nofx/market"
 )
 
-// DetectVolumePriceSignals 根据最近 K 线及成交量判断量价信号（参考量价交易宝典）
-// klines 时间正序（旧→新），至少需要 3 根，建议 5 根；返回多个可能同时成立的信号码
+// Taker Buy Ratio 阈值：>0.6 主动买盘主导，<0.4 主动卖盘主导（与 engine 展示一致）
+const TakerBuyDominantThreshold = 0.60
+const TakerSellDominantThreshold = 0.40
+
+// DetectVolumePriceSignals 根据最近 K 线、成交量及 Taker Buy Ratio 判断量价信号（参考量价交易宝典）
+// klines 时间正序（旧→新），至少需要 3 根，建议 5 根；TakerBuyRatio 已用则叠加买卖主导信号
 func DetectVolumePriceSignals(klines []market.KlineBar) []string {
 	var out []string
 	seen := make(map[string]bool)
@@ -30,6 +34,24 @@ func DetectVolumePriceSignals(klines []market.KlineBar) []string {
 	m := len(window)
 	if m < 3 {
 		return out
+	}
+
+	// Taker Buy Ratio：窗口内有效数据的平均，高 ROI 量价增强
+	var tbSum float64
+	var tbCount int
+	for _, k := range window {
+		if k.TakerBuyRatio > 0 {
+			tbSum += k.TakerBuyRatio
+			tbCount++
+		}
+	}
+	if tbCount > 0 {
+		avgTB := tbSum / float64(tbCount)
+		if avgTB >= TakerBuyDominantThreshold {
+			add("TAKER_BUY_DOMINANT")
+		} else if avgTB <= TakerSellDominantThreshold {
+			add("TAKER_SELL_DOMINANT")
+		}
 	}
 
 	// 每根 body、volume

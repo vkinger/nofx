@@ -606,6 +606,13 @@ func getSchemaPromptZH() string {
 		prompt += formatFieldDefZH(key, field)
 	}
 
+	// 关键价位（支撑/阻力）说明
+	prompt += "\n### 关键价位（支撑/阻力）说明\n"
+	prompt += "数据中会提供「关键价位(近期区间)」与「关键价位(细)」或「关键价位」汇总。用途：判断买卖点、止盈止损、突破/跌破参考。\n"
+	prompt += "- **阻力(R)**：当前价上方的压力位，价格上攻时可能在此遇阻回落。\n"
+	prompt += "- **支撑(S)**：当前价下方的支撑位，价格回落时可能在此企稳反弹。\n"
+	prompt += "档位标签含义：**Range High/Low**=近期区间最高/最低；**Swing High/Low**=前高/前低（历史拐点）；**Fib 0.236～0.786**=斐波那契回撤档位；**Round**=整数关（心理关口）；**VP**=量能密集区（筹码集中带）；**EMA20/50**、**BOLL Upper/Lower**=均线/布林带。可结合多档位判断强弱与目标位。\n"
+
 	// OI解读 - 已移至 SignalDictionary["OIPriceSignals"]，由 GetSignalExplanation 统一输出
 	// prompt += "\n## 💹 持仓量(OI)变化解读\n\n"
 	// prompt += "- **OI增加 + 价格上涨**: " + OIInterpretation.OIUp_PriceUp.ZH + "\n"
@@ -650,6 +657,13 @@ func getSchemaPromptEN() string {
 	for key, field := range DataDictionary["PriceDataNote"] {
 		prompt += formatFieldDefEN(key, field)
 	}
+
+	// Key levels (support/resistance) note
+	prompt += "\n### Key Levels (Support / Resistance)\n"
+	prompt += "Data includes \"Key levels (recent range)\", \"Key levels (detail)\", and a combined \"Key Levels\" summary. Use them for entries, stops, and break levels.\n"
+	prompt += "- **Resistance (R)**: price levels above current price where upside may stall or reverse.\n"
+	prompt += "- **Support (S)**: price levels below current price where downside may hold or bounce.\n"
+	prompt += "Label meanings: **Range High/Low** = recent range high/low; **Swing High/Low** = prior pivot highs/lows; **Fib 0.236–0.786** = Fibonacci retracement levels; **Round** = round number (psychological); **VP** = volume profile dense zone; **EMA20/50**, **BOLL Upper/Lower** = moving averages and Bollinger bands. Use multiple levels to gauge strength and targets.\n"
 
 	// OI Interpretation - moved to SignalDictionary["OIPriceSignals"], output by GetSignalExplanation
 	// prompt += "\n## 💹 Open Interest (OI) Change Interpretation\n\n"
@@ -782,6 +796,19 @@ var SignalDictionary = map[string]map[string]BilingualFieldDef{
 		"DOUBLE_NEEDLE_BOTTOM":         {NameZH: "双针探底", NameEN: "Double Needle Bottom", DescZH: "连续双针(跌势末端两根长下影K线在相近低点探底)，非十字星。二次试探支撑、卖压衰竭，见底信号", DescEN: "Consecutive double needle: 2 long lower-shadow candles at similar low after downtrend (not doji). Double test of support, selling exhausted, bottoming"},
 		"VOLUME_SHRINK_TRUE_BOTTOM":   {NameZH: "缩量止跌真底", NameEN: "Volume Shrink True Bottom", DescZH: "非连续双星：当前星线价格≥历史星线且量能显著缩减(V2<V1)，二次回踩抛压穷尽，真底确立", DescEN: "Non-consecutive double star: current doji price≥prior doji and volume shrinks (V2<V1), second touch selling exhausted, true bottom"},
 		"VOLUME_STAGNATION_FALSE_BREAKOUT": {NameZH: "放量滞涨诱多", NameEN: "Volume Stagnation False Breakout", DescZH: "非连续双星：当前星线无法突破历史星线高点且量能≥历史(V2≥V1)，同一位置抛压沉重，假突破", DescEN: "Non-consecutive double star: current doji cannot break prior high and volume≥prior (V2≥V1), same level heavy selling, false breakout"},
+		// 孕线、镊子、乌鸦、跳空、三法、Tasuki、弃婴
+		"BULLISH_HARAMI":       {NameZH: "看涨孕线", NameEN: "Bullish Harami", DescZH: "阴线后阳线实体完全位于前一根阴线实体内部，见底反转", DescEN: "Bull candle body fully inside prior bear body, bottom reversal"},
+		"BEARISH_HARAMI":       {NameZH: "看跌孕线", NameEN: "Bearish Harami", DescZH: "阳线后阴线实体完全位于前一根阳线实体内部，见顶反转", DescEN: "Bear candle body fully inside prior bull body, top reversal"},
+		"TWO_CROWS":            {NameZH: "两只乌鸦", NameEN: "Two Crows", DescZH: "阳线后阴线高开于阳实体内部、收盘低于阳收盘，见顶", DescEN: "Bear opens inside prior bull body and closes below prior close, topping"},
+		"TWEEZER_TOP":          {NameZH: "镊子顶", NameEN: "Tweezer Top", DescZH: "两根K线最高价相近、一阳一阴，涨势末端见顶", DescEN: "Two candles same/similar high, bull then bear, topping"},
+		"TWEEZER_BOTTOM":       {NameZH: "镊子底", NameEN: "Tweezer Bottom", DescZH: "两根K线最低价相近、一阴一阳，跌势末端见底", DescEN: "Two candles same/similar low, bear then bull, bottoming"},
+		"CONSECUTIVE_GAP_DOWN": {NameZH: "连续跳空低开", NameEN: "Consecutive Gap Down", DescZH: "多根阴线每根跳空低开，跌势延续", DescEN: "Multiple bearish candles each gap down, continuation"},
+		"UPSIDE_TASUKI_GAP":    {NameZH: "上升跳空并列", NameEN: "Upside Tasuki Gap", DescZH: "阳线跳空高开后第三根阴线部分回补缺口，涨势整理", DescEN: "Bull gap up then bear partially fills gap, bullish consolidation"},
+		"DOWNSIDE_TASUKI_GAP":  {NameZH: "下降跳空并列", NameEN: "Downside Tasuki Gap", DescZH: "阴线跳空低开后第三根阳线部分回补缺口，跌势整理", DescEN: "Bear gap down then bull partially fills gap, bearish consolidation"},
+		"ABANDONED_BABY_BOTTOM": {NameZH: "弃婴底", NameEN: "Abandoned Baby Bottom", DescZH: "阴线+向下跳空十字星+向上跳空阳线，中间星线两侧缺口，强烈见底", DescEN: "Bear+doji gap down+bull gap up, star isolated by gaps, strong bottom"},
+		"ABANDONED_BABY_TOP":   {NameZH: "弃婴顶", NameEN: "Abandoned Baby Top", DescZH: "阳线+向上跳空十字星+向下跳空阴线，强烈见顶", DescEN: "Bull+doji gap up+bear gap down, star isolated, strong top"},
+		"RISING_THREE_METHODS":  {NameZH: "上升三法", NameEN: "Rising Three Methods", DescZH: "大阳+三根小实体在其范围内+大阳突破前高，涨势延续", DescEN: "Big bull+3 small inside range+bull breaks above, continuation"},
+		"FALLING_THREE_METHODS": {NameZH: "下降三法", NameEN: "Falling Three Methods", DescZH: "大阴+三根小实体在其范围内+大阴跌破前低，跌势延续", DescEN: "Big bear+3 small inside range+bear breaks below, continuation"},
 	},
 	"TechnicalSignals": {
 		"GOLDEN_CROSS":       {NameZH: "金叉", NameEN: "Golden Cross", DescZH: "EMA20上穿EMA50，中期看涨信号", DescEN: "EMA20 crosses above EMA50, bullish signal"},
@@ -808,6 +835,8 @@ var SignalDictionary = map[string]map[string]BilingualFieldDef{
 		"FLAT_VOLUME_RALLY":      {NameZH: "平量大涨", NameEN: "Flat Volume Rally", DescZH: "价涨越涨越快、量平或缩，一致看涨、主力锁仓，后市持续拉高", DescEN: "Price up accelerating with flat/shrink volume, lock-in, continuation"},
 		"FLAT_VOLUME_DECLINE":    {NameZH: "平量价缩/平量大跌", NameEN: "Flat Volume Decline", DescZH: "价跌量平或缩，一致看空或下跌中继半山腰，不可抄底", DescEN: "Price down with flat/shrink volume, downtrend continuation, do not catch knife"},
 		"NEUTRAL":                {NameZH: "量价均衡", NameEN: "Neutral", DescZH: "阳线与阴线对应量能相当，多空均衡", DescEN: "Balanced volume on up/down candles"},
+		"TAKER_BUY_DOMINANT":     {NameZH: "主动买盘主导", NameEN: "Taker Buy Dominant", DescZH: "Taker Buy Ratio 近期均值>60%，买盘主动、偏多", DescEN: "Recent avg Taker Buy Ratio >60%, buyers aggressive, bullish bias"},
+		"TAKER_SELL_DOMINANT":    {NameZH: "主动卖盘主导", NameEN: "Taker Sell Dominant", DescZH: "Taker Buy Ratio 近期均值<40%，卖盘主动、偏空", DescEN: "Recent avg Taker Buy Ratio <40%, sellers aggressive, bearish bias"},
 	},
 	"OIPriceSignals": {
 		"LONG_BUILD":  {NameZH: "多头建仓", NameEN: "Long Build", DescZH: "OI↑+价格↑，新多头入场，看涨延续", DescEN: "OI up + Price up, new longs entering, bullish continuation"},

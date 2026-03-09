@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -25,8 +26,9 @@ import (
 // FundingRateCache is the funding rate cache structure
 // Binance Funding Rate only updates every 8 hours, using 1-hour cache can significantly reduce API calls
 type FundingRateCache struct {
-	Rate      float64
-	UpdatedAt time.Time
+	Rate              float64
+	NextFundingTimeMs int64 // 下次资金费结算时间（毫秒），0 表示未知
+	UpdatedAt         time.Time
 }
 
 type TradingFeeRateCache struct {
@@ -271,8 +273,8 @@ func GetWithExchange(symbol, exchange string) (*Data, error) {
 		oiData = &OIData{Latest: 0, Average: 0}
 	}
 
-	// Get Funding Rate (same exchange)
-	fundingRate, _ := getFundingRate(symbol, exchange)
+	// Get Funding Rate and next settlement time (same exchange)
+	fundingRate, nextFundingMs, _ := getFundingRate(symbol, exchange)
 	makerFeeRate, takerFeeRate, feeSource := getTradingFeeRates(symbol)
 
 	// Calculate intraday series data
@@ -282,20 +284,21 @@ func GetWithExchange(symbol, exchange string) (*Data, error) {
 	longerTermData := calculateLongerTermData(klines4h)
 
 	return &Data{
-		Symbol:            symbol,
-		CurrentPrice:      currentPrice,
+		Symbol:             symbol,
+		CurrentPrice:       currentPrice,
 		PriceChange1h:     priceChange1h,
 		PriceChange4h:     priceChange4h,
 		CurrentEMA20:      currentEMA20,
-		CurrentMACD:       currentMACD,
-		CurrentRSI7:       currentRSI7,
-		OpenInterest:      oiData,
-		FundingRate:       fundingRate,
-		MakerFeeRate:      makerFeeRate,
-		TakerFeeRate:      takerFeeRate,
-		FeeSource:         feeSource,
-		IntradaySeries:    intradayData,
-		LongerTermContext: longerTermData,
+		CurrentMACD:        currentMACD,
+		CurrentRSI7:        currentRSI7,
+		OpenInterest:       oiData,
+		FundingRate:        fundingRate,
+		NextFundingTimeMs:  nextFundingMs,
+		MakerFeeRate:       makerFeeRate,
+		TakerFeeRate:       takerFeeRate,
+		FeeSource:          feeSource,
+		IntradaySeries:     intradayData,
+		LongerTermContext:  longerTermData,
 	}, nil
 }
 
@@ -431,27 +434,29 @@ func GetWithTimeframes(symbol string, exchange string, timeframes []string, prim
 		oiData = &OIData{Latest: 0, Average: 0}
 	}
 	var fundingRate float64
+	var nextFundingMs int64
 	if useHyperliquidAPI {
-		fundingRate, _ = getFundingRate(symbol, "binance")
+		fundingRate, nextFundingMs, _ = getFundingRate(symbol, "binance")
 	} else {
-		fundingRate, _ = getFundingRate(symbol, ex)
+		fundingRate, nextFundingMs, _ = getFundingRate(symbol, ex)
 	}
 	makerFeeRate, takerFeeRate, feeSource := getTradingFeeRates(symbol)
 
 	return &Data{
-		Symbol:        symbol,
-		CurrentPrice:  currentPrice,
-		PriceChange1h: priceChange1h,
-		PriceChange4h: priceChange4h,
-		CurrentEMA20:  currentEMA20,
-		CurrentMACD:   currentMACD,
-		CurrentRSI7:   currentRSI7,
-		OpenInterest:  oiData,
-		FundingRate:   fundingRate,
-		MakerFeeRate:  makerFeeRate,
-		TakerFeeRate:  takerFeeRate,
-		FeeSource:     feeSource,
-		TimeframeData: timeframeData,
+		Symbol:             symbol,
+		CurrentPrice:       currentPrice,
+		PriceChange1h:      priceChange1h,
+		PriceChange4h:      priceChange4h,
+		CurrentEMA20:       currentEMA20,
+		CurrentMACD:        currentMACD,
+		CurrentRSI7:        currentRSI7,
+		OpenInterest:       oiData,
+		FundingRate:        fundingRate,
+		NextFundingTimeMs:  nextFundingMs,
+		MakerFeeRate:       makerFeeRate,
+		TakerFeeRate:       takerFeeRate,
+		FeeSource:          feeSource,
+		TimeframeData:      timeframeData,
 	}, nil
 }
 
@@ -989,8 +994,8 @@ func getOpenInterestDataOKX(symbol string) (*OIData, error) {
 	return &OIData{Latest: oi, Average: oi * 0.999}, nil
 }
 
-// getFundingRate retrieves funding rate from the specified exchange (binance, bybit, okx). Empty exchange defaults to binance. Uses 1-hour cache per exchange+symbol.
-func getFundingRate(symbol string, exchange string) (float64, error) {
+// getFundingRate retrieves funding rate and next funding time from the specified exchange (binance, bybit, okx). Empty exchange defaults to binance. Uses 1-hour cache per exchange+symbol.
+func getFundingRate(symbol string, exchange string) (rate float64, nextFundingTimeMs int64, err error) {
 	ex := strings.ToLower(strings.TrimSpace(exchange))
 	if ex == "" {
 		ex = "binance"
@@ -999,106 +1004,120 @@ func getFundingRate(symbol string, exchange string) (float64, error) {
 	if cached, ok := fundingRateMap.Load(cacheKey); ok {
 		cache := cached.(*FundingRateCache)
 		if time.Since(cache.UpdatedAt) < frCacheTTL {
-			return cache.Rate, nil
+			return cache.Rate, cache.NextFundingTimeMs, nil
 		}
 	}
 
-	var rate float64
-	var err error
 	switch ex {
 	case "bybit":
-		rate, err = getFundingRateBybit(symbol)
+		rate, nextFundingTimeMs, err = getFundingRateBybit(symbol)
 	case "okx":
-		rate, err = getFundingRateOKX(symbol)
+		rate, nextFundingTimeMs, err = getFundingRateOKX(symbol)
 	case "binance":
 		fallthrough
 	default:
-		rate, err = getFundingRateBinance(symbol)
+		rate, nextFundingTimeMs, err = getFundingRateBinance(symbol)
 	}
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
-	fundingRateMap.Store(cacheKey, &FundingRateCache{Rate: rate, UpdatedAt: time.Now()})
-	return rate, nil
+	fundingRateMap.Store(cacheKey, &FundingRateCache{Rate: rate, NextFundingTimeMs: nextFundingTimeMs, UpdatedAt: time.Now()})
+	return rate, nextFundingTimeMs, nil
 }
 
-func getFundingRateBinance(symbol string) (float64, error) {
+func getFundingRateBinance(symbol string) (float64, int64, error) {
 	url := fmt.Sprintf("https://fapi.binance.com/fapi/v1/premiumIndex?symbol=%s", symbol)
 	apiClient := NewAPIClient()
 	resp, err := apiClient.client.Get(url)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	var result struct {
-		LastFundingRate string `json:"lastFundingRate"`
+		LastFundingRate   string `json:"lastFundingRate"`
+		NextFundingTime   int64  `json:"nextFundingTime"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
-	return strconv.ParseFloat(result.LastFundingRate, 64)
+	rate, _ := strconv.ParseFloat(result.LastFundingRate, 64)
+	return rate, result.NextFundingTime, nil
 }
 
-func getFundingRateBybit(symbol string) (float64, error) {
+func getFundingRateBybit(symbol string) (float64, int64, error) {
 	url := fmt.Sprintf("https://api.bybit.com/v5/market/tickers?category=linear&symbol=%s", symbol)
 	apiClient := NewAPIClient()
 	resp, err := apiClient.client.Get(url)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	var result struct {
 		RetCode int `json:"retCode"`
 		Result  struct {
 			List []struct {
-				FundingRate string `json:"fundingRate"`
+				FundingRate     string `json:"fundingRate"`
+				NextFundingTime string `json:"nextFundingTime"`
 			} `json:"list"`
 		} `json:"result"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	if result.RetCode != 0 || len(result.Result.List) == 0 {
-		return 0, fmt.Errorf("bybit funding: no data")
+		return 0, 0, fmt.Errorf("bybit funding: no data")
 	}
-	return strconv.ParseFloat(result.Result.List[0].FundingRate, 64)
+	item := result.Result.List[0]
+	rate, _ := strconv.ParseFloat(item.FundingRate, 64)
+	nextMs := int64(0)
+	if item.NextFundingTime != "" {
+		nextMs, _ = strconv.ParseInt(item.NextFundingTime, 10, 64)
+	}
+	return rate, nextMs, nil
 }
 
-func getFundingRateOKX(symbol string) (float64, error) {
+func getFundingRateOKX(symbol string) (float64, int64, error) {
 	base := strings.ReplaceAll(symbol, "USDT", "")
 	instId := base + "-USDT-SWAP"
 	url := fmt.Sprintf("https://www.okx.com/api/v5/public/funding-rate?instId=%s", instId)
 	apiClient := NewAPIClient()
 	resp, err := apiClient.client.Get(url)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	var result struct {
 		Code string `json:"code"`
 		Data []struct {
-			FundingRate string `json:"fundingRate"`
+			FundingRate   string `json:"fundingRate"`
+			NextFundingTime string `json:"nextFundingTime"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	if result.Code != "0" || len(result.Data) == 0 {
-		return 0, fmt.Errorf("okx funding: no data")
+		return 0, 0, fmt.Errorf("okx funding: no data")
 	}
-	return strconv.ParseFloat(result.Data[0].FundingRate, 64)
+	item := result.Data[0]
+	rate, _ := strconv.ParseFloat(item.FundingRate, 64)
+	nextMs := int64(0)
+	if item.NextFundingTime != "" {
+		nextMs, _ = strconv.ParseInt(item.NextFundingTime, 10, 64)
+	}
+	return rate, nextMs, nil
 }
 
 // ExchangeCredentials holds API credentials for fetching trading fees from exchange
@@ -1106,6 +1125,7 @@ type ExchangeCredentials struct {
 	ExchangeType string // "binance", "bybit", "okx", etc.
 	APIKey       string
 	SecretKey    string
+	Passphrase   string // OKX 必填；其他交易所忽略
 }
 
 // getTradingFeeRates is the internal function that uses default credentials (env vars)
@@ -1131,11 +1151,12 @@ func getTradingFeeRatesWithCredentials(symbol string, credentials *ExchangeCrede
 	}
 
 	// Determine API credentials to use
-	var apiKey, apiSecret, exchangeType string
+	var apiKey, apiSecret, exchangeType, passphrase string
 	if credentials != nil && credentials.APIKey != "" && credentials.SecretKey != "" {
 		apiKey = credentials.APIKey
 		apiSecret = credentials.SecretKey
 		exchangeType = credentials.ExchangeType
+		passphrase = credentials.Passphrase
 	} else {
 		// Fallback to environment variables
 		apiKey = strings.TrimSpace(os.Getenv("BINANCE_API_KEY"))
@@ -1162,11 +1183,10 @@ func getTradingFeeRatesWithCredentials(symbol string, credentials *ExchangeCrede
 	switch exchangeType {
 	case "binance":
 		makerRate, takerRate, err = fetchBinanceCommissionRate(symbol, apiKey, apiSecret)
-	// TODO: Add support for other exchanges
-	// case "bybit":
-	//     makerRate, takerRate, err = fetchBybitCommissionRate(symbol, apiKey, apiSecret)
-	// case "okx":
-	//     makerRate, takerRate, err = fetchOKXCommissionRate(symbol, apiKey, apiSecret)
+	case "bybit":
+		makerRate, takerRate, err = fetchBybitCommissionRate(symbol, apiKey, apiSecret)
+	case "okx":
+		makerRate, takerRate, err = fetchOKXCommissionRate(symbol, apiKey, apiSecret, passphrase)
 	default:
 		// For unsupported exchanges, use defaults
 		makerRate, takerRate, source := defaultFeeRates(symbol)
@@ -1269,6 +1289,115 @@ func fetchBinanceCommissionRate(symbol, apiKey, apiSecret string) (float64, floa
 
 	makerRate, _ := strconv.ParseFloat(result.MakerCommissionRate, 64)
 	takerRate, _ := strconv.ParseFloat(result.TakerCommissionRate, 64)
+	return makerRate, takerRate, nil
+}
+
+func fetchBybitCommissionRate(symbol, apiKey, apiSecret string) (float64, float64, error) {
+	queryParams := url.Values{}
+	queryParams.Set("category", "linear")
+	queryParams.Set("symbol", symbol)
+	queryString := queryParams.Encode()
+	urlStr := "https://api.bybit.com/v5/account/fee-rate?" + queryString
+
+	timestamp := fmt.Sprintf("%d", time.Now().UnixMilli())
+	recvWindow := "5000"
+	signPayload := timestamp + apiKey + recvWindow + queryString
+	h := hmac.New(sha256.New, []byte(apiSecret))
+	h.Write([]byte(signPayload))
+	signature := hex.EncodeToString(h.Sum(nil))
+
+	req, err := http.NewRequest("GET", urlStr, nil)
+	if err != nil {
+		return 0, 0, err
+	}
+	req.Header.Set("X-BAPI-API-KEY", apiKey)
+	req.Header.Set("X-BAPI-SIGN", signature)
+	req.Header.Set("X-BAPI-SIGN-TYPE", "2")
+	req.Header.Set("X-BAPI-TIMESTAMP", timestamp)
+	req.Header.Set("X-BAPI-RECV-WINDOW", recvWindow)
+
+	apiClient := NewAPIClient()
+	resp, err := apiClient.client.Do(req)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, 0, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return 0, 0, fmt.Errorf("bybit fee-rate api status %d: %s", resp.StatusCode, string(body))
+	}
+	var result struct {
+		RetCode int `json:"retCode"`
+		Result  struct {
+			List []struct {
+				MakerFeeRate string `json:"makerFeeRate"`
+				TakerFeeRate string `json:"takerFeeRate"`
+			} `json:"list"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return 0, 0, err
+	}
+	if result.RetCode != 0 || len(result.Result.List) == 0 {
+		return 0, 0, fmt.Errorf("bybit fee-rate: no data")
+	}
+	makerRate, _ := strconv.ParseFloat(result.Result.List[0].MakerFeeRate, 64)
+	takerRate, _ := strconv.ParseFloat(result.Result.List[0].TakerFeeRate, 64)
+	return makerRate, takerRate, nil
+}
+
+func fetchOKXCommissionRate(symbol, apiKey, apiSecret, passphrase string) (float64, float64, error) {
+	// GET /api/v5/account/trade-fee?instType=SWAP
+	path := "/api/v5/account/trade-fee?instType=SWAP"
+	urlStr := "https://www.okx.com" + path
+
+	timestamp := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+	preHash := timestamp + "GET" + path + ""
+	h := hmac.New(sha256.New, []byte(apiSecret))
+	h.Write([]byte(preHash))
+	signature := base64.StdEncoding.EncodeToString(h.Sum(nil))
+
+	req, err := http.NewRequest("GET", urlStr, nil)
+	if err != nil {
+		return 0, 0, err
+	}
+	req.Header.Set("OK-ACCESS-KEY", apiKey)
+	req.Header.Set("OK-ACCESS-SIGN", signature)
+	req.Header.Set("OK-ACCESS-TIMESTAMP", timestamp)
+	req.Header.Set("OK-ACCESS-PASSPHRASE", passphrase)
+	req.Header.Set("Content-Type", "application/json")
+
+	apiClient := NewAPIClient()
+	resp, err := apiClient.client.Do(req)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, 0, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return 0, 0, fmt.Errorf("okx trade-fee api status %d: %s", resp.StatusCode, string(body))
+	}
+	var result struct {
+		Code string `json:"code"`
+		Data []struct {
+			MakerU string `json:"makerU"`
+			TakerU string `json:"takerU"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return 0, 0, err
+	}
+	if result.Code != "0" || len(result.Data) == 0 {
+		return 0, 0, fmt.Errorf("okx trade-fee: no data")
+	}
+	makerRate, _ := strconv.ParseFloat(result.Data[0].MakerU, 64)
+	takerRate, _ := strconv.ParseFloat(result.Data[0].TakerU, 64)
 	return makerRate, takerRate, nil
 }
 

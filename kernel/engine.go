@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"nofx/logger"
 	"nofx/market"
@@ -2359,18 +2360,21 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 		for _, tf := range timeframes {
 			if tfData, ok := data.TimeframeData[tf]; ok {
 				sb.WriteString(fmt.Sprintf("=== %s Timeframe (oldest → latest) ===\n\n", strings.ToUpper(tf)))
-				e.formatTimeframeSeriesData(&sb, tfData, indicators, tf)
+				e.formatTimeframeSeriesData(&sb, tfData, indicators, tf, data)
 			}
 		}
 
-		// Multi-timeframe resonance analysis
+		// Multi-timeframe resonance analysis (weighted: 4h > 1h > 15m)
 		if len(timeframes) >= 2 {
+			var bullWeight, bearWeight, totalWeight float64
 			bullish, bearish, total := 0, 0, 0
 			for _, tf := range timeframes {
 				tfData, ok := data.TimeframeData[tf]
 				if !ok || len(tfData.Klines) < 3 {
 					continue
 				}
+				w := TimeframeResonanceWeight(tf)
+				totalWeight += w
 				total++
 				kls := tfData.Klines
 				latest := kls[len(kls)-1].Close
@@ -2382,20 +2386,34 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 				priceBull := latest > oldest
 				if priceBull && emaBull {
 					bullish++
+					bullWeight += w
 				} else if !priceBull && !emaBull {
 					bearish++
+					bearWeight += w
 				}
 			}
 			if total >= 2 {
 				resonance := ""
-				if bullish == total {
-					resonance = fmt.Sprintf("BULLISH_RESONANCE (%d/%d TF aligned bullish)", bullish, total)
-				} else if bearish == total {
-					resonance = fmt.Sprintf("BEARISH_RESONANCE (%d/%d TF aligned bearish)", bearish, total)
-				} else if bullish > 0 && bearish > 0 {
-					resonance = fmt.Sprintf("DIVERGENCE (bull:%d bear:%d of %d TF - conflicting, caution)", bullish, bearish, total)
+				if totalWeight > 0 {
+					if bullWeight >= totalWeight*0.7 {
+						resonance = fmt.Sprintf("BULLISH_RESONANCE (weighted %.0f/%.0f, 4h>1h>15m)", bullWeight, totalWeight)
+					} else if bearWeight >= totalWeight*0.7 {
+						resonance = fmt.Sprintf("BEARISH_RESONANCE (weighted %.0f/%.0f, 4h>1h>15m)", bearWeight, totalWeight)
+					} else if bullWeight > 0 && bearWeight > 0 {
+						resonance = fmt.Sprintf("DIVERGENCE (bull:%.0f bear:%.0f of %.0f - conflicting, caution)", bullWeight, bearWeight, totalWeight)
+					} else {
+						resonance = fmt.Sprintf("MIXED (bull:%d bear:%d neutral:%d)", bullish, bearish, total-bullish-bearish)
+					}
 				} else {
-					resonance = fmt.Sprintf("MIXED (bull:%d bear:%d neutral:%d)", bullish, bearish, total-bullish-bearish)
+					if bullish == total {
+						resonance = fmt.Sprintf("BULLISH_RESONANCE (%d/%d TF aligned bullish)", bullish, total)
+					} else if bearish == total {
+						resonance = fmt.Sprintf("BEARISH_RESONANCE (%d/%d TF aligned bearish)", bearish, total)
+					} else if bullish > 0 && bearish > 0 {
+						resonance = fmt.Sprintf("DIVERGENCE (bull:%d bear:%d of %d TF - conflicting, caution)", bullish, bearish, total)
+					} else {
+						resonance = fmt.Sprintf("MIXED (bull:%d bear:%d neutral:%d)", bullish, bearish, total-bullish-bearish)
+					}
 				}
 				if lang == LangChinese {
 					sb.WriteString(fmt.Sprintf("多周期共振: %s\n\n", resonance))
@@ -2471,7 +2489,7 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 	return sb.String()
 }
 
-func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *market.TimeframeSeriesData, indicators store.IndicatorConfig, timeframe string) {
+func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *market.TimeframeSeriesData, indicators store.IndicatorConfig, timeframe string, fullData *market.Data) {
 	lang := e.GetLanguage()
 	// 优化版摘要：平衡决策质量与token消耗
 	klines := data.Klines
@@ -2493,6 +2511,9 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 			totalVolume += k.Volume
 		}
 		avgVolume := totalVolume / float64(len(klines))
+
+		// 支撑/阻力预处理（前高前低、斐波那契、整数关、量能密集区），供下方关键价位与 Key Levels 使用
+		sr := ComputeSupportResistance(klines, latest.Close)
 
 		// 计算价格变化
 		priceChange := ((latest.Close - oldest.Close) / oldest.Close) * 100
@@ -2569,13 +2590,37 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 			fmtPrice(latest.Close), fmtPrice(maxPrice), fmtPrice(minPrice),
 			priceChange, trend, trendStrength))
 
-		// 近期关键价位（支撑/阻力），便于买卖点参考
+		// 近期关键价位（支撑/阻力）：区间最高/最低 + 细档位（前高前低、斐波那契、整数关、量能密集区）
 		if lang == LangChinese {
 			sb.WriteString(fmt.Sprintf("关键价位(近期区间): 阻力 %s | 支撑 %s\n",
-				fmtPrice(maxPrice), fmtPrice(minPrice)))
+				fmtPrice(sr.RangeHigh), fmtPrice(sr.RangeLow)))
 		} else {
 			sb.WriteString(fmt.Sprintf("Key levels (recent range): Resistance %s | Support %s\n",
-				fmtPrice(maxPrice), fmtPrice(minPrice)))
+				fmtPrice(sr.RangeHigh), fmtPrice(sr.RangeLow)))
+		}
+		if len(sr.Resistances) > 0 || len(sr.Supports) > 0 {
+			var rParts, sParts []string
+			for _, r := range sr.Resistances {
+				rParts = append(rParts, fmt.Sprintf("%s(%s)", fmtPrice(r.Price), r.Label))
+			}
+			for _, s := range sr.Supports {
+				sParts = append(sParts, fmt.Sprintf("%s(%s)", fmtPrice(s.Price), s.Label))
+			}
+			if lang == LangChinese {
+				sb.WriteString("关键价位(细): ")
+			} else {
+				sb.WriteString("Key levels (detail): ")
+			}
+			if len(rParts) > 0 {
+				sb.WriteString("R: " + strings.Join(rParts, " "))
+			}
+			if len(sParts) > 0 {
+				if len(rParts) > 0 {
+					sb.WriteString(" | ")
+				}
+				sb.WriteString("S: " + strings.Join(sParts, " "))
+			}
+			sb.WriteString("\n")
 		}
 
 		// 显示最近10根K线（提供完整形态与量价上下文，便于买卖点判断）
@@ -2639,17 +2684,18 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 			}
 		}
 
-		// K线组合形态识别（完整清单见 kernel/candlestick.go），提示词双语且形态名与字典对应
+		// K线组合形态识别（完整清单见 kernel/candlestick.go），提示词双语且形态名与字典对应；4h>1h>15m 权重降短周期噪音
 		patterns := DetectCandlestickPatterns(klines, trend)
 		if len(patterns) > 0 {
 			displayNames := make([]string, len(patterns))
 			for i, code := range patterns {
 				displayNames[i] = GetSignalDisplayName("CandlestickPatterns", code, lang)
 			}
+			weightHint := TimeframePatternWeightLabel(timeframe, lang == LangChinese)
 			if lang == LangChinese {
-				sb.WriteString(fmt.Sprintf("形态: %s\n", strings.Join(displayNames, ", ")))
+				sb.WriteString(fmt.Sprintf("形态: %s%s\n", strings.Join(displayNames, ", "), weightHint))
 			} else {
-				sb.WriteString(fmt.Sprintf("Patterns: %s\n", strings.Join(displayNames, ", ")))
+				sb.WriteString(fmt.Sprintf("Patterns: %s%s\n", strings.Join(displayNames, ", "), weightHint))
 			}
 		}
 
@@ -2665,18 +2711,76 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 			}
 		}
 
-		// === 分时摘要（短周期：按根数/按分钟两套斜率 + ATR 归一化，供观察员），提示词双语 ===
+		// === 分时摘要（短周期：多 lookback 5/10/20 + 斜率/量价/多空 TB 区分），提示词双语 ===
 		if IsShortTimeframe(timeframe) && len(klines) >= 2 {
 			atr := float64(0)
 			if data != nil && data.ATR14 > 0 {
 				atr = data.ATR14
 			}
-			if summary, ok := ComputeIntradaySummary(klines, 10, timeframe, atr); ok {
-				sb.WriteString(FormatIntradaySummaryForPrompt(summary, lang == LangChinese))
-				if summary.StrongBuy {
-					sb.WriteString(" [STRONG_BUY]")
+			for _, lb := range []int{5, 10, 20} {
+				if len(klines) < lb {
+					continue
 				}
-				sb.WriteString("\n")
+				if summary, ok := ComputeIntradaySummary(klines, lb, timeframe, atr); ok {
+					if lang == LangChinese {
+						sb.WriteString(fmt.Sprintf("分时(L%d): ", lb))
+					} else {
+						sb.WriteString(fmt.Sprintf("Intraday(L%d): ", lb))
+					}
+					sb.WriteString(FormatIntradaySummaryForPrompt(summary, lang == LangChinese))
+					if summary.StrongBuy {
+						sb.WriteString(" [STRONG_BUY]")
+					}
+					sb.WriteString("\n")
+				}
+			}
+			// 方案A：分时旁补充合约语境（距下次资金费、OI/爆仓/多空比一句），便于综合判断
+			if fullData != nil {
+				var parts []string
+				if fullData.NextFundingTimeMs > 0 {
+					nowMs := time.Now().UTC().UnixMilli()
+					minLeft := (fullData.NextFundingTimeMs - nowMs) / 60000
+					if minLeft < 0 {
+						minLeft = 0
+					}
+					if lang == LangChinese {
+						parts = append(parts, fmt.Sprintf("距下次资金费 %d 分钟", minLeft))
+					} else {
+						parts = append(parts, fmt.Sprintf("%d min to next funding", minLeft))
+					}
+				}
+				if fullData.OpenInterest != nil && fullData.OpenInterest.Latest > 0 {
+					oiChg := 0.0
+					if fullData.OpenInterest.Average > 0 {
+						oiChg = ((fullData.OpenInterest.Latest - fullData.OpenInterest.Average) / fullData.OpenInterest.Average) * 100
+					}
+					if lang == LangChinese {
+						parts = append(parts, fmt.Sprintf("OI %+.1f%%", oiChg))
+					} else {
+						parts = append(parts, fmt.Sprintf("OI %+.1f%%", oiChg))
+					}
+				}
+				if fullData.LiquidationData != nil && (fullData.LiquidationData.Liq1hTotal > 0 || fullData.LiquidationData.Liq24hTotal > 0) {
+					if lang == LangChinese {
+						parts = append(parts, "有爆仓数据")
+					} else {
+						parts = append(parts, "liquidation data available")
+					}
+				}
+				if fullData.LongShortRatio != nil && fullData.LongShortRatio.Ratio > 0 {
+					if lang == LangChinese {
+						parts = append(parts, fmt.Sprintf("多空比 %.2f", fullData.LongShortRatio.Ratio))
+					} else {
+						parts = append(parts, fmt.Sprintf("long/short ratio %.2f", fullData.LongShortRatio.Ratio))
+					}
+				}
+				if len(parts) > 0 {
+					if lang == LangChinese {
+						sb.WriteString("合约语境：" + strings.Join(parts, "；") + "；上述分时为短周期动量，需结合本段综合判断。\n")
+					} else {
+						sb.WriteString("Contract context: " + strings.Join(parts, "; ") + "; intraday above is short-TF momentum, use with contract data.\n")
+					}
+				}
 			}
 		}
 
@@ -3058,29 +3162,28 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 		}
 	}
 
-	// Key Price Levels: consolidate EMA/BOLL/recent range into structured support/resistance
+	// Key Price Levels: consolidate range, pivot/Fib/round/VP, EMA, BOLL into structured support/resistance
 	if currentPrice > 0 && len(klines) > 0 {
 		type priceLevel struct {
 			price float64
 			label string
 		}
 		var supports, resistances []priceLevel
+		srLevels := ComputeSupportResistance(klines, currentPrice)
 
-		// Recalculate range from klines for this scope
-		rangeHigh, rangeLow := klines[0].High, klines[0].Low
-		for _, k := range klines {
-			if k.High > rangeHigh {
-				rangeHigh = k.High
-			}
-			if k.Low < rangeLow {
-				rangeLow = k.Low
-			}
+		// 近期区间
+		if srLevels.RangeHigh > currentPrice {
+			resistances = append(resistances, priceLevel{srLevels.RangeHigh, "Range High"})
 		}
-		if rangeHigh > currentPrice {
-			resistances = append(resistances, priceLevel{rangeHigh, "Range High"})
+		if srLevels.RangeLow < currentPrice && srLevels.RangeLow > 0 {
+			supports = append(supports, priceLevel{srLevels.RangeLow, "Range Low"})
 		}
-		if rangeLow < currentPrice && rangeLow > 0 {
-			supports = append(supports, priceLevel{rangeLow, "Range Low"})
+		// 前高前低、斐波那契、整数关、量能密集区（预处理已去重）
+		for _, r := range srLevels.Resistances {
+			resistances = append(resistances, priceLevel{r.Price, r.Label})
+		}
+		for _, s := range srLevels.Supports {
+			supports = append(supports, priceLevel{s.Price, s.Label})
 		}
 
 		// EMA levels
@@ -3112,6 +3215,29 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 				supports = append(supports, priceLevel{lower, "BOLL Lower"})
 			}
 		}
+
+		// 合并相近价位（0.2% 容差），避免重复显示
+		dedupeNear := func(levels []priceLevel, desc bool) []priceLevel {
+			if len(levels) <= 1 {
+				return levels
+			}
+			if desc {
+				sort.Slice(levels, func(i, j int) bool { return levels[i].price > levels[j].price })
+			} else {
+				sort.Slice(levels, func(i, j int) bool { return levels[i].price < levels[j].price })
+			}
+			out := levels[:1]
+			for i := 1; i < len(levels); i++ {
+				last := out[len(out)-1].price
+				if last <= 0 || math.Abs(levels[i].price-last)/last <= 0.002 {
+					continue
+				}
+				out = append(out, levels[i])
+			}
+			return out
+		}
+		supports = dedupeNear(supports, true)
+		resistances = dedupeNear(resistances, false)
 
 		// Sort and format (supports descending = nearest first, resistances ascending = nearest first)
 		if len(supports) > 0 || len(resistances) > 0 {

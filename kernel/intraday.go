@@ -50,6 +50,8 @@ type IntradaySummary struct {
 	MatchType          string  // 量价匹配度 code: aligned|divergence|volume_drop|panic|shrink_down|""
 	Conclusion         string  // 一句结论（中文，兼容；展示时按 lang 由 buildIntradayConclusion 生成）
 	StrongBuy          bool    // 是否触发强力买入（用 CanonicalSlopeSignal 判陡峭 + 放量）
+	StrongSell         bool    // 是否触发强力卖出（陡峭下行 + 放量或主动卖盘主导）
+	AvgTakerBuyRatio   float64 // 窗口内 Taker Buy Ratio 均值，>0.6 偏多 <0.4 偏空
 }
 
 // ComputeIntradaySummary 基于短周期 K 线计算分时斜率、动量与量价匹配度（参考量价交易宝典）
@@ -174,8 +176,23 @@ func ComputeIntradaySummary(klines []market.KlineBar, lookback int, timeframe st
 	avgVol := volSum / float64(m)
 	strongBuy := canonicalSlopeSignal == "steep_up" && cur.Volume > avgVol
 
+	// Taker Buy Ratio 窗口均值（多空区分）
+	var tbSum float64
+	var tbCount int
+	for _, k := range window {
+		if k.TakerBuyRatio > 0 {
+			tbSum += k.TakerBuyRatio
+			tbCount++
+		}
+	}
+	avgTB := 0.0
+	if tbCount > 0 {
+		avgTB = tbSum / float64(tbCount)
+	}
+	strongSell := canonicalSlopeSignal == "steep_down" && (cur.Volume > avgVol || (avgTB > 0 && avgTB < 0.4))
+
 	// 结论句（中文兼容；展示时由 FormatIntradaySummaryForPrompt 按 lang 再生成）
-	conclusion := buildIntradayConclusion(canonicalSlopeSignal, matchType, strongBuy, slopePerBar, pm, vm, true)
+	conclusion := buildIntradayConclusion(canonicalSlopeSignal, matchType, strongBuy, strongSell, slopePerBar, pm, vm, true)
 
 	return &IntradaySummary{
 		Slope:                slopePerBar,
@@ -191,6 +208,8 @@ func ComputeIntradaySummary(klines []market.KlineBar, lookback int, timeframe st
 		MatchType:            matchType,
 		Conclusion:           conclusion,
 		StrongBuy:            strongBuy,
+		StrongSell:           strongSell,
+		AvgTakerBuyRatio:     avgTB,
 	}, true
 }
 
@@ -227,7 +246,7 @@ func getIntradayMatchTypeDisplay(code string, langZH bool) string {
 	}
 }
 
-func buildIntradayConclusion(slopeSignal, matchTypeCode string, strongBuy bool, slope, pm, vm float64, langZH bool) string {
+func buildIntradayConclusion(slopeSignal, matchTypeCode string, strongBuy, strongSell bool, slope, pm, vm float64, langZH bool) string {
 	var parts []string
 	if langZH {
 		if slopeSignal == "steep_up" {
@@ -242,6 +261,9 @@ func buildIntradayConclusion(slopeSignal, matchTypeCode string, strongBuy bool, 
 		}
 		if strongBuy {
 			parts = append(parts, "强力买入信号")
+		}
+		if strongSell {
+			parts = append(parts, "强力卖出信号")
 		}
 		if len(parts) == 0 {
 			return "分时无显著信号"
@@ -261,6 +283,9 @@ func buildIntradayConclusion(slopeSignal, matchTypeCode string, strongBuy bool, 
 	}
 	if strongBuy {
 		parts = append(parts, "strong buy signal")
+	}
+	if strongSell {
+		parts = append(parts, "strong sell signal")
 	}
 	if len(parts) == 0 {
 		return "no significant intraday signal"
@@ -297,11 +322,27 @@ func FormatIntradaySummaryForPrompt(s *IntradaySummary, langZH bool) string {
 		}
 	}
 	matchDisplay := getIntradayMatchTypeDisplay(s.MatchType, langZH)
-	conclusionStr := buildIntradayConclusion(s.CanonicalSlopeSignal, s.MatchType, s.StrongBuy, s.SlopePerBar, s.PriceMomentum, s.VolumeMomentum, langZH)
+	conclusionStr := buildIntradayConclusion(s.CanonicalSlopeSignal, s.MatchType, s.StrongBuy, s.StrongSell, s.SlopePerBar, s.PriceMomentum, s.VolumeMomentum, langZH)
+	// 多空区分：Taker Buy Ratio 均值 >0.6 偏多 <0.4 偏空
+	biasStr := ""
+	if s.AvgTakerBuyRatio > 0 {
+		if s.AvgTakerBuyRatio >= 0.6 {
+			biasStr = " [偏多/TB↑]"
+		} else if s.AvgTakerBuyRatio <= 0.4 {
+			biasStr = " [偏空/TB↓]"
+		}
+	}
 	if langZH {
-		main += fmt.Sprintf(" | PM=%.4f VM=%.0f 量价%s | 决策=%s | %s", s.PriceMomentum, s.VolumeMomentum, matchDisplay, s.CanonicalSlopeSignal, conclusionStr)
+		main += fmt.Sprintf(" | PM=%.4f VM=%.0f 量价%s | 决策=%s%s | %s", s.PriceMomentum, s.VolumeMomentum, matchDisplay, s.CanonicalSlopeSignal, biasStr, conclusionStr)
 	} else {
-		main += fmt.Sprintf(" | PM=%.4f VM=%.0f match=%s | canonical=%s | %s", s.PriceMomentum, s.VolumeMomentum, matchDisplay, s.CanonicalSlopeSignal, conclusionStr)
+		main += fmt.Sprintf(" | PM=%.4f VM=%.0f match=%s | canonical=%s%s | %s", s.PriceMomentum, s.VolumeMomentum, matchDisplay, s.CanonicalSlopeSignal, biasStr, conclusionStr)
+	}
+	if s.StrongSell {
+		if langZH {
+			main += " [STRONG_SELL]"
+		} else {
+			main += " [STRONG_SELL]"
+		}
 	}
 	return main
 }
@@ -313,4 +354,41 @@ func IsShortTimeframe(tf string) bool {
 		return true
 	}
 	return false
+}
+
+// TimeframePatternWeightLabel 返回周期形态权重提示（4h>1h>15m，长周期噪音小、更可靠）
+func TimeframePatternWeightLabel(tf string, langZH bool) string {
+	switch strings.ToLower(strings.TrimSpace(tf)) {
+	case "4h":
+		if langZH {
+			return " [形态权重:高]"
+		}
+		return " [pattern weight: high]"
+	case "1h", "2h":
+		if langZH {
+			return " [形态权重:中]"
+		}
+		return " [pattern weight: mid]"
+	case "15m", "30m":
+		if langZH {
+			return " [形态权重:低/短周期]"
+		}
+		return " [pattern weight: low/short-TF]"
+	default:
+		return ""
+	}
+}
+
+// TimeframeResonanceWeight 多周期共振权重（4h>1h>15m），用于加权共振判断
+func TimeframeResonanceWeight(tf string) float64 {
+	switch strings.ToLower(strings.TrimSpace(tf)) {
+	case "4h":
+		return 3.0
+	case "1h", "2h":
+		return 2.0
+	case "15m", "30m":
+		return 1.0
+	default:
+		return 1.0
+	}
 }

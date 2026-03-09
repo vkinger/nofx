@@ -11,9 +11,10 @@ type Data struct {
 	CurrentEMA20      float64
 	CurrentMACD       float64
 	CurrentRSI7       float64
-	OpenInterest      *OIData
-	FundingRate       float64
-	MakerFeeRate      float64 // Maker fee rate (decimal, e.g. 0.0002 = 0.02%)
+	OpenInterest       *OIData
+	FundingRate        float64
+	NextFundingTimeMs  int64   // 下次资金费结算时间（毫秒时间戳），0 表示未知
+	MakerFeeRate       float64 // Maker fee rate (decimal, e.g. 0.0002 = 0.02%)
 	TakerFeeRate      float64 // Taker fee rate (decimal, e.g. 0.0004 = 0.04%)
 	FeeSource         string  // fee source: "exchange" or "default"
 	IntradaySeries    *IntradayData
