@@ -11,8 +11,8 @@ import (
 
 const (
 	PendingStatusPendingAudit = "pending_audit" // 待审计
-	PendingStatusApproved     = "approved"     // 已通过，已执行或待执行
-	PendingStatusRejected     = "rejected"     // 已驳回
+	PendingStatusApproved     = "approved"      // 已通过，已执行或待执行
+	PendingStatusRejected     = "rejected"      // 已驳回
 )
 
 // AgentPendingDecisionDB 待执行决策表

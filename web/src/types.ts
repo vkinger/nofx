@@ -106,6 +106,10 @@ export interface DecisionRecord {
   analyst_report_id?: number
   pending_decision_id?: number
   compliance_audit_id?: number
+  /** 风控状态：pending_audit / approved / rejected（仅走风控时有值） */
+  compliance_status?: string
+  /** 风控驳回原因（仅 rejected 时有值） */
+  reject_reason?: string
 }
 
 /** P4-3 轮次列表响应（分析师→决策→审计 按轮查看） */
@@ -132,6 +136,13 @@ export interface AgentAnalystReport {
   created_at: string
 }
 
+/** 单条决策的审计结果（单条审批） */
+export interface DecisionAuditItem {
+  index: number
+  approved: boolean
+  reason: string
+}
+
 /** 风控审计（agent_compliance_audits） */
 export interface ComplianceAudit {
   id: number
@@ -140,6 +151,8 @@ export interface ComplianceAudit {
   approved: boolean
   reason: string
   violations_json: string
+  /** 单条审批 JSON 数组 */
+  decisions_audit_json?: string
   system_prompt?: string
   user_prompt?: string
   created_at: string
@@ -150,6 +163,8 @@ export interface RoundDetailResponse {
   decision_record: DecisionRecord
   analyst_report?: AgentAnalystReport
   compliance_audit?: ComplianceAudit
+  /** 本轮待执行决策原始列表（与 decisions_audit 下标对应），来自 pending */
+  pending_decisions?: Record<string, unknown>[]
 }
 
 export interface Statistics {

@@ -20,9 +20,10 @@ ALTER TABLE agent_analyst_reports ADD COLUMN IF NOT EXISTS symbol varchar(255) D
 ALTER TABLE agent_analyst_reports ADD COLUMN IF NOT EXISTS system_prompt text DEFAULT '';
 ALTER TABLE agent_analyst_reports ADD COLUMN IF NOT EXISTS user_prompt text DEFAULT '';
 
--- agent_compliance_audits: 风控官 系统/用户 提示词（单轮详情展示）
+-- agent_compliance_audits: 风控官 系统/用户 提示词；单条审批 JSON（单轮详情展示）
 ALTER TABLE agent_compliance_audits ADD COLUMN IF NOT EXISTS system_prompt text DEFAULT '';
 ALTER TABLE agent_compliance_audits ADD COLUMN IF NOT EXISTS user_prompt text DEFAULT '';
+ALTER TABLE agent_compliance_audits ADD COLUMN IF NOT EXISTS decisions_audit_json text DEFAULT '';
 
 -- agent_pending_decisions: 策略与分析师报告关联
 ALTER TABLE agent_pending_decisions ADD COLUMN IF NOT EXISTS strategy_id varchar(255) DEFAULT '';

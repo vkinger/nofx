@@ -285,7 +285,7 @@ export function DecisionCard({ decision, language, onSymbolClick, onViewRoundDet
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {onViewRoundDetail && (decision.id != null) && (
             <button
               type="button"
@@ -299,6 +299,28 @@ export function DecisionCard({ decision, language, onSymbolClick, onViewRoundDet
             >
               {t('roundDetailView', language)}
             </button>
+          )}
+          {/* 风控审计状态（Agent 流程） */}
+          {(decision.compliance_status || decision.pending_decision_id) && (
+            <div
+              className="px-2.5 py-1 rounded-full text-xs font-medium"
+              style={
+                decision.compliance_status === 'rejected'
+                  ? { background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)' }
+                  : decision.compliance_status === 'approved'
+                    ? { background: 'rgba(34, 197, 94, 0.2)', color: '#22c55e', border: '1px solid rgba(34, 197, 94, 0.3)' }
+                    : { background: 'rgba(234, 179, 8, 0.2)', color: '#eab308', border: '1px solid rgba(234, 179, 8, 0.3)' }
+              }
+              title={decision.compliance_status === 'rejected' && decision.reject_reason ? decision.reject_reason : undefined}
+            >
+              {decision.compliance_status === 'pending_audit'
+                ? (language === 'zh' ? '待审计' : 'Pending')
+                : decision.compliance_status === 'approved'
+                  ? (language === 'zh' ? '已通过' : 'Approved')
+                  : decision.compliance_status === 'rejected'
+                    ? (language === 'zh' ? '已驳回' : 'Rejected')
+                    : (language === 'zh' ? '风控' : 'Compliance')}
+            </div>
           )}
           <div
             className="px-4 py-1.5 rounded-full text-xs font-bold tracking-wider"

@@ -343,14 +343,22 @@ func (a *QwenAgent) ChatWithModel(ctx context.Context, model, prompt string) (*C
 	return &result, nil
 }
 
-// GetContent 从响应中获取内容。当 content 为空时使用 reasoning_content（兼容 qwen3.5 等返回 reasoning_content 的格式）。
+// GetContent 从响应中获取内容。合并 content 与 reasoning_content，兼容 agent 模式从任一部分解析。
 func (r *ChatCompletionResponse) GetContent() string {
 	if len(r.Choices) == 0 {
 		return ""
 	}
 	msg := &r.Choices[0].Message
-	if msg.Content != "" {
-		return msg.Content
+	return mergeContentAndReasoning(msg.Content, msg.ReasoningContent)
+}
+
+func mergeContentAndReasoning(content, reasoningContent string) string {
+	var parts []string
+	if reasoningContent != "" {
+		parts = append(parts, strings.TrimSpace(reasoningContent))
 	}
-	return msg.ReasoningContent
+	if content != "" {
+		parts = append(parts, strings.TrimSpace(content))
+	}
+	return strings.TrimSpace(strings.Join(parts, "\n\n"))
 }

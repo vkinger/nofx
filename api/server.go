@@ -906,7 +906,7 @@ func (s *Server) handleUpdateTrader(c *gin.Context) {
 		UseAnalystFlow:       useAnalystFlow,
 		UseComplianceFlow:    useComplianceFlow,
 		AnalystModelID:       analystModelID,
-		ComplianceModelID:   complianceModelID,
+		ComplianceModelID:    complianceModelID,
 		IsRunning:            existingTrader.IsRunning, // Keep original value
 	}
 
@@ -3091,6 +3091,19 @@ func (s *Server) handleLatestDecisions(c *gin.Context) {
 		}
 	}
 
+	// 为走风控的决策补充审计状态（compliance_status / reject_reason）
+	for _, rec := range records {
+		if rec.PendingDecisionID == 0 {
+			continue
+		}
+		pending, err := s.store.AgentPending().GetByID(rec.PendingDecisionID)
+		if err != nil {
+			continue
+		}
+		rec.ComplianceStatus = pending.Status
+		rec.RejectReason = pending.RejectReason
+	}
+
 	c.JSON(http.StatusOK, records)
 }
 
@@ -3124,6 +3137,17 @@ func (s *Server) handleRoundsList(c *gin.Context) {
 	if err != nil {
 		SafeInternalError(c, "List rounds", err)
 		return
+	}
+	for _, rec := range records {
+		if rec.PendingDecisionID == 0 {
+			continue
+		}
+		pending, err := s.store.AgentPending().GetByID(rec.PendingDecisionID)
+		if err != nil {
+			continue
+		}
+		rec.ComplianceStatus = pending.Status
+		rec.RejectReason = pending.RejectReason
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"list":      records,
@@ -3161,6 +3185,12 @@ func (s *Server) handleRoundDetail(c *gin.Context) {
 		SafeBadRequest(c, "Round does not belong to this trader")
 		return
 	}
+	if rec.PendingDecisionID > 0 {
+		if pending, err := s.store.AgentPending().GetByID(rec.PendingDecisionID); err == nil {
+			rec.ComplianceStatus = pending.Status
+			rec.RejectReason = pending.RejectReason
+		}
+	}
 	out := gin.H{"decision_record": rec}
 	if rec.AnalystReportID > 0 {
 		if ar, err := st.AgentBlackboard().GetAnalystReportByID(rec.AnalystReportID); err == nil {
@@ -3170,15 +3200,24 @@ func (s *Server) handleRoundDetail(c *gin.Context) {
 	if rec.ComplianceAuditID > 0 {
 		if audit, err := st.AgentCompliance().GetByID(rec.ComplianceAuditID); err == nil {
 			out["compliance_audit"] = gin.H{
-				"id":               audit.ID,
-				"pending_id":       audit.PendingID,
-				"trader_id":        audit.TraderID,
-				"approved":         audit.Approved,
-				"reason":           audit.Reason,
-				"violations_json":  audit.ViolationsJSON,
-				"system_prompt":    audit.SystemPrompt,
-				"user_prompt":      audit.UserPrompt,
-				"created_at":       audit.CreatedAt,
+				"id":                   audit.ID,
+				"pending_id":           audit.PendingID,
+				"trader_id":            audit.TraderID,
+				"approved":             audit.Approved,
+				"reason":               audit.Reason,
+				"violations_json":     audit.ViolationsJSON,
+				"decisions_audit_json": audit.DecisionsAuditJSON,
+				"system_prompt":       audit.SystemPrompt,
+				"user_prompt":         audit.UserPrompt,
+				"created_at":           audit.CreatedAt,
+			}
+		}
+	}
+	if rec.PendingDecisionID > 0 {
+		if pending, err := s.store.AgentPending().GetByID(rec.PendingDecisionID); err == nil && pending.DecisionsJSON != "" {
+			var pendingList []map[string]interface{}
+			if json.Unmarshal([]byte(pending.DecisionsJSON), &pendingList) == nil {
+				out["pending_decisions"] = pendingList
 			}
 		}
 	}

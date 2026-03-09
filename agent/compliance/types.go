@@ -16,6 +16,7 @@ type ComplianceInput struct {
 	AnalystBias string            `json:"analyst_bias,omitempty"`  // 可选：本轮分析师偏向，用于高风险判断
 	AnalystConfidence int         `json:"analyst_confidence,omitempty"`
 	MarketType string             `json:"market_type,omitempty"`   // P3-1: crypto_perpetual | crypto_spot，影响提示与规则侧重
+	Language   string             `json:"language,omitempty"`       // "zh" 中文 / "en" 英文，用于系统与用户提示词双语
 }
 
 // AccountSnapshot 账户快照（与 store.AccountSnapshot 对齐）
@@ -90,14 +91,23 @@ func ApplyMarketTypeToComplianceRules(r *ComplianceRules, marketType string) {
 	}
 }
 
-// ComplianceOutput 风控官输出：approved, reason, 可选 violations；P2-6 可选 force_actions；含本次调用的 prompt 供落库展示
+// DecisionAuditItem 单条决策的审计结果（单条审批：开/平可分别通过或驳回）
+type DecisionAuditItem struct {
+	Index    int    `json:"index"`    // 与输入 decisions 下标一致，从 0 开始
+	Approved bool   `json:"approved"`  // 该条是否通过
+	Reason   string `json:"reason"`   // 驳回时填写原因，通过可为空
+}
+
+// ComplianceOutput 风控官输出：批级 approved/reason + 可选单条审批 decisions_audit；P2-6 可选 force_actions
+// 当存在 decisions_audit 且长度与输入 decisions 一致时，执行层只执行 approved=true 的条目，批级 approved 表示「至少有一条通过且可执行」
 type ComplianceOutput struct {
-	Approved      bool          `json:"approved"`
-	Reason        string        `json:"reason"`
-	Violations    []string      `json:"violations,omitempty"`
-	ForceActions  []ForceAction `json:"force_actions,omitempty"`
-	SystemPrompt  string        `json:"-"` // 本次调用的系统提示词（写入审计记录供单轮详情展示）
-	UserPrompt    string        `json:"-"` // 本次调用的用户提示词
+	Approved       bool                `json:"approved"`        // 批级：全部通过或至少有一条通过（见上）
+	Reason         string              `json:"reason"`         // 批级说明
+	Violations     []string            `json:"violations,omitempty"`
+	DecisionsAudit []DecisionAuditItem `json:"decisions_audit,omitempty"` // 单条审批结果，与输入 decisions 一一对应
+	ForceActions   []ForceAction       `json:"force_actions,omitempty"`
+	SystemPrompt   string              `json:"-"` // 本次调用的系统提示词（写入审计记录供单轮详情展示）
+	UserPrompt     string              `json:"-"` // 本次调用的用户提示词
 }
 
 // ForceAction 风控官强制指令（P2-6，如 reduce_position, close_all）；执行层优先执行

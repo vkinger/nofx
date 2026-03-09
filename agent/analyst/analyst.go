@@ -84,16 +84,46 @@ func RunAnalyst(ctx *kernel.Context, engine *kernel.StrategyEngine, client mcp.A
 	return report, nil
 }
 
-// buildAnalystUserPrompt 汇总版：仅给宏观结论所需信息，不喂逐币完整数据（降低分析师职责过重与幻觉）
+// buildAnalystUserPrompt 汇总版：仅给宏观结论所需信息；章节标题按 lang 双语（zh/en）
 func buildAnalystUserPrompt(ctx *kernel.Context, lang kernel.Language) string {
+	zh := lang == kernel.LangChinese
+	var (
+		sectAccount, sectPositions, sectSnapshot, sectRecent, sectOI, sectRankings, sectCandidates string
+		none, noTrades, noData, footer string
+	)
+	if zh {
+		sectAccount = "## 账户\n"
+		sectPositions = "## 持仓摘要\n"
+		sectSnapshot = "\n## BTC / 市场快照\n"
+		sectRecent = "\n## 近期表现\n"
+		sectOI = "\n## 持仓量变化 (Top 10)\n"
+		sectRankings = "\n## 全市场排名 (Top 10)\n"
+		sectCandidates = "\n## 候选币种（此处无逐币数据）\n"
+		none = "(无)\n"
+		noTrades = "近期无成交\n"
+		noData = "(无数据)\n"
+		footer = "\n---\n仅输出一个 JSON 对象（bias, confidence, report_text [, key_risks]），不要其他文字。\n"
+	} else {
+		sectAccount = "## Account\n"
+		sectPositions = "## Positions summary\n"
+		sectSnapshot = "\n## BTC / market snapshot\n"
+		sectRecent = "\n## Recent performance\n"
+		sectOI = "\n## OI movers (top 10)\n"
+		sectRankings = "\n## Market-wide rankings (top 10)\n"
+		sectCandidates = "\n## Candidate symbols (no per-coin data here)\n"
+		none = "(none)\n"
+		noTrades = "No recent trades\n"
+		noData = "(no data)\n"
+		footer = "\n---\nOutput only one JSON object (bias, confidence, report_text [, key_risks]). No other text.\n"
+	}
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("Time: %s | Period #%d | Runtime %d min\n\n", ctx.CurrentTime, ctx.CallCount, ctx.RuntimeMinutes))
-	b.WriteString("## Account\n")
+	b.WriteString(sectAccount)
 	b.WriteString(fmt.Sprintf("Equity: %.2f USDT | Available: %.2f | Positions: %d | Margin: %.1f%%\n\n",
 		ctx.Account.TotalEquity, ctx.Account.AvailableBalance, ctx.Account.PositionCount, ctx.Account.MarginUsedPct))
-	b.WriteString("## Positions summary\n")
+	b.WriteString(sectPositions)
 	if len(ctx.Positions) == 0 {
-		b.WriteString("(none)\n")
+		b.WriteString(none)
 	} else {
 		totalPnl := 0.0
 		for _, p := range ctx.Positions {
@@ -103,7 +133,7 @@ func buildAnalystUserPrompt(ctx *kernel.Context, lang kernel.Language) string {
 		avgPnl := totalPnl / float64(len(ctx.Positions))
 		b.WriteString(fmt.Sprintf("Total %d positions, avg PnL %.2f%%\n", len(ctx.Positions), avgPnl))
 	}
-	b.WriteString("\n## BTC / market snapshot\n")
+	b.WriteString(sectSnapshot)
 	if btc, ok := ctx.MarketDataMap["BTCUSDT"]; ok {
 		b.WriteString(fmt.Sprintf("BTC: %.2f (1h %+.2f%%, 4h %+.2f%%) | MACD: %.4f | RSI: %.2f",
 			btc.CurrentPrice, btc.PriceChange1h, btc.PriceChange4h, btc.CurrentMACD, btc.CurrentRSI7))
@@ -120,7 +150,7 @@ func buildAnalystUserPrompt(ctx *kernel.Context, lang kernel.Language) string {
 		}
 		b.WriteString("\n")
 	}
-	b.WriteString("\n## Recent performance\n")
+	b.WriteString(sectRecent)
 	if len(ctx.RecentOrders) > 0 {
 		wins := 0
 		for _, o := range ctx.RecentOrders {
@@ -130,13 +160,13 @@ func buildAnalystUserPrompt(ctx *kernel.Context, lang kernel.Language) string {
 		}
 		b.WriteString(fmt.Sprintf("Recent %d trades: %d wins (%.1f%% win rate)\n", len(ctx.RecentOrders), wins, float64(wins)/float64(len(ctx.RecentOrders))*100))
 	} else {
-		b.WriteString("No recent trades\n")
+		b.WriteString(noTrades)
 	}
 	if ctx.TradingStats != nil && ctx.TradingStats.TotalTrades > 0 {
 		b.WriteString(fmt.Sprintf("Historical: %d trades, win rate %.1f%%, profit factor %.2f, max drawdown %.1f%%\n",
 			ctx.TradingStats.TotalTrades, ctx.TradingStats.WinRate, ctx.TradingStats.ProfitFactor, ctx.TradingStats.MaxDrawdownPct))
 	}
-	b.WriteString("\n## OI movers (top 10)\n")
+	b.WriteString(sectOI)
 	if ctx.OITopDataMap != nil && len(ctx.OITopDataMap) > 0 {
 		n := 0
 		for sym, oi := range ctx.OITopDataMap {
@@ -147,16 +177,15 @@ func buildAnalystUserPrompt(ctx *kernel.Context, lang kernel.Language) string {
 			n++
 		}
 	} else {
-		b.WriteString("(no data)\n")
+		b.WriteString(noData)
 	}
-	// 全市场排名（OI / 资金流 / 涨跌榜）Top 10，与交易员同源
 	if s := kernel.FormatMarketRankingsForAnalyst(ctx, lang); s != "" {
-		b.WriteString("\n## Market-wide rankings (top 10)\n")
+		b.WriteString(sectRankings)
 		b.WriteString(s)
 	}
-	b.WriteString("\n## Candidate symbols (no per-coin data here)\n")
+	b.WriteString(sectCandidates)
 	if len(ctx.CandidateCoins) == 0 {
-		b.WriteString("(none)\n")
+		b.WriteString(none)
 	} else {
 		limit := 10
 		if limit > len(ctx.CandidateCoins) {
@@ -173,7 +202,7 @@ func buildAnalystUserPrompt(ctx *kernel.Context, lang kernel.Language) string {
 		}
 		b.WriteString("\n")
 	}
-	b.WriteString("\n---\nOutput only one JSON object (bias, confidence, report_text [, key_risks]). No other text.\n")
+	b.WriteString(footer)
 	return b.String()
 }
 

@@ -883,6 +883,9 @@ func (at *AutoTrader) runCycle() error {
 				input.MarketType = cfg.MarketType
 				compliance.ApplyMarketTypeToComplianceRules(&input.Rules, cfg.MarketType) // P3-4 现货无杠杆等
 			}
+			if cfg.Language != "" {
+				input.Language = cfg.Language
+			}
 		}
 		complianceClient := at.getComplianceClient()
 		logger.Infof("[Phase] compliance_start trader_id=%s pending_id=%d", at.id, pending.ID)
@@ -895,7 +898,13 @@ func (at *AutoTrader) runCycle() error {
 			return compErr
 		}
 		violationsJSON, _ := json.Marshal(output.Violations)
-		auditID, _ := at.store.AgentCompliance().Create(pending.ID, at.id, output.Approved, output.Reason, string(violationsJSON), output.SystemPrompt, output.UserPrompt)
+		decisionsAuditJSON := ""
+		if len(output.DecisionsAudit) > 0 {
+			if b, err := json.Marshal(output.DecisionsAudit); err == nil {
+				decisionsAuditJSON = string(b)
+			}
+		}
+		auditID, _ := at.store.AgentCompliance().Create(pending.ID, at.id, output.Approved, output.Reason, string(violationsJSON), decisionsAuditJSON, output.SystemPrompt, output.UserPrompt)
 		record.ComplianceAuditID = auditID // P4-1 复盘关联
 		if !output.Approved {
 			logger.Infof("[Phase] compliance_end trader_id=%s approved=false reason=%s", at.id, output.Reason)
@@ -916,9 +925,29 @@ func (at *AutoTrader) runCycle() error {
 		at.executeForceActions(complianceOutput.ForceActions, record, ctx)
 	}
 
+	// 待执行决策：有单条审批时只保留 approved=true 的条目，再排序（开/平可分别通过或驳回）
+	decisionsToExecute := aiDecision.Decisions
+	if complianceOutput != nil && len(complianceOutput.DecisionsAudit) == len(aiDecision.Decisions) {
+		approvedSet := make(map[int]bool)
+		for _, da := range complianceOutput.DecisionsAudit {
+			if da.Approved {
+				approvedSet[da.Index] = true
+			} else {
+				logger.Infof("🛑 Compliance rejected [%d] %s: %s", da.Index, aiDecision.Decisions[da.Index].Symbol, da.Reason)
+				record.ExecutionLog = append(record.ExecutionLog, fmt.Sprintf("Compliance rejected [%d] %s: %s", da.Index+1, aiDecision.Decisions[da.Index].Symbol, da.Reason))
+			}
+		}
+		decisionsToExecute = make([]kernel.Decision, 0, len(approvedSet))
+		for i, d := range aiDecision.Decisions {
+			if approvedSet[i] {
+				decisionsToExecute = append(decisionsToExecute, d)
+			}
+		}
+	}
+
 	// 8. Sort decisions: ensure close positions first, then open positions (prevent position stacking overflow)
 	logger.Info(strings.Repeat("-", 70))
-	sortedDecisions := sortDecisionsByPriority(aiDecision.Decisions)
+	sortedDecisions := sortDecisionsByPriority(decisionsToExecute)
 
 	logger.Info("🔄 Execution order (optimized): Close positions first → Open positions later")
 	for i, d := range sortedDecisions {

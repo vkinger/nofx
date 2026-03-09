@@ -177,7 +177,7 @@ export function RoundDetailModal({ traderId, roundId, onClose, language }: Round
                 </div>
               </section>
 
-              {/* 3. 风控审计 */}
+              {/* 3. 风控审计（单条审批：开/平可分别通过或驳回） */}
               <section>
                 <h3 className="text-sm font-semibold mb-2 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
                   <span>🛡️</span> {t('complianceAudit', language)}
@@ -191,13 +191,49 @@ export function RoundDetailModal({ traderId, roundId, onClose, language }: Round
                   }}
                 >
                   {data.compliance_audit ? (
+                    (() => {
+                      const raw = (data.compliance_audit as { decisions_audit_json?: string }).decisions_audit_json?.trim()
+                      let decisionsAudit: { index: number; approved: boolean; reason: string }[] = []
+                      if (raw) {
+                        try {
+                          const parsed = JSON.parse(raw) as unknown
+                          if (Array.isArray(parsed)) {
+                            decisionsAudit = parsed.map((x: unknown) => ({
+                              index: Number((x as { index?: number }).index) ?? 0,
+                              approved: Boolean((x as { approved?: boolean }).approved),
+                              reason: String((x as { reason?: string }).reason ?? ''),
+                            }))
+                          }
+                        } catch {
+                          /* ignore */
+                        }
+                      }
+                      const hasPerDecision = decisionsAudit.length > 0
+                      return (
                     <>
-                      <div className="flex items-center gap-2 mb-2">
+                      {/* 单条审批说明 */}
+                      {hasPerDecision ? (
+                        <div className="mb-3 text-xs" style={{ color: 'var(--text-muted)' }}>
+                          {language === 'zh'
+                            ? `单条审批：本轮 ${decisionsAudit.length} 条决策分别通过/驳回，仅通过项会执行。`
+                            : `Per-decision audit: ${decisionsAudit.length} decision(s); only approved items are executed.`}
+                        </div>
+                      ) : (
+                        data.decision_record?.decisions?.length != null && data.decision_record.decisions.length > 0 && (
+                          <div className="mb-3 text-xs" style={{ color: 'var(--text-muted)' }}>
+                            {language === 'zh'
+                              ? `本审计针对本轮 ${data.decision_record.decisions.length} 条决策（整批通过/驳回）`
+                              : `This audit applies to ${data.decision_record.decisions.length} decision(s) (batch).`}
+                          </div>
+                        )
+                      )}
+                      <div className="flex flex-wrap items-center gap-2 mb-2">
                         <span
-                          className="px-2 py-0.5 rounded text-xs font-medium"
+                          className="px-2.5 py-1 rounded text-xs font-medium"
                           style={{
                             background: data.compliance_audit.approved ? 'rgba(14, 203, 129, 0.2)' : 'rgba(246, 70, 93, 0.2)',
                             color: data.compliance_audit.approved ? '#0ECB81' : '#F6465D',
+                            border: `1px solid ${data.compliance_audit.approved ? 'rgba(14, 203, 129, 0.4)' : 'rgba(246, 70, 93, 0.4)'}`,
                           }}
                         >
                           {data.compliance_audit.approved
@@ -205,13 +241,85 @@ export function RoundDetailModal({ traderId, roundId, onClose, language }: Round
                             : (language === 'zh' ? '驳回' : 'Rejected')}
                         </span>
                       </div>
-                      {data.compliance_audit.reason || t('phaseNone', language)}
-                      {data.compliance_audit.violations_json && (
-                        <pre className="mt-2 text-xs overflow-x-auto">
-                          {data.compliance_audit.violations_json}
-                        </pre>
+                      {data.compliance_audit.reason ? (
+                        <div className="mb-2">
+                          <span className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
+                            {language === 'zh' ? '结论 / 原因：' : 'Reason: '}
+                          </span>
+                          <span className="whitespace-pre-wrap">{data.compliance_audit.reason}</span>
+                        </div>
+                      ) : null}
+                      {!data.compliance_audit.reason && !data.compliance_audit.violations_json && (
+                        <div className="text-xs opacity-80">{t('phaseNone', language)}</div>
                       )}
+                      {/* 单条审批列表：决策 + 通过/驳回 + 原因 */}
+                      {hasPerDecision && (
+                        <div className="mt-3">
+                          <div className="text-xs font-medium mb-2" style={{ color: 'var(--text-primary)' }}>
+                            {language === 'zh' ? '单条审批结果' : 'Per-decision result'}
+                          </div>
+                          <ul className="space-y-2">
+                            {decisionsAudit.map((da, i) => {
+                              const pendingList = data.pending_decisions ?? []
+                              const orig = pendingList[da.index] as Record<string, unknown> | undefined
+                              const action = orig?.action ?? ''
+                              const symbol = (orig?.symbol as string) ?? ''
+                              const label = symbol ? `${String(action)} ${String(symbol).replace('USDT', '')}` : `#${da.index + 1}`
+                              return (
+                                <li
+                                  key={i}
+                                  className="flex flex-wrap items-center gap-2 rounded px-2 py-1.5 text-xs"
+                                  style={{
+                                    background: da.approved ? 'rgba(14, 203, 129, 0.08)' : 'rgba(246, 70, 93, 0.08)',
+                                    border: `1px solid ${da.approved ? 'rgba(14, 203, 129, 0.25)' : 'rgba(246, 70, 93, 0.25)'}`,
+                                  }}
+                                >
+                                  <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{label}</span>
+                                  <span
+                                    className="px-1.5 py-0.5 rounded font-medium"
+                                    style={{
+                                      background: da.approved ? 'rgba(14, 203, 129, 0.2)' : 'rgba(246, 70, 93, 0.2)',
+                                      color: da.approved ? '#0ECB81' : '#F6465D',
+                                    }}
+                                  >
+                                    {da.approved ? (language === 'zh' ? '通过' : 'Approved') : (language === 'zh' ? '驳回' : 'Rejected')}
+                                  </span>
+                                  {!da.approved && da.reason && (
+                                    <span className="flex-1 text-left opacity-90">{da.reason}</span>
+                                  )}
+                                </li>
+                              )
+                            })}
+                          </ul>
+                        </div>
+                      )}
+                      {/* 违规项：优先解析为 JSON 数组逐条展示 */}
+                      {data.compliance_audit.violations_json && (() => {
+                        const raw = data.compliance_audit.violations_json.trim()
+                        let items: string[] = []
+                        try {
+                          const parsed = JSON.parse(raw) as unknown
+                          if (Array.isArray(parsed)) items = parsed.filter((x): x is string => typeof x === 'string')
+                          else items = [raw]
+                        } catch {
+                          items = [raw]
+                        }
+                        return (
+                          <div className="mt-2">
+                            <div className="text-xs font-medium mb-1" style={{ color: 'var(--text-primary)' }}>
+                              {language === 'zh' ? '违规项：' : 'Violations:'}
+                            </div>
+                            <ul className="list-disc list-inside space-y-0.5 text-xs">
+                              {items.map((v, i) => (
+                                <li key={i}>{v}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )
+                      })()}
                     </>
+                      )
+                    })()
                   ) : (
                     t('phaseNone', language)
                   )}

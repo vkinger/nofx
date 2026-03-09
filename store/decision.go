@@ -57,6 +57,8 @@ type DecisionRecord struct {
 	AnalystReportID     int64              `json:"analyst_report_id,omitempty"`   // P1-6: 关联分析师报告 ID
 	PendingDecisionID   int64              `json:"pending_decision_id,omitempty"` // P4-1: 关联待执行决策批次 ID
 	ComplianceAuditID   int64              `json:"compliance_audit_id,omitempty"`   // P4-1: 关联风控审计 ID
+	ComplianceStatus    string             `json:"compliance_status,omitempty"`      // P4: 风控状态 pending_audit / approved / rejected（仅当走风控时有值）
+	RejectReason        string             `json:"reject_reason,omitempty"`          // P4: 风控驳回原因（仅 rejected 时有值）
 	AccountState        AccountSnapshot    `json:"account_state"`
 	Positions           []PositionSnapshot `json:"positions"`
 	Decisions           []DecisionAction   `json:"decisions"`

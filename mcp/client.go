@@ -432,11 +432,24 @@ func (client *Client) parseMCPResponse(body []byte) (string, error) {
 	}
 
 	msg := &result.Choices[0].Message
-	// 兼容 content 为空、实际内容在 reasoning_content 的格式（如 qwen3.5-35b-a3b）
-	if msg.Content != "" {
-		return msg.Content, nil
+	// Agent 模式兼容：合并 content 与 reasoning_content，供分析师/风控等从任一部分解析出 JSON
+	merged := mergeContentAndReasoning(msg.Content, msg.ReasoningContent)
+	if merged == "" {
+		return "", fmt.Errorf("API returned empty content (content and reasoning_content both empty)")
 	}
-	return msg.ReasoningContent, nil
+	return merged, nil
+}
+
+// mergeContentAndReasoning 合并 content、reasoning_content，供下游从任一部分解析出 JSON
+func mergeContentAndReasoning(content, reasoningContent string) string {
+	var parts []string
+	if reasoningContent != "" {
+		parts = append(parts, strings.TrimSpace(reasoningContent))
+	}
+	if content != "" {
+		parts = append(parts, strings.TrimSpace(content))
+	}
+	return strings.TrimSpace(strings.Join(parts, "\n\n"))
 }
 
 func (client *Client) buildUrl() string {
