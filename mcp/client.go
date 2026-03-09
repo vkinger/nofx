@@ -245,6 +245,13 @@ func (client *Client) SetTimeout(timeout time.Duration) {
 	client.httpClient.Timeout = timeout
 }
 
+// SetMaxTokens sets max completion tokens (e.g. 4096 for analyst so reasoning + JSON fit)
+func (client *Client) SetMaxTokens(tokens int) {
+	if tokens > 0 {
+		client.MaxTokens = tokens
+	}
+}
+
 // SetJSONSchema sets JSON Schema for structured output (if model supports it)
 func (client *Client) SetJSONSchema(jsonSchema string) {
 	client.JSONSchema = jsonSchema

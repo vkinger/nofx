@@ -682,7 +682,7 @@ func (tm *TraderManager) addTraderFromStore(traderCfg *store.Trader, aiModelCfg 
 				continue
 			}
 			if m.ID == traderCfg.AnalystModelID {
-				traderConfig.AnalystClient = trader.BuildMCPClientFromAIModel(m)
+				traderConfig.AnalystClient = trader.BuildMCPClientFromAIModelForAnalyst(m)
 				logger.Infof("📊 Trader %s: analyst model %s (%s)", traderCfg.Name, m.Name, m.Provider)
 			}
 			if m.ID == traderCfg.ComplianceModelID {

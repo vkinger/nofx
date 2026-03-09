@@ -144,6 +144,54 @@ export function RoundDetailModal({ traderId, roundId, onClose, language }: Round
                 </div>
               </section>
 
+              {/* 2.5 交易员 系统提示词 / 用户提示词（Agent 模式单轮详情） */}
+              <section>
+                <h3 className="text-sm font-semibold mb-2 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+                  <span>📝</span> {language === 'zh' ? '交易员 系统提示词 / 用户提示词' : 'Trader system & user prompts'}
+                </h3>
+                <div className="space-y-3">
+                  {data.decision_record.system_prompt && (
+                    <div
+                      className="rounded-lg p-4 text-sm whitespace-pre-wrap overflow-x-auto"
+                      style={{
+                        background: 'var(--panel-bg-hover)',
+                        border: '1px solid var(--panel-border)',
+                        color: 'var(--text-secondary)',
+                        maxHeight: '240px',
+                        overflowY: 'auto',
+                      }}
+                    >
+                      <div className="text-xs font-medium mb-2" style={{ color: 'var(--nofx-gold)' }}>
+                        {language === 'zh' ? '系统提示词' : 'System prompt'}
+                      </div>
+                      {data.decision_record.system_prompt}
+                    </div>
+                  )}
+                  {data.decision_record.input_prompt && (
+                    <div
+                      className="rounded-lg p-4 text-sm whitespace-pre-wrap overflow-x-auto"
+                      style={{
+                        background: 'var(--panel-bg-hover)',
+                        border: '1px solid var(--panel-border)',
+                        color: 'var(--text-secondary)',
+                        maxHeight: '240px',
+                        overflowY: 'auto',
+                      }}
+                    >
+                      <div className="text-xs font-medium mb-2" style={{ color: 'var(--nofx-gold)' }}>
+                        {language === 'zh' ? '用户提示词' : 'User prompt'}
+                      </div>
+                      {data.decision_record.input_prompt}
+                    </div>
+                  )}
+                  {!data.decision_record.system_prompt && !data.decision_record.input_prompt && (
+                    <div className="rounded-lg p-4 text-sm" style={{ color: 'var(--text-muted)' }}>
+                      {language === 'zh' ? '本轮回测未记录提示词' : 'Prompts not recorded for this round'}
+                    </div>
+                  )}
+                </div>
+              </section>
+
               {/* 3. 风控审计 */}
               <section>
                 <h3 className="text-sm font-semibold mb-2 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>

@@ -402,6 +402,8 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
         show_in_competition: data.show_in_competition,
         use_analyst_flow: data.use_analyst_flow,
         use_compliance_flow: data.use_compliance_flow,
+        analyst_model_id: data.analyst_model_id ?? undefined,
+        compliance_model_id: data.compliance_model_id ?? undefined,
       }
 
       console.log('🔥 handleSaveEditTrader - data:', data)

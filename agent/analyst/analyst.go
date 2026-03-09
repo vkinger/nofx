@@ -174,6 +174,91 @@ func buildAnalystUserPrompt(ctx *kernel.Context, lang kernel.Language) string {
 }
 
 var reAnalystJSON = regexp.MustCompile(`(?s)\{\s*"bias"\s*:\s*"[^"]*"\s*,\s*"confidence"\s*:\s*\d+\s*,\s*"report_text"\s*:\s*"([^"]*)"\s*\}`)
+// report_text 内可能含转义引号 \"，用更宽松的子匹配
+var reReportTextLenient = regexp.MustCompile(`"report_text"\s*:\s*"((?:[^"\\]|\\.)*)"`)
+// 从 reasoning 文本中推断 bias/confidence（被 max_tokens 截断时取最后一处）
+var reInferBias = regexp.MustCompile("(?i)(?:bias|stick to|choose|pick|lean)\\s*[:\\s]*[`\"]?(neutral|bearish|bullish|strong_bullish|strong_bearish)[`\"]?")
+var reInferConfidence = regexp.MustCompile(`(?i)confidence\s*[:\s]*(\d+)`)
+
+// repairReportTextNewlines 把 JSON 里 report_text 值中的未转义换行换成 \n，便于解析
+func repairReportTextNewlines(jsonStr string) string {
+	const key = `"report_text"`
+	idx := strings.Index(jsonStr, key)
+	if idx < 0 {
+		return jsonStr
+	}
+	idx += len(key)
+	for idx < len(jsonStr) && (jsonStr[idx] == ' ' || jsonStr[idx] == '\t') {
+		idx++
+	}
+	if idx >= len(jsonStr) || jsonStr[idx] != ':' {
+		return jsonStr
+	}
+	idx++
+	for idx < len(jsonStr) && (jsonStr[idx] == ' ' || jsonStr[idx] == '\t') {
+		idx++
+	}
+	if idx >= len(jsonStr) || jsonStr[idx] != '"' {
+		return jsonStr
+	}
+	idx++
+	var buf strings.Builder
+	buf.WriteString(jsonStr[:idx])
+	for idx < len(jsonStr) {
+		c := jsonStr[idx]
+		if c == '\\' && idx+1 < len(jsonStr) {
+			buf.WriteByte(c)
+			buf.WriteByte(jsonStr[idx+1])
+			idx += 2
+			continue
+		}
+		if c == '"' {
+			buf.WriteString(jsonStr[idx:])
+			return buf.String()
+		}
+		if c == '\r' || c == '\n' {
+			buf.WriteString(`\n`)
+			if c == '\r' && idx+1 < len(jsonStr) && jsonStr[idx+1] == '\n' {
+				idx++
+			}
+			idx++
+			continue
+		}
+		buf.WriteByte(c)
+		idx++
+	}
+	return jsonStr
+}
+
+// inferFromReasoningText 从被截断的 reasoning 文本（如 qwen3.5 reasoning_content）推断 bias/confidence
+func inferFromReasoningText(resp string) *AnalystReport {
+	if len(resp) < 100 {
+		return nil
+	}
+	var bias string
+	if all := reInferBias.FindAllStringSubmatch(resp, -1); len(all) > 0 {
+		bias = strings.ToLower(strings.TrimSpace(all[len(all)-1][1]))
+	}
+	var confidence int
+	if all := reInferConfidence.FindAllStringSubmatch(resp, -1); len(all) > 0 {
+		for i := len(all) - 1; i >= 0; i-- {
+			if n, err := fmt.Sscanf(all[i][1], "%d", &confidence); err == nil && n == 1 && confidence >= 0 && confidence <= 100 {
+				break
+			}
+		}
+	}
+	if bias == "" && confidence == 0 {
+		return nil
+	}
+	if bias == "" {
+		bias = "neutral"
+	}
+	if confidence == 0 {
+		confidence = 50
+	}
+	out := &analystParseOut{Bias: bias, Confidence: confidence, ReportText: "Analysis truncated; bias/confidence inferred from reasoning."}
+	return normalizeReport(out)
+}
 
 type analystParseOut struct {
 	Bias       string   `json:"bias"`
@@ -183,22 +268,26 @@ type analystParseOut struct {
 }
 
 func parseAnalystResponse(resp string) (*AnalystReport, error) {
+	rawResp := resp
 	resp = strings.TrimSpace(resp)
+	if resp == "" {
+		return nil, fmt.Errorf("could not parse analyst response: empty response")
+	}
 	var out analystParseOut
 	// 1. Try raw JSON first
-	if err := json.Unmarshal([]byte(resp), &out); err == nil {
+	if err := json.Unmarshal([]byte(resp), &out); err == nil && out.Bias != "" && out.ReportText != "" {
 		return normalizeReport(&out), nil
 	}
 	// 2. Try extract from code block (```json ... ``` or ``` ... ```)
 	if idx := strings.Index(resp, "```"); idx >= 0 {
 		rest := resp[idx+3:]
 		if strings.HasPrefix(strings.ToLower(rest), "json") {
-			rest = rest[4:]
+			rest = strings.TrimSpace(rest[4:])
 		}
 		end := strings.Index(rest, "```")
 		if end > 0 {
 			rest = strings.TrimSpace(rest[:end])
-			if err := json.Unmarshal([]byte(rest), &out); err == nil {
+			if rest != "" && json.Unmarshal([]byte(rest), &out) == nil && out.Bias != "" && out.ReportText != "" {
 				return normalizeReport(&out), nil
 			}
 		}
@@ -208,11 +297,72 @@ func parseAnalystResponse(resp string) (*AnalystReport, error) {
 	last := strings.LastIndex(resp, "}")
 	if first >= 0 && last > first {
 		sub := resp[first : last+1]
-		if err := json.Unmarshal([]byte(sub), &out); err == nil {
+		if err := json.Unmarshal([]byte(sub), &out); err == nil && out.Bias != "" && out.ReportText != "" {
+			return normalizeReport(&out), nil
+		}
+		// 3a. 部分模型在 report_text 里写未转义换行，尝试修成 \n 再解析
+		if strings.Contains(sub, `"report_text"`) && (strings.Contains(sub, "\n") || strings.Contains(sub, "\r")) {
+			repaired := repairReportTextNewlines(sub)
+			if repaired != sub && json.Unmarshal([]byte(repaired), &out) == nil && out.Bias != "" && out.ReportText != "" {
+				return normalizeReport(&out), nil
+			}
+		}
+		// 3b. 尝试用 map 解析（键顺序任意、可含多余键），再转成 struct
+		var m map[string]interface{}
+		if json.Unmarshal([]byte(sub), &m) == nil {
+			if v, _ := m["bias"]; v != nil {
+				if s, ok := v.(string); ok {
+					out.Bias = s
+				}
+			}
+			if v, _ := m["confidence"]; v != nil {
+				switch n := v.(type) {
+				case float64:
+					out.Confidence = int(n)
+				case int:
+					out.Confidence = n
+				}
+			}
+			if v, _ := m["report_text"]; v != nil {
+				if s, ok := v.(string); ok {
+					out.ReportText = s
+				}
+			}
+			if v, _ := m["key_risks"]; v != nil {
+				if arr, ok := v.([]interface{}); ok {
+					for _, it := range arr {
+						if s, ok := it.(string); ok {
+							out.KeyRisks = append(out.KeyRisks, s)
+						}
+					}
+				}
+			}
+			if out.Bias != "" && out.ReportText != "" {
+				return normalizeReport(&out), nil
+			}
+		}
+	}
+	// 4. Fallback: 宽松 regex（report_text 内可含 \"）
+	if m := reReportTextLenient.FindStringSubmatch(resp); len(m) >= 2 {
+		out.ReportText = strings.ReplaceAll(m[1], `\"`, `"`)
+		if i := strings.Index(resp, `"bias"`); i >= 0 {
+			blob := resp[i:]
+			if j := strings.Index(blob, `"`); j >= 0 {
+				blob = blob[j+1:]
+				if end := strings.Index(blob, `"`); end >= 0 {
+					out.Bias = blob[:end]
+				}
+			}
+		}
+		if i := strings.Index(resp, `"confidence"`); i >= 0 {
+			blob := resp[i:]
+			_, _ = fmt.Sscanf(blob, `"confidence":%d`, &out.Confidence)
+		}
+		if out.Bias != "" || out.ReportText != "" {
 			return normalizeReport(&out), nil
 		}
 	}
-	// 4. Fallback regex
+	// 5. 原严格 regex
 	if m := reAnalystJSON.FindStringSubmatch(resp); len(m) >= 2 {
 		out.ReportText = m[1]
 		if i := strings.Index(resp, `"bias"`); i >= 0 {
@@ -230,7 +380,17 @@ func parseAnalystResponse(resp string) (*AnalystReport, error) {
 		}
 		return normalizeReport(&out), nil
 	}
-	return nil, fmt.Errorf("could not parse analyst response")
+	// 6. 被 max_tokens 截断的 reasoning 文本（如 qwen3.5 reasoning_content）：从中推断 bias/confidence
+	if inferred := inferFromReasoningText(resp); inferred != nil {
+		return inferred, nil
+	}
+	// 错误信息带响应片段便于排查
+	snippet := rawResp
+	if len(snippet) > 400 {
+		snippet = snippet[:400] + "..."
+	}
+	snippet = strings.ReplaceAll(snippet, "\n", " ")
+	return nil, fmt.Errorf("could not parse analyst response (snippet: %s)", snippet)
 }
 
 func normalizeReport(out *analystParseOut) *AnalystReport {

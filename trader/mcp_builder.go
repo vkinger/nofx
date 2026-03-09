@@ -38,3 +38,15 @@ func BuildMCPClientFromAIModel(aiModel *store.AIModel) mcp.AIClient {
 	client.SetAPIKey(apiKey, url, model)
 	return client
 }
+
+// AnalystMaxTokens 分析师请求的 max_completion_tokens（推理+JSON 需更多空间，避免 finish_reason: length 截断）
+const AnalystMaxTokens = 4096
+
+// BuildMCPClientFromAIModelForAnalyst 构建分析师专用 MCP 客户端，并设置更高 MaxTokens 以容纳 reasoning_content + JSON
+func BuildMCPClientFromAIModelForAnalyst(aiModel *store.AIModel) mcp.AIClient {
+	client := BuildMCPClientFromAIModel(aiModel)
+	if client != nil {
+		client.SetMaxTokens(AnalystMaxTokens)
+	}
+	return client
+}

@@ -9,6 +9,7 @@ import (
 type AIClient interface {
 	SetAPIKey(apiKey string, customURL string, customModel string)
 	SetTimeout(timeout time.Duration)
+	SetMaxTokens(tokens int) // Set max completion tokens (e.g. 4096 for analyst so reasoning + JSON fit)
 	CallWithMessages(systemPrompt, userPrompt string) (string, error)
 	CallWithRequest(req *Request) (string, error) // Builder pattern API (supports advanced features)
 	SetJSONSchema(jsonSchema string)              // Set JSON Schema for structured output (if model supports it)

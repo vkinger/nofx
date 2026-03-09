@@ -38,6 +38,8 @@ interface FormState {
   initial_balance?: number
   use_analyst_flow: boolean
   use_compliance_flow: boolean
+  analyst_model_id: string   // 分析师专用模型，空=与交易员同模型
+  compliance_model_id: string // 风控官专用模型，空=与交易员同模型
 }
 
 interface TraderConfigModalProps {
@@ -72,6 +74,8 @@ export function TraderConfigModal({
     scan_interval_minutes: 3,
     use_analyst_flow: false,
     use_compliance_flow: false,
+    analyst_model_id: '',
+    compliance_model_id: '',
   })
   const [isSaving, setIsSaving] = useState(false)
   const [strategies, setStrategies] = useState<Strategy[]>([])
@@ -112,6 +116,8 @@ export function TraderConfigModal({
         strategy_id: traderData.strategy_id || '',
         use_analyst_flow: traderData.use_analyst_flow ?? false,
         use_compliance_flow: traderData.use_compliance_flow ?? false,
+        analyst_model_id: traderData.analyst_model_id ?? '',
+        compliance_model_id: traderData.compliance_model_id ?? '',
       })
     } else if (!isEditMode) {
       setFormData({
@@ -124,6 +130,8 @@ export function TraderConfigModal({
         scan_interval_minutes: 3,
         use_analyst_flow: false,
         use_compliance_flow: false,
+        analyst_model_id: '',
+        compliance_model_id: '',
       })
     }
   }, [traderData, isEditMode, availableModels, availableExchanges])
@@ -188,6 +196,8 @@ export function TraderConfigModal({
         scan_interval_minutes: formData.scan_interval_minutes,
         use_analyst_flow: formData.use_analyst_flow,
         use_compliance_flow: formData.use_compliance_flow,
+        analyst_model_id: formData.analyst_model_id || undefined,
+        compliance_model_id: formData.compliance_model_id || undefined,
       }
 
       // 编辑模式：提交已填写的初始余额；创建虚拟盘：必须带初始资金（默认 10000）
@@ -590,6 +600,33 @@ export function TraderConfigModal({
               <p className="text-xs pl-7" style={{ color: 'var(--text-secondary)' }}>
                 先跑宏观分析师写黑板，交易员再结合分析师报告与完整数据做决策
               </p>
+              {formData.use_analyst_flow && (
+                <div className="pl-7">
+                  <label className="text-sm block mb-1" style={{ color: 'var(--text-primary)' }}>
+                    分析师模型（可选）
+                  </label>
+                  <select
+                    value={formData.analyst_model_id}
+                    onChange={(e) => handleInputChange('analyst_model_id', e.target.value)}
+                    className="w-full px-3 py-2 rounded text-sm"
+                    style={{
+                      background: 'var(--panel-bg)',
+                      border: '1px solid var(--panel-border)',
+                      color: 'var(--text-primary)',
+                    }}
+                  >
+                    <option value="">与交易员同模型</option>
+                    {availableModels.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {getShortName(m.name || m.id).toUpperCase()}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+                    不选则使用上方「AI 模型」；单独指定可避免推理模型占满 token 导致截断
+                  </p>
+                </div>
+              )}
               <label className="flex items-center gap-3 cursor-pointer">
                 <input
                   type="checkbox"
@@ -603,6 +640,30 @@ export function TraderConfigModal({
               <p className="text-xs pl-7" style={{ color: 'var(--text-secondary)' }}>
                 交易员产出决策后先由风控官审计，通过后再执行
               </p>
+              {formData.use_compliance_flow && (
+                <div className="pl-7">
+                  <label className="text-sm block mb-1" style={{ color: 'var(--text-primary)' }}>
+                    风控官模型（可选）
+                  </label>
+                  <select
+                    value={formData.compliance_model_id}
+                    onChange={(e) => handleInputChange('compliance_model_id', e.target.value)}
+                    className="w-full px-3 py-2 rounded text-sm"
+                    style={{
+                      background: 'var(--panel-bg)',
+                      border: '1px solid var(--panel-border)',
+                      color: 'var(--text-primary)',
+                    }}
+                  >
+                    <option value="">与交易员同模型</option>
+                    {availableModels.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {getShortName(m.name || m.id).toUpperCase()}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
           </div>
 
