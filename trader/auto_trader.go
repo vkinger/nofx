@@ -303,6 +303,11 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 		logger.Infof("🔧 [%s] Custom config - URL: %s, Model: %s", config.Name, config.CustomAPIURL, config.CustomModelName)
 	}
 
+	// 多 Agent 且未配置独立分析师模型时，主 client 使用 4096 以免 qwen 等 reasoning 模型被 length 截断
+	if config.UseAnalystFlow && config.AnalystClient == nil {
+		mcpClient.SetMaxTokens(AnalystMaxTokens)
+	}
+
 	// Set default trading platform
 	if config.Exchange == "" {
 		config.Exchange = "binance"

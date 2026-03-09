@@ -287,12 +287,24 @@ func parseAnalystResponse(resp string) (*AnalystReport, error) {
 		rest := resp[idx+3:]
 		if strings.HasPrefix(strings.ToLower(rest), "json") {
 			rest = strings.TrimSpace(rest[4:])
+		} else {
+			rest = strings.TrimSpace(rest)
 		}
 		end := strings.Index(rest, "```")
 		if end > 0 {
 			rest = strings.TrimSpace(rest[:end])
 			if rest != "" && json.Unmarshal([]byte(rest), &out) == nil && out.Bias != "" && out.ReportText != "" {
 				return normalizeReport(&out), nil
+			}
+		} else {
+			// 2b. 截断时无闭合 ```：从 rest 取首个 { 到最后一个 } 再试解析（reasoning 末尾的 ```json\n {...} 被截断）
+			first := strings.Index(rest, "{")
+			last := strings.LastIndex(rest, "}")
+			if first >= 0 && last > first {
+				sub := strings.TrimSpace(rest[first : last+1])
+				if json.Unmarshal([]byte(sub), &out) == nil && out.Bias != "" && out.ReportText != "" {
+					return normalizeReport(&out), nil
+				}
 			}
 		}
 	}
