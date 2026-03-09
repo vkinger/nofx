@@ -121,7 +121,7 @@ export function RoundDetailModal({ traderId, roundId, onClose, language }: Round
                       }}
                     >
                       <span className="text-xs font-medium" style={{ color: 'var(--nofx-gold)' }}>{language === 'zh' ? '系统提示词' : 'System'}: </span>
-                      {(data.analyst_report.system_prompt ?? (data.analyst_report as Record<string, unknown>).systemPrompt as string) || (language === 'zh' ? '本轮回测未记录' : 'Not recorded for this round')}
+                      {(data.analyst_report.system_prompt ?? (data.analyst_report as unknown as Record<string, string>).systemPrompt) || (language === 'zh' ? '本轮回测未记录' : 'Not recorded for this round')}
                     </div>
                     <div
                       className="rounded-lg p-4 text-sm whitespace-pre-wrap overflow-x-auto"
@@ -134,7 +134,7 @@ export function RoundDetailModal({ traderId, roundId, onClose, language }: Round
                       }}
                     >
                       <span className="text-xs font-medium" style={{ color: 'var(--nofx-gold)' }}>{language === 'zh' ? '用户提示词' : 'User'}: </span>
-                      {(data.analyst_report.user_prompt ?? (data.analyst_report as Record<string, unknown>).userPrompt as string) || (language === 'zh' ? '本轮回测未记录' : 'Not recorded for this round')}
+                      {(data.analyst_report.user_prompt ?? (data.analyst_report as unknown as Record<string, string>).userPrompt) || (language === 'zh' ? '本轮回测未记录' : 'Not recorded for this round')}
                     </div>
                   </div>
                 )}
@@ -232,7 +232,7 @@ export function RoundDetailModal({ traderId, roundId, onClose, language }: Round
                       }}
                     >
                       <span className="text-xs font-medium" style={{ color: 'var(--nofx-gold)' }}>{language === 'zh' ? '系统提示词' : 'System'}: </span>
-                      {(data.compliance_audit.system_prompt ?? (data.compliance_audit as Record<string, unknown>).systemPrompt as string) || (language === 'zh' ? '本轮回测未记录' : 'Not recorded for this round')}
+                      {(data.compliance_audit.system_prompt ?? (data.compliance_audit as unknown as Record<string, string>).systemPrompt) || (language === 'zh' ? '本轮回测未记录' : 'Not recorded for this round')}
                     </div>
                     <div
                       className="rounded-lg p-4 text-sm whitespace-pre-wrap overflow-x-auto"
@@ -245,7 +245,7 @@ export function RoundDetailModal({ traderId, roundId, onClose, language }: Round
                       }}
                     >
                       <span className="text-xs font-medium" style={{ color: 'var(--nofx-gold)' }}>{language === 'zh' ? '用户提示词' : 'User'}: </span>
-                      {(data.compliance_audit.user_prompt ?? (data.compliance_audit as Record<string, unknown>).userPrompt as string) || (language === 'zh' ? '本轮回测未记录' : 'Not recorded for this round')}
+                      {(data.compliance_audit.user_prompt ?? (data.compliance_audit as unknown as Record<string, string>).userPrompt) || (language === 'zh' ? '本轮回测未记录' : 'Not recorded for this round')}
                     </div>
                   </div>
                 )}
