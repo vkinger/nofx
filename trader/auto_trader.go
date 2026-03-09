@@ -671,6 +671,24 @@ func (at *AutoTrader) Stop() {
 }
 
 // runCycle runs one trading cycle (using AI full decision-making)
+// kernelDecisionToStoreAction 将 kernel.Decision 转为 store.DecisionAction，保证列表展示有完整字段（symbol/action/leverage/price/stop_loss/take_profit/confidence/reasoning）
+func kernelDecisionToStoreAction(d *kernel.Decision, success bool, errMsg string) store.DecisionAction {
+	return store.DecisionAction{
+		Action:     d.Action,
+		Symbol:     d.Symbol,
+		Quantity:   d.Quantity,
+		Leverage:   d.Leverage,
+		Price:      d.Price,
+		StopLoss:   d.StopLoss,
+		TakeProfit: d.TakeProfit,
+		Confidence: d.Confidence,
+		Reasoning:  d.Reasoning,
+		Timestamp:  time.Now().UTC(),
+		Success:    success,
+		Error:      errMsg,
+	}
+}
+
 func (at *AutoTrader) runCycle() error {
 	at.callCount++
 
@@ -916,10 +934,7 @@ func (at *AutoTrader) runCycle() error {
 				rejectMsg = "batch rejected by compliance"
 			}
 			for _, d := range aiDecision.Decisions {
-				record.Decisions = append(record.Decisions, store.DecisionAction{
-					Action: d.Action, Symbol: d.Symbol, Confidence: d.Confidence, Reasoning: d.Reasoning,
-					Timestamp: time.Now().UTC(), Success: false, Error: "Compliance: " + rejectMsg,
-				})
+				record.Decisions = append(record.Decisions, kernelDecisionToStoreAction(&d, false, "Compliance: "+rejectMsg))
 			}
 			at.saveDecision(record)
 			logger.Infof("🛑 Compliance rejected: %s", output.Reason)
@@ -954,13 +969,10 @@ func (at *AutoTrader) runCycle() error {
 				record.ExecutionLog = append(record.ExecutionLog, fmt.Sprintf("Compliance rejected [%d] %s: %s", da.Index+1, aiDecision.Decisions[da.Index].Symbol, reason))
 			}
 		}
-		// 将风控驳回的决策也写入 record.Decisions，便于列表展示交易员决策 + 驳回原因
+		// 将风控驳回的决策也写入 record.Decisions，便于列表展示交易员决策 + 驳回原因（含完整字段）
 		for i, d := range aiDecision.Decisions {
 			if rejectReason[i] != "" {
-				record.Decisions = append(record.Decisions, store.DecisionAction{
-					Action: d.Action, Symbol: d.Symbol, Confidence: d.Confidence, Reasoning: d.Reasoning,
-					Timestamp: time.Now().UTC(), Success: false, Error: "Compliance: " + rejectReason[i],
-				})
+				record.Decisions = append(record.Decisions, kernelDecisionToStoreAction(&d, false, "Compliance: "+rejectReason[i]))
 			}
 		}
 		decisionsToExecute = make([]kernel.Decision, 0, len(approvedSet))
@@ -1012,26 +1024,11 @@ func (at *AutoTrader) runCycle() error {
 		if (d.Action == "open_long" || d.Action == "open_short") && d.Confidence < minConfidence {
 			logger.Infof("⏭️ Skipping %s %s: confidence %d < min %d", d.Symbol, d.Action, d.Confidence, minConfidence)
 			record.ExecutionLog = append(record.ExecutionLog, fmt.Sprintf("⏭️ %s %s skipped (confidence %d < %d)", d.Symbol, d.Action, d.Confidence, minConfidence))
-			record.Decisions = append(record.Decisions, store.DecisionAction{
-				Action: d.Action, Symbol: d.Symbol, Confidence: d.Confidence, Reasoning: d.Reasoning,
-				Timestamp: time.Now().UTC(), Success: false,
-			})
+			record.Decisions = append(record.Decisions, kernelDecisionToStoreAction(&d, false, ""))
 			continue
 		}
 
-		actionRecord := store.DecisionAction{
-			Action:     d.Action,
-			Symbol:     d.Symbol,
-			Quantity:   0,
-			Leverage:   d.Leverage,
-			Price:      0,
-			StopLoss:   d.StopLoss,
-			TakeProfit: d.TakeProfit,
-			Confidence: d.Confidence,
-			Reasoning:  d.Reasoning,
-			Timestamp:  time.Now().UTC(),
-			Success:    false,
-		}
+		actionRecord := kernelDecisionToStoreAction(&d, false, "")
 
 		if err := at.executeDecisionWithRecord(&d, &actionRecord); err != nil {
 			logger.Infof("❌ Failed to execute decision (%s %s): %v", d.Symbol, d.Action, err)
