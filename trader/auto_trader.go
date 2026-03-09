@@ -890,7 +890,7 @@ func (at *AutoTrader) runCycle() error {
 			return compErr
 		}
 		violationsJSON, _ := json.Marshal(output.Violations)
-		auditID, _ := at.store.AgentCompliance().Create(pending.ID, at.id, output.Approved, output.Reason, string(violationsJSON))
+		auditID, _ := at.store.AgentCompliance().Create(pending.ID, at.id, output.Approved, output.Reason, string(violationsJSON), output.SystemPrompt, output.UserPrompt)
 		record.ComplianceAuditID = auditID // P4-1 复盘关联
 		if !output.Approved {
 			logger.Infof("[Phase] compliance_end trader_id=%s approved=false reason=%s", at.id, output.Reason)

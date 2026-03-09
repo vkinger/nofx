@@ -19,34 +19,38 @@ const (
 	AnalystBiasStrongBear AnalystBias = "strong_bearish"
 )
 
-// AgentAnalystReportDB 分析师报告表（黑板），P1-1 含可选 symbol
+// AgentAnalystReportDB 分析师报告表（黑板），P1-1 含可选 symbol；含 system/user prompt 供单轮详情展示
 type AgentAnalystReportDB struct {
-	ID         int64     `gorm:"primaryKey;autoIncrement"`
-	TraderID   string    `gorm:"column:trader_id;not null;index:idx_agent_analyst_trader_time"`
-	StrategyID string    `gorm:"column:strategy_id;default:'';index"`
-	UserID     string    `gorm:"column:user_id;default:'';index"`
-	Symbol     string    `gorm:"column:symbol;default:'';index"` // 可选，单币种分析时填写
-	Bias       string    `gorm:"column:bias;not null"`          // bullish / bearish / neutral / strong_bullish / strong_bearish
-	Confidence int       `gorm:"column:confidence;default:0"`   // 0-100
-	ReportText string    `gorm:"column:report_text;type:text;default:''"`
-	RawJSON    string    `gorm:"column:raw_json;type:text;default:''"`
-	CreatedAt  time.Time `gorm:"column:created_at;not null;index:idx_agent_analyst_trader_time,sort:desc"`
+	ID           int64     `gorm:"primaryKey;autoIncrement"`
+	TraderID     string    `gorm:"column:trader_id;not null;index:idx_agent_analyst_trader_time"`
+	StrategyID   string    `gorm:"column:strategy_id;default:'';index"`
+	UserID       string    `gorm:"column:user_id;default:'';index"`
+	Symbol       string    `gorm:"column:symbol;default:'';index"` // 可选，单币种分析时填写
+	Bias         string    `gorm:"column:bias;not null"`
+	Confidence   int       `gorm:"column:confidence;default:0"`
+	ReportText   string    `gorm:"column:report_text;type:text;default:''"`
+	RawJSON      string    `gorm:"column:raw_json;type:text;default:''"`
+	SystemPrompt string    `gorm:"column:system_prompt;type:text;default:''"`
+	UserPrompt   string    `gorm:"column:user_prompt;type:text;default:''"`
+	CreatedAt    time.Time `gorm:"column:created_at;not null;index:idx_agent_analyst_trader_time,sort:desc"`
 }
 
 func (AgentAnalystReportDB) TableName() string { return "agent_analyst_reports" }
 
 // AgentAnalystReport 对外使用的分析师报告
 type AgentAnalystReport struct {
-	ID         int64       `json:"id"`
-	TraderID   string      `json:"trader_id"`
-	StrategyID string      `json:"strategy_id"`
-	UserID     string      `json:"user_id"`
-	Symbol     string      `json:"symbol,omitempty"` // 可选
-	Bias       AnalystBias `json:"bias"`
-	Confidence int         `json:"confidence"`
-	ReportText string      `json:"report_text"`
-	RawJSON    string      `json:"raw_json,omitempty"`
-	CreatedAt  time.Time   `json:"created_at"`
+	ID           int64       `json:"id"`
+	TraderID     string      `json:"trader_id"`
+	StrategyID   string      `json:"strategy_id"`
+	UserID       string      `json:"user_id"`
+	Symbol       string      `json:"symbol,omitempty"`
+	Bias         AnalystBias `json:"bias"`
+	Confidence   int         `json:"confidence"`
+	ReportText   string      `json:"report_text"`
+	RawJSON      string      `json:"raw_json,omitempty"`
+	SystemPrompt string      `json:"system_prompt,omitempty"`
+	UserPrompt   string      `json:"user_prompt,omitempty"`
+	CreatedAt    time.Time   `json:"created_at"`
 }
 
 // AgentBlackboardStore 多 Agent 黑板存储
@@ -64,10 +68,12 @@ func (s *AgentBlackboardStore) initTables() error {
 		var tableExists int64
 		s.db.Raw(`SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'agent_analyst_reports'`).Scan(&tableExists)
 		if tableExists > 0 {
-			// 已有表：补可选列
+			// 已有表：补可选列（含 prompt 供单轮详情展示）
 			for _, q := range []string{
 				`ALTER TABLE agent_analyst_reports ADD COLUMN IF NOT EXISTS strategy_id varchar(255) DEFAULT ''`,
 				`ALTER TABLE agent_analyst_reports ADD COLUMN IF NOT EXISTS symbol varchar(255) DEFAULT ''`,
+				`ALTER TABLE agent_analyst_reports ADD COLUMN IF NOT EXISTS system_prompt text DEFAULT ''`,
+				`ALTER TABLE agent_analyst_reports ADD COLUMN IF NOT EXISTS user_prompt text DEFAULT ''`,
 			} {
 				if err := s.db.Exec(q).Error; err != nil {
 					return fmt.Errorf("failed to migrate agent_analyst_reports: %w", err)
@@ -79,19 +85,21 @@ func (s *AgentBlackboardStore) initTables() error {
 	return s.db.AutoMigrate(&AgentAnalystReportDB{})
 }
 
-// WriteAnalystReport 写入分析师报告（写黑板）；symbol 可选，宏观报告传 ""
-func (s *AgentBlackboardStore) WriteAnalystReport(traderID, strategyID, userID, symbol string, bias AnalystBias, confidence int, reportText, rawJSON string) (*AgentAnalystReport, error) {
+// WriteAnalystReport 写入分析师报告（写黑板）；symbol 可选，宏观报告传 ""；systemPrompt/userPrompt 供单轮详情展示
+func (s *AgentBlackboardStore) WriteAnalystReport(traderID, strategyID, userID, symbol string, bias AnalystBias, confidence int, reportText, rawJSON, systemPrompt, userPrompt string) (*AgentAnalystReport, error) {
 	now := time.Now().UTC()
 	db := &AgentAnalystReportDB{
-		TraderID:   traderID,
-		StrategyID: strategyID,
-		UserID:     userID,
-		Symbol:     symbol,
-		Bias:       string(bias),
-		Confidence: confidence,
-		ReportText: reportText,
-		RawJSON:    rawJSON,
-		CreatedAt:  now,
+		TraderID:     traderID,
+		StrategyID:   strategyID,
+		UserID:       userID,
+		Symbol:       symbol,
+		Bias:         string(bias),
+		Confidence:   confidence,
+		ReportText:   reportText,
+		RawJSON:      rawJSON,
+		SystemPrompt: systemPrompt,
+		UserPrompt:   userPrompt,
+		CreatedAt:    now,
 	}
 	if err := s.db.Create(db).Error; err != nil {
 		return nil, err
@@ -134,15 +142,17 @@ func (s *AgentBlackboardStore) GetLatestAnalystReportForStrategy(traderID, strat
 
 func dbToReport(db *AgentAnalystReportDB) *AgentAnalystReport {
 	return &AgentAnalystReport{
-		ID:         db.ID,
-		TraderID:   db.TraderID,
-		StrategyID: db.StrategyID,
-		UserID:     db.UserID,
-		Symbol:     db.Symbol,
-		Bias:       AnalystBias(db.Bias),
-		Confidence: db.Confidence,
-		ReportText: db.ReportText,
-		RawJSON:    db.RawJSON,
-		CreatedAt:  db.CreatedAt,
+		ID:           db.ID,
+		TraderID:     db.TraderID,
+		StrategyID:   db.StrategyID,
+		UserID:       db.UserID,
+		Symbol:       db.Symbol,
+		Bias:         AnalystBias(db.Bias),
+		Confidence:   db.Confidence,
+		ReportText:   db.ReportText,
+		RawJSON:      db.RawJSON,
+		SystemPrompt: db.SystemPrompt,
+		UserPrompt:   db.UserPrompt,
+		CreatedAt:    db.CreatedAt,
 	}
 }

@@ -3176,6 +3176,8 @@ func (s *Server) handleRoundDetail(c *gin.Context) {
 				"approved":         audit.Approved,
 				"reason":           audit.Reason,
 				"violations_json":  audit.ViolationsJSON,
+				"system_prompt":    audit.SystemPrompt,
+				"user_prompt":      audit.UserPrompt,
 				"created_at":       audit.CreatedAt,
 			}
 		}

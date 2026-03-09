@@ -12,13 +12,15 @@ import (
 	"nofx/store"
 )
 
-// AnalystReport 分析师输出：宏观偏向、信心、报告正文，可选 key_risks
+// AnalystReport 分析师输出：宏观偏向、信心、报告正文，可选 key_risks；含调用时的 system/user prompt 供落库展示
 type AnalystReport struct {
-	Bias       store.AnalystBias `json:"bias"`
-	Confidence int              `json:"confidence"`
-	ReportText string           `json:"report_text"`
-	KeyRisks   []string         `json:"key_risks,omitempty"`
-	Raw        string           `json:"-"`
+	Bias         store.AnalystBias `json:"bias"`
+	Confidence   int              `json:"confidence"`
+	ReportText   string           `json:"report_text"`
+	KeyRisks     []string         `json:"key_risks,omitempty"`
+	Raw          string           `json:"-"`
+	SystemPrompt string           `json:"-"` // 本次调用的系统提示词（写入黑板供单轮详情展示）
+	UserPrompt   string           `json:"-"` // 本次调用的用户提示词
 }
 
 // analystRoleAndOutputPrompt 分析师角色与输出格式（不含数据字典，字典由 kernel.GetSchemaPromptForAnalyst 提供）
@@ -77,6 +79,8 @@ func RunAnalyst(ctx *kernel.Context, engine *kernel.StrategyEngine, client mcp.A
 		return nil, fmt.Errorf("analyst parse response: %w", err)
 	}
 	report.Raw = resp
+	report.SystemPrompt = systemPrompt
+	report.UserPrompt = userPrompt
 	return report, nil
 }
 

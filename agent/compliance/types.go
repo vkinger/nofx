@@ -90,12 +90,14 @@ func ApplyMarketTypeToComplianceRules(r *ComplianceRules, marketType string) {
 	}
 }
 
-// ComplianceOutput 风控官输出：approved, reason, 可选 violations；P2-6 可选 force_actions
+// ComplianceOutput 风控官输出：approved, reason, 可选 violations；P2-6 可选 force_actions；含本次调用的 prompt 供落库展示
 type ComplianceOutput struct {
-	Approved    bool     `json:"approved"`
-	Reason      string   `json:"reason"`
-	Violations  []string `json:"violations,omitempty"`
-	ForceActions []ForceAction `json:"force_actions,omitempty"` // P2-6 强制指令：执行层优先执行
+	Approved      bool          `json:"approved"`
+	Reason        string        `json:"reason"`
+	Violations    []string      `json:"violations,omitempty"`
+	ForceActions  []ForceAction `json:"force_actions,omitempty"`
+	SystemPrompt  string        `json:"-"` // 本次调用的系统提示词（写入审计记录供单轮详情展示）
+	UserPrompt    string        `json:"-"` // 本次调用的用户提示词
 }
 
 // ForceAction 风控官强制指令（P2-6，如 reduce_position, close_all）；执行层优先执行

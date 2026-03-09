@@ -105,6 +105,43 @@ export function RoundDetailModal({ traderId, roundId, onClose, language }: Round
                     t('phaseNone', language)
                   )}
                 </div>
+                {data.analyst_report && (data.analyst_report.system_prompt || data.analyst_report.user_prompt) && (
+                  <div className="mt-3 space-y-3">
+                    <div className="text-xs font-medium" style={{ color: 'var(--nofx-gold)' }}>
+                      {language === 'zh' ? '分析师 系统提示词 / 用户提示词' : 'Analyst system & user prompts'}
+                    </div>
+                    {data.analyst_report.system_prompt && (
+                      <div
+                        className="rounded-lg p-4 text-sm whitespace-pre-wrap overflow-x-auto"
+                        style={{
+                          background: 'var(--panel-bg-hover)',
+                          border: '1px solid var(--panel-border)',
+                          color: 'var(--text-secondary)',
+                          maxHeight: '200px',
+                          overflowY: 'auto',
+                        }}
+                      >
+                        <span className="text-xs font-medium" style={{ color: 'var(--nofx-gold)' }}>{language === 'zh' ? '系统提示词' : 'System'}: </span>
+                        {data.analyst_report.system_prompt}
+                      </div>
+                    )}
+                    {data.analyst_report.user_prompt && (
+                      <div
+                        className="rounded-lg p-4 text-sm whitespace-pre-wrap overflow-x-auto"
+                        style={{
+                          background: 'var(--panel-bg-hover)',
+                          border: '1px solid var(--panel-border)',
+                          color: 'var(--text-secondary)',
+                          maxHeight: '200px',
+                          overflowY: 'auto',
+                        }}
+                      >
+                        <span className="text-xs font-medium" style={{ color: 'var(--nofx-gold)' }}>{language === 'zh' ? '用户提示词' : 'User'}: </span>
+                        {data.analyst_report.user_prompt}
+                      </div>
+                    )}
+                  </div>
+                )}
               </section>
 
               {/* 2. 交易员推理与决策 */}
@@ -231,6 +268,43 @@ export function RoundDetailModal({ traderId, roundId, onClose, language }: Round
                     t('phaseNone', language)
                   )}
                 </div>
+                {data.compliance_audit && (data.compliance_audit.system_prompt || data.compliance_audit.user_prompt) && (
+                  <div className="mt-3 space-y-3">
+                    <div className="text-xs font-medium" style={{ color: 'var(--nofx-gold)' }}>
+                      {language === 'zh' ? '风控官 系统提示词 / 用户提示词' : 'Compliance system & user prompts'}
+                    </div>
+                    {data.compliance_audit.system_prompt && (
+                      <div
+                        className="rounded-lg p-4 text-sm whitespace-pre-wrap overflow-x-auto"
+                        style={{
+                          background: 'var(--panel-bg-hover)',
+                          border: '1px solid var(--panel-border)',
+                          color: 'var(--text-secondary)',
+                          maxHeight: '200px',
+                          overflowY: 'auto',
+                        }}
+                      >
+                        <span className="text-xs font-medium" style={{ color: 'var(--nofx-gold)' }}>{language === 'zh' ? '系统提示词' : 'System'}: </span>
+                        {data.compliance_audit.system_prompt}
+                      </div>
+                    )}
+                    {data.compliance_audit.user_prompt && (
+                      <div
+                        className="rounded-lg p-4 text-sm whitespace-pre-wrap overflow-x-auto"
+                        style={{
+                          background: 'var(--panel-bg-hover)',
+                          border: '1px solid var(--panel-border)',
+                          color: 'var(--text-secondary)',
+                          maxHeight: '200px',
+                          overflowY: 'auto',
+                        }}
+                      >
+                        <span className="text-xs font-medium" style={{ color: 'var(--nofx-gold)' }}>{language === 'zh' ? '用户提示词' : 'User'}: </span>
+                        {data.compliance_audit.user_prompt}
+                      </div>
+                    )}
+                  </div>
+                )}
               </section>
             </>
           )}

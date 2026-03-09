@@ -39,6 +39,8 @@ func RunCompliance(input *ComplianceInput, client mcp.AIClient) (*ComplianceOutp
 	if err != nil {
 		return nil, fmt.Errorf("compliance parse response: %w", err)
 	}
+	out.SystemPrompt = complianceSystemPrompt
+	out.UserPrompt = userPrompt
 	return out, nil
 }
 

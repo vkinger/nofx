@@ -127,6 +127,8 @@ export interface AgentAnalystReport {
   confidence: number
   report_text: string
   raw_json?: string
+  system_prompt?: string
+  user_prompt?: string
   created_at: string
 }
 
@@ -138,6 +140,8 @@ export interface ComplianceAudit {
   approved: boolean
   reason: string
   violations_json: string
+  system_prompt?: string
+  user_prompt?: string
   created_at: string
 }
 

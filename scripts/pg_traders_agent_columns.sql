@@ -14,9 +14,15 @@ ALTER TABLE decision_records ADD COLUMN IF NOT EXISTS analyst_report_id bigint D
 ALTER TABLE decision_records ADD COLUMN IF NOT EXISTS pending_decision_id bigint DEFAULT 0;
 ALTER TABLE decision_records ADD COLUMN IF NOT EXISTS compliance_audit_id bigint DEFAULT 0;
 
--- agent_analyst_reports: 可选 strategy_id / symbol（若表已存在但缺列）
+-- agent_analyst_reports: 可选 strategy_id / symbol；分析师 系统/用户 提示词（单轮详情展示）
 ALTER TABLE agent_analyst_reports ADD COLUMN IF NOT EXISTS strategy_id varchar(255) DEFAULT '';
 ALTER TABLE agent_analyst_reports ADD COLUMN IF NOT EXISTS symbol varchar(255) DEFAULT '';
+ALTER TABLE agent_analyst_reports ADD COLUMN IF NOT EXISTS system_prompt text DEFAULT '';
+ALTER TABLE agent_analyst_reports ADD COLUMN IF NOT EXISTS user_prompt text DEFAULT '';
+
+-- agent_compliance_audits: 风控官 系统/用户 提示词（单轮详情展示）
+ALTER TABLE agent_compliance_audits ADD COLUMN IF NOT EXISTS system_prompt text DEFAULT '';
+ALTER TABLE agent_compliance_audits ADD COLUMN IF NOT EXISTS user_prompt text DEFAULT '';
 
 -- agent_pending_decisions: 策略与分析师报告关联
 ALTER TABLE agent_pending_decisions ADD COLUMN IF NOT EXISTS strategy_id varchar(255) DEFAULT '';

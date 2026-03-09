@@ -39,7 +39,7 @@ func RunOneRound(
 
 	// 2. Write to blackboard
 	bb := st.AgentBlackboard()
-	written, writeErr := bb.WriteAnalystReport(traderID, strategyID, userID, "", store.AnalystBias(analystReport.Bias), analystReport.Confidence, analystReport.ReportText, analystReport.Raw)
+	written, writeErr := bb.WriteAnalystReport(traderID, strategyID, userID, "", store.AnalystBias(analystReport.Bias), analystReport.Confidence, analystReport.ReportText, analystReport.Raw, analystReport.SystemPrompt, analystReport.UserPrompt)
 	if writeErr != nil {
 		logger.Warnf("[Orchestrator] Failed to write analyst report to blackboard: %v", writeErr)
 	} else {
