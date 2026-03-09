@@ -110,6 +110,8 @@ export function TraderConfigModal({
       setFormData({
         ...traderData,
         strategy_id: traderData.strategy_id || '',
+        use_analyst_flow: traderData.use_analyst_flow ?? false,
+        use_compliance_flow: traderData.use_compliance_flow ?? false,
       })
     } else if (!isEditMode) {
       setFormData({
