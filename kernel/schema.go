@@ -808,6 +808,8 @@ var SignalDictionary = map[string]map[string]BilingualFieldDef{
 		"FLAT_VOLUME_RALLY":      {NameZH: "平量大涨", NameEN: "Flat Volume Rally", DescZH: "价涨越涨越快、量平或缩，一致看涨、主力锁仓，后市持续拉高", DescEN: "Price up accelerating with flat/shrink volume, lock-in, continuation"},
 		"FLAT_VOLUME_DECLINE":    {NameZH: "平量价缩/平量大跌", NameEN: "Flat Volume Decline", DescZH: "价跌量平或缩，一致看空或下跌中继半山腰，不可抄底", DescEN: "Price down with flat/shrink volume, downtrend continuation, do not catch knife"},
 		"NEUTRAL":                {NameZH: "量价均衡", NameEN: "Neutral", DescZH: "阳线与阴线对应量能相当，多空均衡", DescEN: "Balanced volume on up/down candles"},
+		"TAKER_BUY_DOMINANT":     {NameZH: "主动买盘主导", NameEN: "Taker Buy Dominant", DescZH: "Taker Buy Ratio 近期均值>60%，买盘主动、偏多", DescEN: "Recent avg Taker Buy Ratio >60%, buyers aggressive, bullish bias"},
+		"TAKER_SELL_DOMINANT":    {NameZH: "主动卖盘主导", NameEN: "Taker Sell Dominant", DescZH: "Taker Buy Ratio 近期均值<40%，卖盘主动、偏空", DescEN: "Recent avg Taker Buy Ratio <40%, sellers aggressive, bearish bias"},
 	},
 	"OIPriceSignals": {
 		"LONG_BUILD":  {NameZH: "多头建仓", NameEN: "Long Build", DescZH: "OI↑+价格↑，新多头入场，看涨延续", DescEN: "OI up + Price up, new longs entering, bullish continuation"},

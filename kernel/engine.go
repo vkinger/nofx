@@ -2357,14 +2357,17 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 			}
 		}
 
-		// Multi-timeframe resonance analysis
+		// Multi-timeframe resonance analysis (weighted: 4h > 1h > 15m)
 		if len(timeframes) >= 2 {
+			var bullWeight, bearWeight, totalWeight float64
 			bullish, bearish, total := 0, 0, 0
 			for _, tf := range timeframes {
 				tfData, ok := data.TimeframeData[tf]
 				if !ok || len(tfData.Klines) < 3 {
 					continue
 				}
+				w := TimeframeResonanceWeight(tf)
+				totalWeight += w
 				total++
 				kls := tfData.Klines
 				latest := kls[len(kls)-1].Close
@@ -2376,20 +2379,34 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 				priceBull := latest > oldest
 				if priceBull && emaBull {
 					bullish++
+					bullWeight += w
 				} else if !priceBull && !emaBull {
 					bearish++
+					bearWeight += w
 				}
 			}
 			if total >= 2 {
 				resonance := ""
-				if bullish == total {
-					resonance = fmt.Sprintf("BULLISH_RESONANCE (%d/%d TF aligned bullish)", bullish, total)
-				} else if bearish == total {
-					resonance = fmt.Sprintf("BEARISH_RESONANCE (%d/%d TF aligned bearish)", bearish, total)
-				} else if bullish > 0 && bearish > 0 {
-					resonance = fmt.Sprintf("DIVERGENCE (bull:%d bear:%d of %d TF - conflicting, caution)", bullish, bearish, total)
+				if totalWeight > 0 {
+					if bullWeight >= totalWeight*0.7 {
+						resonance = fmt.Sprintf("BULLISH_RESONANCE (weighted %.0f/%.0f, 4h>1h>15m)", bullWeight, totalWeight)
+					} else if bearWeight >= totalWeight*0.7 {
+						resonance = fmt.Sprintf("BEARISH_RESONANCE (weighted %.0f/%.0f, 4h>1h>15m)", bearWeight, totalWeight)
+					} else if bullWeight > 0 && bearWeight > 0 {
+						resonance = fmt.Sprintf("DIVERGENCE (bull:%.0f bear:%.0f of %.0f - conflicting, caution)", bullWeight, bearWeight, totalWeight)
+					} else {
+						resonance = fmt.Sprintf("MIXED (bull:%d bear:%d neutral:%d)", bullish, bearish, total-bullish-bearish)
+					}
 				} else {
-					resonance = fmt.Sprintf("MIXED (bull:%d bear:%d neutral:%d)", bullish, bearish, total-bullish-bearish)
+					if bullish == total {
+						resonance = fmt.Sprintf("BULLISH_RESONANCE (%d/%d TF aligned bullish)", bullish, total)
+					} else if bearish == total {
+						resonance = fmt.Sprintf("BEARISH_RESONANCE (%d/%d TF aligned bearish)", bearish, total)
+					} else if bullish > 0 && bearish > 0 {
+						resonance = fmt.Sprintf("DIVERGENCE (bull:%d bear:%d of %d TF - conflicting, caution)", bullish, bearish, total)
+					} else {
+						resonance = fmt.Sprintf("MIXED (bull:%d bear:%d neutral:%d)", bullish, bearish, total-bullish-bearish)
+					}
 				}
 				if lang == LangChinese {
 					sb.WriteString(fmt.Sprintf("多周期共振: %s\n\n", resonance))
@@ -2633,17 +2650,18 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 			}
 		}
 
-		// K线组合形态识别（完整清单见 kernel/candlestick.go），提示词双语且形态名与字典对应
+		// K线组合形态识别（完整清单见 kernel/candlestick.go），提示词双语且形态名与字典对应；4h>1h>15m 权重降短周期噪音
 		patterns := DetectCandlestickPatterns(klines, trend)
 		if len(patterns) > 0 {
 			displayNames := make([]string, len(patterns))
 			for i, code := range patterns {
 				displayNames[i] = GetSignalDisplayName("CandlestickPatterns", code, lang)
 			}
+			weightHint := TimeframePatternWeightLabel(timeframe, lang == LangChinese)
 			if lang == LangChinese {
-				sb.WriteString(fmt.Sprintf("形态: %s\n", strings.Join(displayNames, ", ")))
+				sb.WriteString(fmt.Sprintf("形态: %s%s\n", strings.Join(displayNames, ", "), weightHint))
 			} else {
-				sb.WriteString(fmt.Sprintf("Patterns: %s\n", strings.Join(displayNames, ", ")))
+				sb.WriteString(fmt.Sprintf("Patterns: %s%s\n", strings.Join(displayNames, ", "), weightHint))
 			}
 		}
 
@@ -2659,18 +2677,28 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 			}
 		}
 
-		// === 分时摘要（短周期：按根数/按分钟两套斜率 + ATR 归一化，供观察员），提示词双语 ===
+		// === 分时摘要（短周期：多 lookback 5/10/20 + 斜率/量价/多空 TB 区分），提示词双语 ===
 		if IsShortTimeframe(timeframe) && len(klines) >= 2 {
 			atr := float64(0)
 			if data != nil && data.ATR14 > 0 {
 				atr = data.ATR14
 			}
-			if summary, ok := ComputeIntradaySummary(klines, 10, timeframe, atr); ok {
-				sb.WriteString(FormatIntradaySummaryForPrompt(summary, lang == LangChinese))
-				if summary.StrongBuy {
-					sb.WriteString(" [STRONG_BUY]")
+			for _, lb := range []int{5, 10, 20} {
+				if len(klines) < lb {
+					continue
 				}
-				sb.WriteString("\n")
+				if summary, ok := ComputeIntradaySummary(klines, lb, timeframe, atr); ok {
+					if lang == LangChinese {
+						sb.WriteString(fmt.Sprintf("分时(L%d): ", lb))
+					} else {
+						sb.WriteString(fmt.Sprintf("Intraday(L%d): ", lb))
+					}
+					sb.WriteString(FormatIntradaySummaryForPrompt(summary, lang == LangChinese))
+					if summary.StrongBuy {
+						sb.WriteString(" [STRONG_BUY]")
+					}
+					sb.WriteString("\n")
+				}
 			}
 		}
 
