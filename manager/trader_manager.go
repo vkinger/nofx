@@ -770,6 +770,7 @@ func (tm *TraderManager) addTraderFromStore(traderCfg *store.Trader, aiModelCfg 
 			ExchangeType: priceSourceExchange.ExchangeType,
 			APIKey:       string(priceSourceExchange.APIKey),
 			SecretKey:    string(priceSourceExchange.SecretKey),
+			Passphrase:   string(priceSourceExchange.Passphrase), // OKX 必填
 		}
 		paperTrader, err := paper.NewTrader(priceSourceTrader, st.Paper(), traderCfg.UserID, traderCfg.ID, traderConfig.InitialBalance,
 			paper.WithFeeRateByExchange(priceSourceExchange.ExchangeType),

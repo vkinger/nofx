@@ -2353,7 +2353,7 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 		for _, tf := range timeframes {
 			if tfData, ok := data.TimeframeData[tf]; ok {
 				sb.WriteString(fmt.Sprintf("=== %s Timeframe (oldest → latest) ===\n\n", strings.ToUpper(tf)))
-				e.formatTimeframeSeriesData(&sb, tfData, indicators, tf)
+				e.formatTimeframeSeriesData(&sb, tfData, indicators, tf, data)
 			}
 		}
 
@@ -2482,7 +2482,7 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 	return sb.String()
 }
 
-func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *market.TimeframeSeriesData, indicators store.IndicatorConfig, timeframe string) {
+func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *market.TimeframeSeriesData, indicators store.IndicatorConfig, timeframe string, fullData *market.Data) {
 	lang := e.GetLanguage()
 	// 优化版摘要：平衡决策质量与token消耗
 	klines := data.Klines
@@ -2698,6 +2698,54 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 						sb.WriteString(" [STRONG_BUY]")
 					}
 					sb.WriteString("\n")
+				}
+			}
+			// 方案A：分时旁补充合约语境（距下次资金费、OI/爆仓/多空比一句），便于综合判断
+			if fullData != nil {
+				var parts []string
+				if fullData.NextFundingTimeMs > 0 {
+					nowMs := time.Now().UTC().UnixMilli()
+					minLeft := (fullData.NextFundingTimeMs - nowMs) / 60000
+					if minLeft < 0 {
+						minLeft = 0
+					}
+					if lang == LangChinese {
+						parts = append(parts, fmt.Sprintf("距下次资金费 %d 分钟", minLeft))
+					} else {
+						parts = append(parts, fmt.Sprintf("%d min to next funding", minLeft))
+					}
+				}
+				if fullData.OpenInterest != nil && fullData.OpenInterest.Latest > 0 {
+					oiChg := 0.0
+					if fullData.OpenInterest.Average > 0 {
+						oiChg = ((fullData.OpenInterest.Latest - fullData.OpenInterest.Average) / fullData.OpenInterest.Average) * 100
+					}
+					if lang == LangChinese {
+						parts = append(parts, fmt.Sprintf("OI %+.1f%%", oiChg))
+					} else {
+						parts = append(parts, fmt.Sprintf("OI %+.1f%%", oiChg))
+					}
+				}
+				if fullData.LiquidationData != nil && (fullData.LiquidationData.Liq1hTotal > 0 || fullData.LiquidationData.Liq24hTotal > 0) {
+					if lang == LangChinese {
+						parts = append(parts, "有爆仓数据")
+					} else {
+						parts = append(parts, "liquidation data available")
+					}
+				}
+				if fullData.LongShortRatio != nil && fullData.LongShortRatio.Ratio > 0 {
+					if lang == LangChinese {
+						parts = append(parts, fmt.Sprintf("多空比 %.2f", fullData.LongShortRatio.Ratio))
+					} else {
+						parts = append(parts, fmt.Sprintf("long/short ratio %.2f", fullData.LongShortRatio.Ratio))
+					}
+				}
+				if len(parts) > 0 {
+					if lang == LangChinese {
+						sb.WriteString("合约语境：" + strings.Join(parts, "；") + "；上述分时为短周期动量，需结合本段综合判断。\n")
+					} else {
+						sb.WriteString("Contract context: " + strings.Join(parts, "; ") + "; intraday above is short-TF momentum, use with contract data.\n")
+					}
 				}
 			}
 		}
