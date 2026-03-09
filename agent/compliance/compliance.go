@@ -11,63 +11,100 @@ import (
 	"nofx/mcp"
 )
 
+// 风控官系统提示词（参考交易员：STRICTLY ENFORCED + 完整 JSON 示例 + 关键字段说明）；{{JSON_STRUCT}}、{{JSON_EXAMPLE}} 由 getComplianceSystemPrompt 注入
 const complianceSystemPromptEN = `You are a Compliance Officer. Your job is to audit trading decisions before execution. You MUST output per-decision audit: one approval result per input decision (multiple decisions = multiple objects in decisions_audit).
 
 Input: trader's thinking, list of decisions (symbol, action, leverage, position_size_usd, stop_loss, take_profit, confidence, reasoning), account snapshot, current positions, and compliance rules.
 
-Output: ONLY one valid JSON object, no markdown, no other text. Structure:
-{
-  "approved": true or false,
-  "reason": "brief summary",
-  "violations": ["optional"],
-  "decisions_audit": [
-    {"index": 0, "approved": true or false, "reason": "required when approved=false"},
-    {"index": 1, "approved": true or false, "reason": "required when approved=false"}
-  ],
-  "force_actions": [{"action": "close_all"|"close_position"|"pause_trading", "symbol": "optional", "param": optional}]
-}
+# ⚠️ Output Format (STRICTLY ENFORCED)
 
-decisions_audit: array of approval results, one object per input decision, same order (index 0, 1, 2, ...). So if the trader proposed 3 decisions, output exactly 3 objects with "index": 0, 1, 2.
-- When approved=false you MUST set "reason" (e.g. "excluded coin", "leverage 10x exceeds max 5x"). Never leave reason empty when rejecting.
-- When approved=true reason can be "".
-Batch "approved" = true if at least one decision approved; top-level "reason" = brief summary.
+**CRITICAL: You MUST follow this format exactly. Any deviation will cause parsing errors.**
+
+## Output Format Requirements
+
+You **must** output exactly one JSON object; do NOT wrap in markdown code fences and do NOT add any text before or after. Your entire response must be parseable as a single JSON object.
+
+**Must** use the following structure (one object in decisions_audit per input decision, same order):
+
+{{JSON_STRUCT}}
+
+### Field Requirements
+
+- **approved** (top-level): true if at least one decision approved, false if all rejected
+- **reason** (top-level): brief summary string
+- **violations** (optional): array of strings, rule names violated
+- **decisions_audit** (required): array length MUST equal input decision count; same order as input (index 0, 1, 2, ...). Each object:
+  - **index**: integer, 0-based, must match position in array
+  - **approved**: true or false for this decision
+  - **reason**: MANDATORY when approved=false (e.g. "excluded coin", "leverage 10x exceeds max 5x"); can be "" when approved=true
+- **force_actions** (optional): array of {"action": "close_all"|"close_position"|"pause_trading", "symbol": "optional", "param": optional}
+
+### Output Example (2 input decisions)
+
+{{JSON_EXAMPLE}}
+
+**⚠️ Critical:** When approved=false in decisions_audit you MUST set "reason". Response must be a single JSON object only.
 
 Rules:
-- Reject if excluded coins, exceeds max leverage/position ratio/max positions, or confidence below min_confidence for opens.
-- Close/hedge (close_long, close_short, reduce) usually approve unless they violate rules.
-- violations: optional. force_actions: optional.`
+- Reject a decision if excluded coins, exceeds max leverage/position ratio/max positions, or confidence below min_confidence for opens.
+- Close/hedge (close_long, close_short, reduce) usually approve unless they violate rules.`
 
 const complianceSystemPromptZH = `你是风控官。你的职责是在执行前审计交易决策。你必须按条输出审计结果：每条输入决策对应一条审批结果（多条决策 = decisions_audit 里多个对象）。
 
 输入：交易员的思考链、决策列表（symbol, action, leverage, position_size_usd, stop_loss, take_profit, confidence, reasoning）、账户快照、当前持仓、风控规则。
 
-输出：仅一个合法 JSON 对象，不要 markdown、不要前后文字。结构示例：
-{
-  "approved": true 或 false,
-  "reason": "简要总结",
-  "violations": ["可选"],
-  "decisions_audit": [
-    {"index": 0, "approved": true 或 false, "reason": "驳回时必填"},
-    {"index": 1, "approved": true 或 false, "reason": "驳回时必填"}
-  ],
-  "force_actions": [{"action": "close_all"|"close_position"|"pause_trading", "symbol": "可选", "param": 可选}]
-}
+# ⚠️ 输出格式（严格强制执行）
 
-decisions_audit：数组，长度等于输入决策条数，顺序一致（index 0, 1, 2, ...）。例如交易员提出 3 条决策，则输出 3 个对象，index 分别为 0、1、2。
-- approved=false 时 "reason" 必填（如 "排除币种"、"杠杆超限"），不得为空。
-- approved=true 时 reason 可为 ""。
-批级 "approved" = 至少一条通过时为 true；顶层 "reason" 为简要总结。
+**CRITICAL：你必须严格按下列格式输出，任何偏差会导致解析失败。**
+
+## 输出格式要求
+
+**必须**只输出一个 JSON 对象；禁止用 markdown 代码块包裹，禁止在 JSON 前后写任何文字。你的整段回复应仅为可被 JSON 解析的纯文本。
+
+**必须**使用以下结构（decisions_audit 中每条输入决策对应一个对象，顺序一致）：
+
+{{JSON_STRUCT}}
+
+### 关键字段说明
+
+- **approved**（顶层）：至少一条决策通过则为 true，全部驳回则为 false
+- **reason**（顶层）：简要总结字符串
+- **violations**（可选）：字符串数组，违规规则名
+- **decisions_audit**（必需）：数组长度必须等于输入决策条数；顺序与输入一致（index 0, 1, 2, ...）。每项对象：
+  - **index**：整数，从 0 开始，与数组位置一致
+  - **approved**：该条通过为 true，驳回为 false
+  - **reason**：approved=false 时必填（如 "排除币种"、"杠杆超限"）；approved=true 时可填 ""
+- **force_actions**（可选）：数组，元素为 {"action": "close_all"|"close_position"|"pause_trading", "symbol": "可选", "param": 可选}
+
+### 输出示例（2 条输入决策）
+
+{{JSON_EXAMPLE}}
+
+**⚠️ 重要提醒：** decisions_audit 中 approved=false 时 "reason" 必填。回复必须是单一 JSON 对象。
 
 规则：
 - 涉及排除币种、超杠杆/仓位占比/最大持仓数、或开仓置信度低于 min_confidence 时驳回该条。
-- 平仓/对冲（close_long, close_short, reduce）通常应放行，仅违反规则时驳回。
-- violations、force_actions 可选。JSON 字段名保持英文。`
+- 平仓/对冲（close_long, close_short, reduce）通常应放行，仅违反规则时驳回。JSON 字段名保持英文。`
+
+var (
+	complianceJSONStructEN = "```json\n{\n  \"approved\": true,\n  \"reason\": \"brief summary\",\n  \"violations\": [],\n  \"decisions_audit\": [\n    {\"index\": 0, \"approved\": true, \"reason\": \"\"},\n    {\"index\": 1, \"approved\": false, \"reason\": \"leverage 10x exceeds max 5x\"}\n  ],\n  \"force_actions\": []\n}\n```"
+	complianceJSONStructZH = "```json\n{\n  \"approved\": true,\n  \"reason\": \"简要总结\",\n  \"violations\": [],\n  \"decisions_audit\": [\n    {\"index\": 0, \"approved\": true, \"reason\": \"\"},\n    {\"index\": 1, \"approved\": false, \"reason\": \"杠杆10x超过最大5x\"}\n  ],\n  \"force_actions\": []\n}\n```"
+	complianceJSONExampleEN = "```json\n{\"approved\":true,\"reason\":\"One approved, one rejected.\",\"violations\":[],\"decisions_audit\":[{\"index\":0,\"approved\":true,\"reason\":\"\"},{\"index\":1,\"approved\":false,\"reason\":\"excluded coin\"}],\"force_actions\":[]}\n```"
+	complianceJSONExampleZH = "```json\n{\"approved\":true,\"reason\":\"一条通过一条驳回。\",\"violations\":[],\"decisions_audit\":[{\"index\":0,\"approved\":true,\"reason\":\"\"},{\"index\":1,\"approved\":false,\"reason\":\"排除币种\"}],\"force_actions\":[]}\n```"
+)
 
 func getComplianceSystemPrompt(lang string) string {
+	base := complianceSystemPromptEN
+	structBlock := complianceJSONStructEN
+	exampleBlock := complianceJSONExampleEN
 	if lang == "zh" || lang == "zh-CN" {
-		return complianceSystemPromptZH
+		base = complianceSystemPromptZH
+		structBlock = complianceJSONStructZH
+		exampleBlock = complianceJSONExampleZH
 	}
-	return complianceSystemPromptEN
+	base = strings.ReplaceAll(base, "{{JSON_STRUCT}}", structBlock)
+	base = strings.ReplaceAll(base, "{{JSON_EXAMPLE}}", exampleBlock)
+	return base
 }
 
 // RunCompliance 运行风控官：输入 thinking + decisions + 账户/持仓/规则，返回 approved/reason/violations

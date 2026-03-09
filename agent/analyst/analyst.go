@@ -23,43 +23,87 @@ type AnalystReport struct {
 	UserPrompt   string           `json:"-"` // 本次调用的用户提示词
 }
 
-// analystRoleAndOutputPrompt 分析师角色与输出格式（不含数据字典，字典由 kernel.GetSchemaPromptForAnalyst 提供）
+// analystRoleAndOutputPrompt 分析师角色与输出格式（参考交易员：STRICTLY ENFORCED + 完整 JSON 示例 + 关键字段说明）
 const analystRoleAndOutputZH = `---
 # 角色
 你是宏观市场观察员。你将看到：账户与持仓摘要、BTC/ETH 快照（含可选资金费率）、近期与历史表现、OI movers（Top 10）、全市场排名（OI/资金流/涨跌榜 Top 10）、候选币种列表。只根据上述**汇总数据**做宏观结论，不做逐币分析，不做交易决策。
 
-# 输出格式（严格）
-你必须**只输出一个 JSON 对象**，禁止 markdown 代码块、禁止前后说明文字。字段与类型如下：
-- bias：字符串，且必须为 "bullish" | "bearish" | "neutral" | "strong_bullish" | "strong_bearish" 之一
-- confidence：整数，0-100
-- report_text：字符串，2-5 句（趋势、主要风险、建议立场）
-- key_risks：（可选）字符串数组，1-3 条短语
+# ⚠️ 输出格式（严格强制执行）
 
-示例（仅作格式参考）：{"bias":"neutral","confidence":60,"report_text":"BTC 横盘，全市场资金流分歧。建议观望。"}
-可选：增加 "key_risks": ["风险1", "风险2"]。`
+**CRITICAL：你必须严格按下列格式输出，任何偏差会导致解析失败。**
+
+## 输出格式要求
+
+**必须**只输出一个 JSON 对象；禁止在回复中使用 markdown 代码块，禁止在 JSON 前后写任何说明文字。你的整段回复应仅为可被 JSON 解析的纯文本。
+
+**必须**使用以下 JSON 对象结构：
+
+{{JSON_STRUCT}}
+
+### 关键字段说明
+
+- **bias**（必需）：字符串，且必须为以下之一："bullish"、"bearish"、"neutral"、"strong_bullish"、"strong_bearish"
+- **confidence**（必需）：整数，0-100，表示宏观判断信心
+- **report_text**（必需）：字符串，2-5 句话，包含趋势、主要风险、建议立场
+- **key_risks**（可选）：字符串数组，1-3 条短语
+
+### 输出示例（格式参考）
+
+{{JSON_EXAMPLE}}
+
+**⚠️ 重要提醒：** 你的回复必须是单一 JSON 对象，可直接被程序解析；不要用代码块包裹或前后加任何文字。`
 
 const analystRoleAndOutputEN = `---
 # Role
 You are a Macro Market Observer. You will see: account and positions summary, BTC/ETH snapshot (optional funding), recent and historical performance, OI movers (Top 10), market-wide rankings (OI / flow / gainers-losers, Top 10), candidate symbol list. Output a high-level view based only on these **summary data**; no per-coin analysis, no trading decisions.
 
-# Output format (strict)
-You must output **exactly one JSON object**; no markdown code fences, no text before or after. Fields and types:
-- bias: string, one of "bullish" | "bearish" | "neutral" | "strong_bullish" | "strong_bearish"
-- confidence: integer, 0-100
-- report_text: string, 2-5 sentences (trend, main risk, recommended stance)
-- key_risks: (optional) array of strings, 1-3 short items
+# ⚠️ Output Format (STRICTLY ENFORCED)
 
-Example (format only): {"bias":"neutral","confidence":60,"report_text":"BTC flat, fund flow mixed. Prefer wait."}
-Optional: add "key_risks": ["risk1", "risk2"].`
+**CRITICAL: You MUST follow this format exactly. Any deviation will cause parsing errors.**
 
-// buildAnalystSystemPrompt 拼装分析师系统提示：数据字典（按职责拆分）+ 角色与输出格式
+## Output Format Requirements
+
+You **must** output exactly one JSON object; do NOT wrap your response in markdown code fences and do NOT add any text before or after the JSON. Your entire response must be parseable as a single JSON object.
+
+**Must** use the following JSON structure:
+
+{{JSON_STRUCT}}
+
+### Field Requirements
+
+- **bias** (required): string, one of "bullish", "bearish", "neutral", "strong_bullish", "strong_bearish"
+- **confidence** (required): integer, 0-100
+- **report_text** (required): string, 2-5 sentences (trend, main risk, recommended stance)
+- **key_risks** (optional): array of strings, 1-3 short items
+
+### Output Example (format reference)
+
+{{JSON_EXAMPLE}}
+
+**⚠️ Critical:** Your response must be a single JSON object only, with no code fence wrapper or any text before/after.`
+
+var (
+	analystJSONStructZH = "```json\n{\n  \"bias\": \"neutral\",\n  \"confidence\": 60,\n  \"report_text\": \"BTC 横盘，全市场资金流分歧。建议观望。\",\n  \"key_risks\": [\"风险1\", \"风险2\"]\n}\n```"
+	analystJSONStructEN = "```json\n{\n  \"bias\": \"neutral\",\n  \"confidence\": 60,\n  \"report_text\": \"BTC flat, fund flow mixed. Prefer wait.\",\n  \"key_risks\": [\"risk1\", \"risk2\"]\n}\n```"
+	analystJSONExampleZH = "```json\n{\"bias\":\"neutral\",\"confidence\":60,\"report_text\":\"BTC 横盘，全市场资金流分歧。建议观望。\",\"key_risks\":[\"资金流向分歧\",\"波动率偏低\"]}\n```"
+	analystJSONExampleEN = "```json\n{\"bias\":\"neutral\",\"confidence\":60,\"report_text\":\"BTC flat, fund flow mixed. Prefer wait.\",\"key_risks\":[\"flow divergence\",\"low volatility\"]}\n```"
+)
+
+// buildAnalystSystemPrompt 拼装分析师系统提示：数据字典 + 角色与输出格式（注入 JSON 示例块）
 func buildAnalystSystemPrompt(engine *kernel.StrategyEngine) string {
 	lang := engine.GetLanguage()
 	schema := kernel.GetSchemaPromptForAnalyst(lang)
+	base := analystRoleAndOutputEN
+	structBlock := analystJSONStructEN
+	exampleBlock := analystJSONExampleEN
 	if lang == kernel.LangChinese {
-		return schema + "\n" + analystRoleAndOutputZH
+		base = analystRoleAndOutputZH
+		structBlock = analystJSONStructZH
+		exampleBlock = analystJSONExampleZH
 	}
-	return schema + "\n" + analystRoleAndOutputEN
+	base = strings.ReplaceAll(base, "{{JSON_STRUCT}}", structBlock)
+	base = strings.ReplaceAll(base, "{{JSON_EXAMPLE}}", exampleBlock)
+	return schema + "\n" + base
 }
 
 // RunAnalyst 运行分析师 Agent：根据 ctx 生成报告（不写黑板，由调用方写入）
