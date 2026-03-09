@@ -156,11 +156,13 @@ func DetectCandlestickPatterns(klines []market.KlineBar, trend string) []string 
 			add("BEARISH_ENGULFING")
 		}
 	}
-	// 淡友反攻：阳+阴，阴高开低走，收盘与前一收相近
+	// 淡友反攻：阳+阴，阴高开低走，收盘与前一收相近（若阴线实体完全在阳线内则为孕线，此处不重复）
 	if body1 > 0 && body2 < 0 && k2.Open > k1.Close {
 		mid := (k1.Close + k2.Close) / 2
 		if math.Abs(k2.Close-k1.Close) <= mid*0.01 || math.Abs(k2.Close-k1.Close) <= range1*0.2 {
-			add("BEARISH_MEETING")
+			if !(k2.Open < k1.Open && k2.Open > k1.Close && k2.Close < k1.Open && k2.Close > k1.Close && math.Abs(body2) < math.Abs(body1)) {
+				add("BEARISH_MEETING")
+			}
 		}
 	}
 	// 乌云压顶：阳+阴，阴高开低走，收盘深入阳线实体
@@ -171,28 +173,35 @@ func DetectCandlestickPatterns(klines []market.KlineBar, trend string) []string 
 	if body1 > 0 && body2 < 0 && k2.Open < k1.Open && k2.Close < k1.Open {
 		add("DOWNPOUR")
 	}
-	// 好友反攻：大阴+阳，阳收盘与阴收盘相近
+	// 好友反攻：大阴+阳，阳收盘与阴收盘相近（若为看涨孕线则仅标孕线，此处不重复）
 	if body1 < 0 && body2 > 0 && range1 > 0 && math.Abs(body1)/range1 > 0.5 {
 		if math.Abs(k2.Close-k1.Close) <= (k1.Close+k2.Close)/2*0.01 || math.Abs(k2.Close-k1.Close) <= range1*0.2 {
-			add("BULLISH_MEETING")
+			if !(k2.Open > k1.Close && k2.Open < k1.Open && k2.Close > k1.Close && k2.Close < k1.Open && math.Abs(body2) < math.Abs(body1)) {
+				add("BULLISH_MEETING")
+			}
 		}
 	}
-	// 曙光初现：大阴+阳，阳收盘深入阴线实体
+	// 曙光初现：大阴+阳，阳收盘深入阴线实体（若阳线实体完全位于阴线内则为孕线，此处不重复）
 	if body1 < 0 && body2 > 0 && range1 > 0 && math.Abs(body1)/range1 > 0.5 &&
 		k2.Close > k1.Open && k2.Close < (k1.Open+k1.Close)/2 {
-		add("PIERCING_LINE")
+		// 排除看涨孕线：第二根实体完全在第一根实体内部
+		if !(k2.Open > k1.Close && k2.Open < k1.Open && k2.Close > k1.Close && k2.Close < k1.Open && math.Abs(body2) < math.Abs(body1)) {
+			add("PIERCING_LINE")
+		}
 	}
 	// 旭日东升：大阴+阳，阳开盘在阴实体内部，收盘高于阴开盘
 	if body1 < 0 && body2 > 0 && range1 > 0 && math.Abs(body1)/range1 > 0.5 &&
 		k2.Open > k1.Close && k2.Open < k1.Open && k2.Close > k1.Open {
 		add("RISING_SUN")
 	}
-	// 高位平顶：两根最高价相同或非常接近
-	if n >= 2 && math.Abs(k1.High-k2.High) <= (k1.High+k2.High)/2*0.002 && trend == "uptrend" {
+	// 高位平顶：两根最高价相同或非常接近（若为一阳一阴同高则仅标镊子顶，此处不重复）
+	if n >= 2 && math.Abs(k1.High-k2.High) <= (k1.High+k2.High)/2*0.002 && trend == "uptrend" &&
+		!(body1 > 0 && body2 < 0) {
 		add("TOPPING_FLAT_HIGHS")
 	}
-	// 低位平底：两根最低价相同或非常接近
-	if n >= 2 && math.Abs(k1.Low-k2.Low) <= (k1.Low+k2.Low)/2*0.002 && trend == "downtrend" {
+	// 低位平底：两根最低价相同或非常接近（若为一阴一阳同低则仅标镊子底，此处不重复）
+	if n >= 2 && math.Abs(k1.Low-k2.Low) <= (k1.Low+k2.Low)/2*0.002 && trend == "downtrend" &&
+		!(body1 < 0 && body2 > 0) {
 		add("BOTTOM_FLAT_LOWS")
 	}
 	// 锤子/射击之星/十字星：单根形态由 SingleCandleType 在 Recent candles 中输出，此处不再重复 add，避免与单K字典重复
@@ -207,6 +216,43 @@ func DetectCandlestickPatterns(klines []market.KlineBar, trend string) []string 
 				add("TOPPING_TWIN_SPINNERS")
 			}
 		}
+	}
+	// 看涨孕线：第一根阴线，第二根阳线实体完全位于第一根实体内部
+	if body1 < 0 && body2 > 0 && range1 > 0 && math.Abs(body1)/range1 > 0.4 {
+		k1O, k1C := k1.Open, k1.Close
+		if k2.Open > k1C && k2.Open < k1O && k2.Close > k1C && k2.Close < k1O && math.Abs(body2) < math.Abs(body1) {
+			add("BULLISH_HARAMI")
+		}
+	}
+	// 看跌孕线：第一根阳线，第二根阴线实体完全位于第一根实体内部
+	if body1 > 0 && body2 < 0 && range1 > 0 && math.Abs(body1)/range1 > 0.4 {
+		k1O, k1C := k1.Open, k1.Close
+		if k2.Open < k1O && k2.Open > k1C && k2.Close < k1O && k2.Close > k1C && math.Abs(body2) < math.Abs(body1) {
+			add("BEARISH_HARAMI")
+		}
+	}
+	// 两只乌鸦：第一根阳线，第二根阴线高开于第一根实体内部、收盘低于第一根收盘
+	if body1 > 0 && body2 < 0 && k2.Open > k1.Open && k2.Open < k1.Close && k2.Close < k1.Close && k2.Close > k1.Low {
+		add("TWO_CROWS")
+	}
+	// 镊子顶：两根K线最高价相近、一阳一阴，涨势末端（若两根均为螺旋桨则仅标顶部双桨，此处不重复）
+	if n >= 2 && math.Abs(k1.High-k2.High) <= (k1.High+k2.High)/2*0.003 && trend == "uptrend" && body1 > 0 && body2 < 0 {
+		if range1 > 0 && range2 > 0 {
+			b1 := math.Abs(body1) / range1
+			b2 := math.Abs(body2) / range2
+			u1, l1 := k1.High-math.Max(k1.Open, k1.Close), math.Min(k1.Open, k1.Close)-k1.Low
+			u2, l2 := k2.High-math.Max(k2.Open, k2.Close), math.Min(k2.Open, k2.Close)-k2.Low
+			isTwinSpinners := b1 < 0.3 && b2 < 0.3 && u1 > range1*0.3 && l1 > range1*0.3 && u2 > range2*0.3 && l2 > range2*0.3
+			if !isTwinSpinners {
+				add("TWEEZER_TOP")
+			}
+		} else {
+			add("TWEEZER_TOP")
+		}
+	}
+	// 镊子底：两根K线最低价相近，通常一阴一阳，跌势末端
+	if n >= 2 && math.Abs(k1.Low-k2.Low) <= (k1.Low+k2.Low)/2*0.003 && trend == "downtrend" && body1 < 0 && body2 > 0 {
+		add("TWEEZER_BOTTOM")
 	}
 
 	// ---------- 第六章：双星验证逻辑与变盘协议 ----------
@@ -308,6 +354,26 @@ func DetectCandlestickPatterns(klines []market.KlineBar, trend string) []string 
 		k0.Open > klines[n-4].Close && k2.Open < k0.Close {
 		add("THREE_STAGE_DIVE")
 	}
+	// 上升跳空并列（Tasuki）：阳线+跳空高开阳线+阴线部分回补缺口（第三根开在第二根实体下、收在第一根收之上、第二根开之下）
+	if body0 > 0 && body1 > 0 && body2 < 0 && range0 > 0 && math.Abs(body0)/range0 > 0.5 &&
+		k1.Open > k0.Close && k2.Open < k1.Close && k2.Close > k0.Close && k2.Close < k1.Open {
+		add("UPSIDE_TASUKI_GAP")
+	}
+	// 下降跳空并列（Tasuki）：阴线+跳空低开阴线+阳线部分回补缺口
+	if body0 < 0 && body1 < 0 && body2 > 0 && range0 > 0 && math.Abs(body0)/range0 > 0.5 &&
+		k1.Open < k0.Close && k2.Open > k1.Close && k2.Close < k0.Close && k2.Close > k1.Open {
+		add("DOWNSIDE_TASUKI_GAP")
+	}
+	// 弃婴底：阴线+向下跳空十字星+向上跳空阳线，中间星线两侧缺口
+	if body0 < 0 && isDoji(k1) && body2 > 0 && range0 > 0 && math.Abs(body0)/range0 > 0.5 &&
+		k1.High < k0.Low && k2.Low > k1.High && k2.Close > (k0.Open+k0.Close)/2 {
+		add("ABANDONED_BABY_BOTTOM")
+	}
+	// 弃婴顶：阳线+向上跳空十字星+向下跳空阴线
+	if body0 > 0 && isDoji(k1) && body2 < 0 && range0 > 0 && math.Abs(body0)/range0 > 0.5 &&
+		k1.Low > k0.High && k2.High < k1.Low && k2.Close < (k0.Open+k0.Close)/2 {
+		add("ABANDONED_BABY_TOP")
+	}
 
 	// ---------- 多根K线（5根窗口）----------
 	if n >= 5 {
@@ -344,6 +410,22 @@ func DetectCandlestickPatterns(klines []market.KlineBar, trend string) []string 
 		}
 		if gapUp && allBull && len(last5) >= 3 {
 			add("CONSECUTIVE_GAP_UP")
+		}
+		// 连续跳空低开：多根阴线且每根跳空低开
+		gapDown := true
+		for i := 1; i < len(last5) && gapDown; i++ {
+			if last5[i].Open >= last5[i-1].Close {
+				gapDown = false
+			}
+		}
+		allBear5 := true
+		for i := 0; i < len(last5) && allBear5; i++ {
+			if last5[i].Close >= last5[i].Open {
+				allBear5 = false
+			}
+		}
+		if gapDown && allBear5 && len(last5) >= 3 {
+			add("CONSECUTIVE_GAP_DOWN")
 		}
 		// 高位塔顶：大阳+多根小阴小阳+大阴
 		if n >= 4 {
@@ -389,6 +471,54 @@ func DetectCandlestickPatterns(klines []market.KlineBar, trend string) []string 
 			}
 			if first.Open-first.Close > (first.High-first.Low)*0.5 && maxHigh <= first.Low*1.002 {
 				add("LOW_TIER_ARRANGEMENT")
+			}
+		}
+		// 上升三法：一根大阳+三根小实体在其范围内+一根大阳收盘突破第一根高点
+		if n >= 5 {
+			c0, c4 := last5[0], last5[4]
+			b0 := c0.Close - c0.Open
+			b4 := c4.Close - c4.Open
+			r0 := c0.High - c0.Low
+			if b0 > 0 && b4 > 0 && r0 > 0 && math.Abs(b0)/r0 > 0.5 && math.Abs(b4)/(c4.High-c4.Low) > 0.5 {
+				inside := true
+				for i := 1; i <= 3; i++ {
+					if last5[i].High > c0.High || last5[i].Low < c0.Low {
+						inside = false
+						break
+					}
+					ri := last5[i].High - last5[i].Low
+					if ri <= 0 || math.Abs(last5[i].Close-last5[i].Open)/ri > 0.5 {
+						inside = false
+						break
+					}
+				}
+				if inside && c4.Close > c0.High {
+					add("RISING_THREE_METHODS")
+				}
+			}
+		}
+		// 下降三法：一根大阴+三根小实体在其范围内+一根大阴收盘跌破第一根低点
+		if n >= 5 {
+			c0, c4 := last5[0], last5[4]
+			b0 := c0.Open - c0.Close
+			b4 := c4.Open - c4.Close
+			r0 := c0.High - c0.Low
+			if b0 > 0 && b4 > 0 && r0 > 0 && math.Abs(b0)/r0 > 0.5 && math.Abs(b4)/(c4.High-c4.Low) > 0.5 {
+				inside := true
+				for i := 1; i <= 3; i++ {
+					if last5[i].High > c0.High || last5[i].Low < c0.Low {
+						inside = false
+						break
+					}
+					ri := last5[i].High - last5[i].Low
+					if ri <= 0 || math.Abs(last5[i].Close-last5[i].Open)/ri > 0.5 {
+						inside = false
+						break
+					}
+				}
+				if inside && c4.Close < c0.Low {
+					add("FALLING_THREE_METHODS")
+				}
 			}
 		}
 

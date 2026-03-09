@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"nofx/logger"
 	"nofx/market"
@@ -2505,6 +2506,9 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 		}
 		avgVolume := totalVolume / float64(len(klines))
 
+		// 支撑/阻力预处理（前高前低、斐波那契、整数关、量能密集区），供下方关键价位与 Key Levels 使用
+		sr := ComputeSupportResistance(klines, latest.Close)
+
 		// 计算价格变化
 		priceChange := ((latest.Close - oldest.Close) / oldest.Close) * 100
 
@@ -2580,13 +2584,37 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 			fmtPrice(latest.Close), fmtPrice(maxPrice), fmtPrice(minPrice),
 			priceChange, trend, trendStrength))
 
-		// 近期关键价位（支撑/阻力），便于买卖点参考
+		// 近期关键价位（支撑/阻力）：区间最高/最低 + 细档位（前高前低、斐波那契、整数关、量能密集区）
 		if lang == LangChinese {
 			sb.WriteString(fmt.Sprintf("关键价位(近期区间): 阻力 %s | 支撑 %s\n",
-				fmtPrice(maxPrice), fmtPrice(minPrice)))
+				fmtPrice(sr.RangeHigh), fmtPrice(sr.RangeLow)))
 		} else {
 			sb.WriteString(fmt.Sprintf("Key levels (recent range): Resistance %s | Support %s\n",
-				fmtPrice(maxPrice), fmtPrice(minPrice)))
+				fmtPrice(sr.RangeHigh), fmtPrice(sr.RangeLow)))
+		}
+		if len(sr.Resistances) > 0 || len(sr.Supports) > 0 {
+			var rParts, sParts []string
+			for _, r := range sr.Resistances {
+				rParts = append(rParts, fmt.Sprintf("%s(%s)", fmtPrice(r.Price), r.Label))
+			}
+			for _, s := range sr.Supports {
+				sParts = append(sParts, fmt.Sprintf("%s(%s)", fmtPrice(s.Price), s.Label))
+			}
+			if lang == LangChinese {
+				sb.WriteString("关键价位(细): ")
+			} else {
+				sb.WriteString("Key levels (detail): ")
+			}
+			if len(rParts) > 0 {
+				sb.WriteString("R: " + strings.Join(rParts, " "))
+			}
+			if len(sParts) > 0 {
+				if len(rParts) > 0 {
+					sb.WriteString(" | ")
+				}
+				sb.WriteString("S: " + strings.Join(sParts, " "))
+			}
+			sb.WriteString("\n")
 		}
 
 		// 显示最近10根K线（提供完整形态与量价上下文，便于买卖点判断）
@@ -3128,29 +3156,28 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 		}
 	}
 
-	// Key Price Levels: consolidate EMA/BOLL/recent range into structured support/resistance
+	// Key Price Levels: consolidate range, pivot/Fib/round/VP, EMA, BOLL into structured support/resistance
 	if currentPrice > 0 && len(klines) > 0 {
 		type priceLevel struct {
 			price float64
 			label string
 		}
 		var supports, resistances []priceLevel
+		srLevels := ComputeSupportResistance(klines, currentPrice)
 
-		// Recalculate range from klines for this scope
-		rangeHigh, rangeLow := klines[0].High, klines[0].Low
-		for _, k := range klines {
-			if k.High > rangeHigh {
-				rangeHigh = k.High
-			}
-			if k.Low < rangeLow {
-				rangeLow = k.Low
-			}
+		// 近期区间
+		if srLevels.RangeHigh > currentPrice {
+			resistances = append(resistances, priceLevel{srLevels.RangeHigh, "Range High"})
 		}
-		if rangeHigh > currentPrice {
-			resistances = append(resistances, priceLevel{rangeHigh, "Range High"})
+		if srLevels.RangeLow < currentPrice && srLevels.RangeLow > 0 {
+			supports = append(supports, priceLevel{srLevels.RangeLow, "Range Low"})
 		}
-		if rangeLow < currentPrice && rangeLow > 0 {
-			supports = append(supports, priceLevel{rangeLow, "Range Low"})
+		// 前高前低、斐波那契、整数关、量能密集区（预处理已去重）
+		for _, r := range srLevels.Resistances {
+			resistances = append(resistances, priceLevel{r.Price, r.Label})
+		}
+		for _, s := range srLevels.Supports {
+			supports = append(supports, priceLevel{s.Price, s.Label})
 		}
 
 		// EMA levels
@@ -3182,6 +3209,29 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 				supports = append(supports, priceLevel{lower, "BOLL Lower"})
 			}
 		}
+
+		// 合并相近价位（0.2% 容差），避免重复显示
+		dedupeNear := func(levels []priceLevel, desc bool) []priceLevel {
+			if len(levels) <= 1 {
+				return levels
+			}
+			if desc {
+				sort.Slice(levels, func(i, j int) bool { return levels[i].price > levels[j].price })
+			} else {
+				sort.Slice(levels, func(i, j int) bool { return levels[i].price < levels[j].price })
+			}
+			out := levels[:1]
+			for i := 1; i < len(levels); i++ {
+				last := out[len(out)-1].price
+				if last <= 0 || math.Abs(levels[i].price-last)/last <= 0.002 {
+					continue
+				}
+				out = append(out, levels[i])
+			}
+			return out
+		}
+		supports = dedupeNear(supports, true)
+		resistances = dedupeNear(resistances, false)
 
 		// Sort and format (supports descending = nearest first, resistances ascending = nearest first)
 		if len(supports) > 0 || len(resistances) > 0 {
