@@ -350,14 +350,15 @@ func GetFullDecisionWithStrategy(ctx *Context, mcpClient mcp.AIClient, engine *S
 		}
 	}
 
-	// 2. Build System Prompt using strategy engine
+	// 2. Build System Prompt (multi-agent when analyst report is provided)
+	multiAgent := len(analystSuffix) > 0 && analystSuffix[0] != ""
 	riskConfig := engine.GetRiskControlConfig()
-	systemPrompt := engine.BuildSystemPrompt(ctx.Account.TotalEquity, variant, mcpClient)
+	systemPrompt := engine.BuildSystemPrompt(ctx.Account.TotalEquity, variant, mcpClient, multiAgent)
 
-	// 3. Build User Prompt using strategy engine
+	// 3. Build User Prompt: multi-agent 时先放分析师报告，再放完整数据
 	userPrompt := engine.BuildUserPrompt(ctx)
-	if len(analystSuffix) > 0 && analystSuffix[0] != "" {
-		userPrompt += "\n\n## Current analyst report (reference)\n" + analystSuffix[0]
+	if multiAgent {
+		userPrompt = "## Analyst report (reference)\n" + analystSuffix[0] + "\n\n" + userPrompt
 	}
 
 	// 3.5. Set JSON Schema for structured output if model supports it
@@ -1113,9 +1114,10 @@ func (e *StrategyEngine) FetchPriceRankingData() *nofxos.PriceRankingData {
 // Prompt Building - System Prompt
 // ============================================================================
 
-// BuildSystemPrompt builds System Prompt according to strategy configuration
+// BuildSystemPrompt builds System Prompt according to strategy configuration.
+// multiAgent: when true, use role/entry/decision tailored for multi-agent (analyst report first in user prompt).
 // mcpClient: 用于检查模型是否支持JSON Schema（API级别），如果为nil则使用提示词集成方式
-func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string, mcpClient mcp.AIClient) string {
+func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string, mcpClient mcp.AIClient, multiAgent bool) string {
 	var sb strings.Builder
 	riskControl := e.config.RiskControl
 	promptSections := e.config.PromptSections
@@ -1128,8 +1130,16 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString("\n\n")
 	sb.WriteString("---\n\n")
 
-	// 1. Role definition (editable)
-	if promptSections.RoleDefinition != "" {
+	// 1. Role definition (editable; multi-agent uses dedicated role)
+	if multiAgent {
+		if lang == LangChinese {
+			sb.WriteString("# 你是交易员 Agent\n\n")
+			sb.WriteString("你依据**分析师报告**（用户提示词最上方）与下方完整市场数据做决策，不重复做宏观结论。\n\n")
+		} else {
+			sb.WriteString("# You are the Trader Agent\n\n")
+			sb.WriteString("You make decisions based on the **Analyst report** (at the top of the user prompt) and the full market data below. Do not re-do macro conclusions.\n\n")
+		}
+	} else if promptSections.RoleDefinition != "" {
 		sb.WriteString(promptSections.RoleDefinition)
 		sb.WriteString("\n\n")
 	} else {
@@ -1209,8 +1219,17 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 		sb.WriteString("If you find yourself trading every period → standards too low; if closing positions < 30 minutes → too impatient.\n\n")
 	}
 
-	// 5. Entry standards (editable)
-	if promptSections.EntryStandards != "" {
+	// 5. Entry standards (editable; multi-agent: combine analyst + MinConfidence)
+	if multiAgent {
+		sb.WriteString("# 🎯 Entry (Multi-Agent)\n\n")
+		sb.WriteString("You have:\n")
+		e.writeAvailableIndicators(&sb)
+		if lang == LangChinese {
+			sb.WriteString(fmt.Sprintf("\n结合分析师报告与上述指标：**confidence ≥ %d** 方可开仓；与分析师偏向严重相反时需在 thinking 中说明。\n\n", riskControl.MinConfidence))
+		} else {
+			sb.WriteString(fmt.Sprintf("\nCombine the analyst report with the indicators above: **confidence ≥ %d** to open; if your view strongly contradicts the analyst bias, explain in thinking.\n\n", riskControl.MinConfidence))
+		}
+	} else if promptSections.EntryStandards != "" {
 		sb.WriteString(promptSections.EntryStandards)
 		sb.WriteString("\n\nYou have the following indicator data:\n")
 		e.writeAvailableIndicators(&sb)
@@ -1233,8 +1252,22 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 		sb.WriteString("- Before opening, ensure **expected price move** clearly exceeds **round-trip cost** (shown in data); otherwise profit is eroded by fees.\n\n")
 	}
 
-	// 6. Decision process (editable)
-	if promptSections.DecisionProcess != "" {
+	// 6. Decision process (editable; multi-agent: read analyst first)
+	if multiAgent {
+		if lang == LangChinese {
+			sb.WriteString("# 📋 决策流程（多 Agent）\n\n")
+			sb.WriteString("1. 先阅读用户提示词顶部的**分析师报告**（bias / confidence / report_text）\n")
+			sb.WriteString("2. 查看当前持仓 → 是否止盈/止损\n")
+			sb.WriteString("3. 查看候选币与多周期数据 → 是否有强信号\n")
+			sb.WriteString("4. 先写 chain of thought，再输出结构化 JSON\n\n")
+		} else {
+			sb.WriteString("# 📋 Decision Process (Multi-Agent)\n\n")
+			sb.WriteString("1. Read the **Analyst report** at the top of the user prompt (bias / confidence / report_text)\n")
+			sb.WriteString("2. Check positions → Take profit / stop-loss?\n")
+			sb.WriteString("3. Scan candidate coins + multi-timeframe → Strong signals?\n")
+			sb.WriteString("4. Write chain of thought first, then output structured JSON\n\n")
+		}
+	} else if promptSections.DecisionProcess != "" {
 		sb.WriteString(promptSections.DecisionProcess)
 		sb.WriteString("\n\n")
 	} else {
@@ -2069,21 +2102,21 @@ func (e *StrategyEngine) BuildUserPrompt(ctx *Context) string {
 	// OI Ranking data (market-wide open interest changes)
 	// 优化：显示 Top 5，平衡信息完整性与token消耗（Top 5提供更全面的市场信号）
 	if ctx.OIRankingData != nil {
-		limitedOIRanking := limitOIRankingData(ctx.OIRankingData, 5)
+		limitedOIRanking := limitOIRankingData(ctx.OIRankingData, AnalystRankingsTopN)
 		sb.WriteString(nofxos.FormatOIRankingForAI(limitedOIRanking, nofxosLang))
 	}
 
 	// NetFlow Ranking data (market-wide fund flow)
 	// 优化：显示 Top 5，平衡信息完整性与token消耗（Top 5提供更全面的市场信号）
 	if ctx.NetFlowRankingData != nil {
-		limitedNetFlowRanking := limitNetFlowRankingData(ctx.NetFlowRankingData, 5)
+		limitedNetFlowRanking := limitNetFlowRankingData(ctx.NetFlowRankingData, AnalystRankingsTopN)
 		sb.WriteString(nofxos.FormatNetFlowRankingForAI(limitedNetFlowRanking, nofxosLang))
 	}
 
 	// Price Ranking data (market-wide gainers/losers)
 	// 优化：显示 Top 5，平衡信息完整性与token消耗（Top 5提供更全面的市场信号）
 	if ctx.PriceRankingData != nil {
-		limitedPriceRanking := limitPriceRankingData(ctx.PriceRankingData, 5)
+		limitedPriceRanking := limitPriceRankingData(ctx.PriceRankingData, AnalystRankingsTopN)
 		sb.WriteString(nofxos.FormatPriceRankingForAI(limitedPriceRanking, nofxosLang))
 	}
 
@@ -4232,4 +4265,36 @@ func limitPriceRankingData(data *nofxos.PriceRankingData, limit int) *nofxos.Pri
 	}
 
 	return limited
+}
+
+// AnalystRankingsTopN 分析师用全市场排名条数（与 OI movers 一致，便于宏观宽度判断）
+const AnalystRankingsTopN = 10
+
+// FormatMarketRankingsForAnalyst 为分析师生成全市场排名摘要（OI / 资金流 / 涨跌榜），Top 10，与交易员同源
+// 供分析师做宏观宽度与资金流向判断；无数据时返回空字符串，由调用方决定是否显示占位
+func FormatMarketRankingsForAnalyst(ctx *Context, lang Language) string {
+	if ctx == nil {
+		return ""
+	}
+	nofxosLang := nofxos.LangEnglish
+	if lang == LangChinese {
+		nofxosLang = nofxos.LangChinese
+	}
+	var sb strings.Builder
+	if ctx.OIRankingData != nil {
+		limited := limitOIRankingData(ctx.OIRankingData, AnalystRankingsTopN)
+		sb.WriteString(nofxos.FormatOIRankingForAI(limited, nofxosLang))
+	}
+	if ctx.NetFlowRankingData != nil {
+		limited := limitNetFlowRankingData(ctx.NetFlowRankingData, AnalystRankingsTopN)
+		sb.WriteString(nofxos.FormatNetFlowRankingForAI(limited, nofxosLang))
+	}
+	if ctx.PriceRankingData != nil {
+		limited := limitPriceRankingData(ctx.PriceRankingData, AnalystRankingsTopN)
+		sb.WriteString(nofxos.FormatPriceRankingForAI(limited, nofxosLang))
+	}
+	if sb.Len() == 0 {
+		return ""
+	}
+	return sb.String()
 }

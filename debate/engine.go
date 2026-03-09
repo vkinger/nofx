@@ -181,7 +181,7 @@ func (e *DebateEngine) runDebate(session *store.DebateSessionWithDetails, strate
 
 	// Build system prompt based on strategy (same as AI Test)
 	// Note: mcpClient is nil here, will use prompt integration method
-	baseSystemPrompt := strategyEngine.BuildSystemPrompt(1000.0, session.PromptVariant, nil)
+	baseSystemPrompt := strategyEngine.BuildSystemPrompt(1000.0, session.PromptVariant, nil, false)
 
 	// Build user prompt with market data (OI ranking data is included via ctx.OIRankingData)
 	userPrompt := strategyEngine.BuildUserPrompt(ctx)
@@ -553,7 +553,7 @@ func (e *DebateEngine) collectVotes(session *store.DebateSessionWithDetails, str
 
 	// Build voting context
 	// Note: mcpClient is nil here, will use prompt integration method
-	baseSystemPrompt := strategyEngine.BuildSystemPrompt(1000.0, session.PromptVariant, nil)
+	baseSystemPrompt := strategyEngine.BuildSystemPrompt(1000.0, session.PromptVariant, nil, false)
 
 	for _, participant := range session.Participants {
 		vote, err := e.getParticipantVote(session, participant, baseSystemPrompt, allMessages)

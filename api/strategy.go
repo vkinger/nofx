@@ -403,7 +403,8 @@ func (s *Server) handlePreviewPrompt(c *gin.Context) {
 	systemPrompt := engine.BuildSystemPrompt(
 		req.AccountEquity,
 		req.PromptVariant,
-		nil, // mcpClient not available in this context
+		nil,   // mcpClient not available in this context
+		false, // multiAgent
 	)
 
 	c.JSON(http.StatusOK, gin.H{
@@ -538,7 +539,7 @@ func (s *Server) handleStrategyTestRun(c *gin.Context) {
 
 	// Build System Prompt
 	// Note: mcpClient is nil here, will use prompt integration method
-	systemPrompt := engine.BuildSystemPrompt(1000.0, req.PromptVariant, nil)
+	systemPrompt := engine.BuildSystemPrompt(1000.0, req.PromptVariant, nil, false)
 
 	// Build User Prompt (using real market data)
 	userPrompt := engine.BuildUserPrompt(testContext)

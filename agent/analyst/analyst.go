@@ -12,29 +12,63 @@ import (
 	"nofx/store"
 )
 
-// AnalystReport 分析师输出：宏观偏向、信心、报告正文
+// AnalystReport 分析师输出：宏观偏向、信心、报告正文，可选 key_risks
 type AnalystReport struct {
 	Bias       store.AnalystBias `json:"bias"`
 	Confidence int              `json:"confidence"`
 	ReportText string           `json:"report_text"`
+	KeyRisks   []string         `json:"key_risks,omitempty"`
 	Raw        string           `json:"-"`
 }
 
-const analystSystemPrompt = `You are a Market Insight Analyst. Your job is to read the given market data and output a brief analysis with:
-1. **bias**: One of "bullish", "bearish", "neutral", "strong_bullish", "strong_bearish"
-2. **confidence**: Integer 0-100 (how confident you are in this bias)
-3. **report_text**: A short paragraph (2-5 sentences) summarizing: key price/volume/OI signals, main risk, and recommended stance.
+// analystRoleAndOutputPrompt 分析师角色与输出格式（不含数据字典，字典由 kernel.GetSchemaPromptForAnalyst 提供）
+const analystRoleAndOutputZH = `---
+# 角色
+你是宏观市场观察员。你将看到：账户与持仓摘要、BTC/ETH 快照（含可选资金费率）、近期与历史表现、OI movers（Top 10）、全市场排名（OI/资金流/涨跌榜 Top 10）、候选币种列表。只根据上述**汇总数据**做宏观结论，不做逐币分析，不做交易决策。
 
-Output MUST be valid JSON in this exact format (no other text):
-{"bias":"...","confidence":NN,"report_text":"..."}`
+# 输出格式（严格）
+你必须**只输出一个 JSON 对象**，禁止 markdown 代码块、禁止前后说明文字。字段与类型如下：
+- bias：字符串，且必须为 "bullish" | "bearish" | "neutral" | "strong_bullish" | "strong_bearish" 之一
+- confidence：整数，0-100
+- report_text：字符串，2-5 句（趋势、主要风险、建议立场）
+- key_risks：（可选）字符串数组，1-3 条短语
+
+示例（仅作格式参考）：{"bias":"neutral","confidence":60,"report_text":"BTC 横盘，全市场资金流分歧。建议观望。"}
+可选：增加 "key_risks": ["风险1", "风险2"]。`
+
+const analystRoleAndOutputEN = `---
+# Role
+You are a Macro Market Observer. You will see: account and positions summary, BTC/ETH snapshot (optional funding), recent and historical performance, OI movers (Top 10), market-wide rankings (OI / flow / gainers-losers, Top 10), candidate symbol list. Output a high-level view based only on these **summary data**; no per-coin analysis, no trading decisions.
+
+# Output format (strict)
+You must output **exactly one JSON object**; no markdown code fences, no text before or after. Fields and types:
+- bias: string, one of "bullish" | "bearish" | "neutral" | "strong_bullish" | "strong_bearish"
+- confidence: integer, 0-100
+- report_text: string, 2-5 sentences (trend, main risk, recommended stance)
+- key_risks: (optional) array of strings, 1-3 short items
+
+Example (format only): {"bias":"neutral","confidence":60,"report_text":"BTC flat, fund flow mixed. Prefer wait."}
+Optional: add "key_risks": ["risk1", "risk2"].`
+
+// buildAnalystSystemPrompt 拼装分析师系统提示：数据字典（按职责拆分）+ 角色与输出格式
+func buildAnalystSystemPrompt(engine *kernel.StrategyEngine) string {
+	lang := engine.GetLanguage()
+	schema := kernel.GetSchemaPromptForAnalyst(lang)
+	if lang == kernel.LangChinese {
+		return schema + "\n" + analystRoleAndOutputZH
+	}
+	return schema + "\n" + analystRoleAndOutputEN
+}
 
 // RunAnalyst 运行分析师 Agent：根据 ctx 生成报告（不写黑板，由调用方写入）
 func RunAnalyst(ctx *kernel.Context, engine *kernel.StrategyEngine, client mcp.AIClient) (*AnalystReport, error) {
 	if ctx == nil || engine == nil || client == nil {
 		return nil, fmt.Errorf("analyst: ctx, engine and client are required")
 	}
-	userPrompt := buildAnalystUserPrompt(ctx)
-	resp, err := client.CallWithMessages(analystSystemPrompt, userPrompt)
+	lang := engine.GetLanguage()
+	userPrompt := buildAnalystUserPrompt(ctx, lang)
+	systemPrompt := buildAnalystSystemPrompt(engine)
+	resp, err := client.CallWithMessages(systemPrompt, userPrompt)
 	if err != nil {
 		return nil, fmt.Errorf("analyst AI call failed: %w", err)
 	}
@@ -46,59 +80,116 @@ func RunAnalyst(ctx *kernel.Context, engine *kernel.StrategyEngine, client mcp.A
 	return report, nil
 }
 
-func buildAnalystUserPrompt(ctx *kernel.Context) string {
+// buildAnalystUserPrompt 汇总版：仅给宏观结论所需信息，不喂逐币完整数据（降低分析师职责过重与幻觉）
+func buildAnalystUserPrompt(ctx *kernel.Context, lang kernel.Language) string {
 	var b strings.Builder
+	b.WriteString(fmt.Sprintf("Time: %s | Period #%d | Runtime %d min\n\n", ctx.CurrentTime, ctx.CallCount, ctx.RuntimeMinutes))
 	b.WriteString("## Account\n")
-	b.WriteString(fmt.Sprintf("Equity: %.2f USDT, Available: %.2f, Positions: %d\n\n", ctx.Account.TotalEquity, ctx.Account.AvailableBalance, ctx.Account.PositionCount))
-	b.WriteString("## Positions\n")
-	for _, p := range ctx.Positions {
-		b.WriteString(fmt.Sprintf("- %s %s: PnL %.2f%%, Liq %.0f\n", p.Symbol, p.Side, p.UnrealizedPnLPct, p.LiquidationPrice))
-	}
+	b.WriteString(fmt.Sprintf("Equity: %.2f USDT | Available: %.2f | Positions: %d | Margin: %.1f%%\n\n",
+		ctx.Account.TotalEquity, ctx.Account.AvailableBalance, ctx.Account.PositionCount, ctx.Account.MarginUsedPct))
+	b.WriteString("## Positions summary\n")
 	if len(ctx.Positions) == 0 {
 		b.WriteString("(none)\n")
+	} else {
+		totalPnl := 0.0
+		for _, p := range ctx.Positions {
+			totalPnl += p.UnrealizedPnLPct
+			b.WriteString(fmt.Sprintf("- %s %s: PnL %.2f%%, Liq %.0f\n", p.Symbol, p.Side, p.UnrealizedPnLPct, p.LiquidationPrice))
+		}
+		avgPnl := totalPnl / float64(len(ctx.Positions))
+		b.WriteString(fmt.Sprintf("Total %d positions, avg PnL %.2f%%\n", len(ctx.Positions), avgPnl))
 	}
-	b.WriteString("\n## Candidate coins & market snapshot\n")
-	for _, c := range ctx.CandidateCoins {
-		data, ok := ctx.MarketDataMap[c.Symbol]
-		if !ok {
-			continue
-		}
-		b.WriteString(fmt.Sprintf("- %s: price %.4f, 1h chg %.2f%%, 4h chg %.2f%%",
-			c.Symbol, data.CurrentPrice, data.PriceChange1h, data.PriceChange4h))
-		if data.CurrentRSI7 > 0 {
-			b.WriteString(fmt.Sprintf(", RSI7 %.0f", data.CurrentRSI7))
-		}
-		if data.FundingRate != 0 {
-			b.WriteString(fmt.Sprintf(", funding %.2e", data.FundingRate))
-		}
-		if data.OpenInterest != nil && data.OpenInterest.Latest > 0 {
-			b.WriteString(fmt.Sprintf(", OI %.0f", data.OpenInterest.Latest))
+	b.WriteString("\n## BTC / market snapshot\n")
+	if btc, ok := ctx.MarketDataMap["BTCUSDT"]; ok {
+		b.WriteString(fmt.Sprintf("BTC: %.2f (1h %+.2f%%, 4h %+.2f%%) | MACD: %.4f | RSI: %.2f",
+			btc.CurrentPrice, btc.PriceChange1h, btc.PriceChange4h, btc.CurrentMACD, btc.CurrentRSI7))
+		if btc.FundingRate != 0 {
+			b.WriteString(fmt.Sprintf(" | funding %.4f%%", btc.FundingRate*100))
 		}
 		b.WriteString("\n")
 	}
-	if ctx.OITopDataMap != nil && len(ctx.OITopDataMap) > 0 {
-		b.WriteString("\n## OI ranking (top movers)\n")
-		for sym, oi := range ctx.OITopDataMap {
-			b.WriteString(fmt.Sprintf("- %s: OI delta %.2f%%, price chg %.2f%%\n", sym, oi.OIDeltaPercent, oi.PriceDeltaPercent))
+	if eth, ok := ctx.MarketDataMap["ETHUSDT"]; ok {
+		b.WriteString(fmt.Sprintf("ETH: %.2f (1h %+.2f%%, 4h %+.2f%%) | MACD: %.4f | RSI: %.2f",
+			eth.CurrentPrice, eth.PriceChange1h, eth.PriceChange4h, eth.CurrentMACD, eth.CurrentRSI7))
+		if eth.FundingRate != 0 {
+			b.WriteString(fmt.Sprintf(" | funding %.4f%%", eth.FundingRate*100))
 		}
+		b.WriteString("\n")
 	}
+	b.WriteString("\n## Recent performance\n")
+	if len(ctx.RecentOrders) > 0 {
+		wins := 0
+		for _, o := range ctx.RecentOrders {
+			if o.RealizedPnL > 0 {
+				wins++
+			}
+		}
+		b.WriteString(fmt.Sprintf("Recent %d trades: %d wins (%.1f%% win rate)\n", len(ctx.RecentOrders), wins, float64(wins)/float64(len(ctx.RecentOrders))*100))
+	} else {
+		b.WriteString("No recent trades\n")
+	}
+	if ctx.TradingStats != nil && ctx.TradingStats.TotalTrades > 0 {
+		b.WriteString(fmt.Sprintf("Historical: %d trades, win rate %.1f%%, profit factor %.2f, max drawdown %.1f%%\n",
+			ctx.TradingStats.TotalTrades, ctx.TradingStats.WinRate, ctx.TradingStats.ProfitFactor, ctx.TradingStats.MaxDrawdownPct))
+	}
+	b.WriteString("\n## OI movers (top 10)\n")
+	if ctx.OITopDataMap != nil && len(ctx.OITopDataMap) > 0 {
+		n := 0
+		for sym, oi := range ctx.OITopDataMap {
+			if n >= kernel.AnalystRankingsTopN {
+				break
+			}
+			b.WriteString(fmt.Sprintf("- %s: OI %+.2f%%, price %+.2f%%\n", sym, oi.OIDeltaPercent, oi.PriceDeltaPercent))
+			n++
+		}
+	} else {
+		b.WriteString("(no data)\n")
+	}
+	// 全市场排名（OI / 资金流 / 涨跌榜）Top 10，与交易员同源
+	if s := kernel.FormatMarketRankingsForAnalyst(ctx, lang); s != "" {
+		b.WriteString("\n## Market-wide rankings (top 10)\n")
+		b.WriteString(s)
+	}
+	b.WriteString("\n## Candidate symbols (no per-coin data here)\n")
+	if len(ctx.CandidateCoins) == 0 {
+		b.WriteString("(none)\n")
+	} else {
+		limit := 10
+		if limit > len(ctx.CandidateCoins) {
+			limit = len(ctx.CandidateCoins)
+		}
+		for i := 0; i < limit; i++ {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(ctx.CandidateCoins[i].Symbol)
+		}
+		if len(ctx.CandidateCoins) > limit {
+			b.WriteString(fmt.Sprintf(" ... +%d more", len(ctx.CandidateCoins)-limit))
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("\n---\nOutput only one JSON object (bias, confidence, report_text [, key_risks]). No other text.\n")
 	return b.String()
 }
 
 var reAnalystJSON = regexp.MustCompile(`(?s)\{\s*"bias"\s*:\s*"[^"]*"\s*,\s*"confidence"\s*:\s*\d+\s*,\s*"report_text"\s*:\s*"([^"]*)"\s*\}`)
 
+type analystParseOut struct {
+	Bias       string   `json:"bias"`
+	Confidence int      `json:"confidence"`
+	ReportText string   `json:"report_text"`
+	KeyRisks   []string `json:"key_risks"`
+}
+
 func parseAnalystResponse(resp string) (*AnalystReport, error) {
 	resp = strings.TrimSpace(resp)
-	// Try raw JSON first
-	var out struct {
-		Bias       string `json:"bias"`
-		Confidence int    `json:"confidence"`
-		ReportText string `json:"report_text"`
-	}
+	var out analystParseOut
+	// 1. Try raw JSON first
 	if err := json.Unmarshal([]byte(resp), &out); err == nil {
 		return normalizeReport(&out), nil
 	}
-	// Try extract from code block
+	// 2. Try extract from code block (```json ... ``` or ``` ... ```)
 	if idx := strings.Index(resp, "```"); idx >= 0 {
 		rest := resp[idx+3:]
 		if strings.HasPrefix(strings.ToLower(rest), "json") {
@@ -112,10 +203,18 @@ func parseAnalystResponse(resp string) (*AnalystReport, error) {
 			}
 		}
 	}
-	// Fallback regex
+	// 3. Try extract first { ... last } (model 可能输出 "分析如下：\n{...}\n")
+	first := strings.Index(resp, "{")
+	last := strings.LastIndex(resp, "}")
+	if first >= 0 && last > first {
+		sub := resp[first : last+1]
+		if err := json.Unmarshal([]byte(sub), &out); err == nil {
+			return normalizeReport(&out), nil
+		}
+	}
+	// 4. Fallback regex
 	if m := reAnalystJSON.FindStringSubmatch(resp); len(m) >= 2 {
 		out.ReportText = m[1]
-		// try to get bias and confidence from same blob
 		if i := strings.Index(resp, `"bias"`); i >= 0 {
 			blob := resp[i:]
 			if j := strings.Index(blob, `"`); j >= 0 {
@@ -134,11 +233,7 @@ func parseAnalystResponse(resp string) (*AnalystReport, error) {
 	return nil, fmt.Errorf("could not parse analyst response")
 }
 
-func normalizeReport(out *struct {
-	Bias       string `json:"bias"`
-	Confidence int    `json:"confidence"`
-	ReportText string `json:"report_text"`
-}) *AnalystReport {
+func normalizeReport(out *analystParseOut) *AnalystReport {
 	bias := store.AnalystBias(strings.ToLower(strings.TrimSpace(out.Bias)))
 	switch bias {
 	case store.AnalystBiasBullish, store.AnalystBiasBearish, store.AnalystBiasNeutral,
@@ -156,6 +251,7 @@ func normalizeReport(out *struct {
 		Bias:       bias,
 		Confidence: out.Confidence,
 		ReportText: strings.TrimSpace(out.ReportText),
+		KeyRisks:   out.KeyRisks,
 	}
 }
 

@@ -852,6 +852,13 @@ func (at *AutoTrader) runCycle() error {
 			Positions: make([]compliance.PositionSnapshot, 0, len(ctx.Positions)),
 			Rules:     compliance.ComplianceRules{},
 		}
+		// 多 Agent 时把本轮分析师报告传给风控官，便于判断「与宏观偏向严重相反」等
+		if record.AnalystReportID > 0 {
+			if ar, getErr := at.store.AgentBlackboard().GetAnalystReportByID(record.AnalystReportID); getErr == nil && ar != nil {
+				input.AnalystBias = string(ar.Bias)
+				input.AnalystConfidence = ar.Confidence
+			}
+		}
 		for _, p := range ctx.Positions {
 			markPrice := p.MarkPrice
 			if at.priceService != nil {

@@ -508,6 +508,99 @@ func GetSchemaPromptWithModelSize(lang Language, modelSize ModelSize) string {
 	return prompt
 }
 
+// GetSchemaPromptForAnalyst 生成分析师 Agent 专用数据字典（参照原字典，按职责拆分）
+// 仅包含分析师输入中会出现的汇总字段：账户、持仓摘要、市场/OI、价格含义、交易统计；不含关键价位、不含 K 线/多周期信号说明
+func GetSchemaPromptForAnalyst(lang Language) string {
+	if lang == LangChinese {
+		return getSchemaPromptForAnalystZH()
+	}
+	return getSchemaPromptForAnalystEN()
+}
+
+// getSchemaPromptForAnalystZH 分析师用数据字典（中文）
+func getSchemaPromptForAnalystZH() string {
+	prompt := "# 📖 数据字典（分析师·汇总数据）\n\n"
+	prompt += "你的输入**仅包含**以下类型的汇总数据，不包含逐币 K 线、多周期指标、关键价位、信号术语等。请据此理解字段含义并输出宏观结论。\n\n"
+	prompt += "## 📊 字段含义说明\n\n"
+
+	prompt += "### 账户指标\n"
+	for key, field := range DataDictionary["AccountMetrics"] {
+		prompt += formatFieldDefZH(key, field)
+	}
+
+	prompt += "\n### 持仓指标（用于「持仓摘要」中每仓一行）\n"
+	for key, field := range DataDictionary["PositionMetrics"] {
+		prompt += formatFieldDefZH(key, field)
+	}
+
+	prompt += "\n### 市场数据（用于 BTC 快照、OI 排名等）\n"
+	for key, field := range DataDictionary["MarketData"] {
+		prompt += formatFieldDefZH(key, field)
+	}
+
+	prompt += "\n### 价格数据说明\n"
+	for key, field := range DataDictionary["PriceDataNote"] {
+		prompt += formatFieldDefZH(key, field)
+	}
+
+	prompt += "\n### 交易指标（用于「近期表现」「历史统计」汇总）\n"
+	for key, field := range DataDictionary["TradeMetrics"] {
+		prompt += formatFieldDefZH(key, field)
+	}
+
+	prompt += "\n### 资金费率（Funding）\n"
+	prompt += "- 若在 BTC/ETH 快照中出现「funding x.xx%」，表示永续合约资金费率；正数=多头付空头（偏多过热），负数=空头付多头（偏空过热），可作市场情绪参考。\n"
+
+	prompt += "\n### 全市场排名与 OI movers\n"
+	prompt += "- **OI movers（Top 10）**：单源 OI 异动榜，每行 symbol、OI 变化%、价格变化%，用于观察资金集中方向。\n"
+	prompt += "- **Market-wide rankings（全市场排名 Top 10）**：与交易员同源，包含 **OI 排行**（持仓量增减榜）、**资金流排行**（机构/个人合约净流入流出）、**涨跌榜**（多周期涨跌幅 Top/Low），用于宏观宽度与资金流向判断。\n"
+
+	prompt += "\n**输入结构**：你的输入按以下顺序出现：账户 → 持仓摘要 → BTC/ETH 快照（含可选资金费率）→ 近期表现 → 历史统计 → OI movers（Top 10）→ 全市场排名（Top 10）→ 候选币种列表（仅 symbol，无逐币明细）。宏观结论基于上述汇总即可。\n"
+	return prompt
+}
+
+// getSchemaPromptForAnalystEN 分析师用数据字典（英文）
+func getSchemaPromptForAnalystEN() string {
+	prompt := "# 📖 Data Dictionary (Analyst · Summary Data)\n\n"
+	prompt += "Your input **only contains** summary data of the types below. It does **not** include per-coin K-lines, multi-timeframe indicators, key levels, or signal terminology. Use these definitions to interpret fields and output a macro view.\n\n"
+	prompt += "## 📊 Field Definitions\n\n"
+
+	prompt += "### Account Metrics\n"
+	for key, field := range DataDictionary["AccountMetrics"] {
+		prompt += formatFieldDefEN(key, field)
+	}
+
+	prompt += "\n### Position Metrics (for per-position summary lines)\n"
+	for key, field := range DataDictionary["PositionMetrics"] {
+		prompt += formatFieldDefEN(key, field)
+	}
+
+	prompt += "\n### Market Data (for BTC snapshot, OI rankings, etc.)\n"
+	for key, field := range DataDictionary["MarketData"] {
+		prompt += formatFieldDefEN(key, field)
+	}
+
+	prompt += "\n### Price Data Note\n"
+	for key, field := range DataDictionary["PriceDataNote"] {
+		prompt += formatFieldDefEN(key, field)
+	}
+
+	prompt += "\n### Trade Metrics (for \"Recent performance\" and \"Historical\" summary)\n"
+	for key, field := range DataDictionary["TradeMetrics"] {
+		prompt += formatFieldDefEN(key, field)
+	}
+
+	prompt += "\n### Funding Rate\n"
+	prompt += "- If BTC/ETH snapshot shows \"funding x.xx%\", it is the perpetual funding rate; positive = longs pay shorts (overheated long), negative = shorts pay longs (overheated short). Use as sentiment reference.\n"
+
+	prompt += "\n### Market-wide rankings & OI movers\n"
+	prompt += "- **OI movers (Top 10)**: Single-source OI movers; each line has symbol, OI change %, price change %, for capital concentration.\n"
+	prompt += "- **Market-wide rankings (Top 10)**: Same source as trader. Includes **OI ranking** (open interest gainers/losers), **Net flow ranking** (institution/personal futures inflow/outflow), **Price ranking** (gainers/losers by timeframe), for macro breadth and fund flow.\n"
+
+	prompt += "\n**Input structure**: Your input appears in this order: Account → Positions summary → BTC/ETH snapshot (optional funding) → Recent performance → Historical → OI movers (Top 10) → Market-wide rankings (Top 10) → Candidate symbols (symbol list only). Base your macro conclusion on these summaries.\n"
+	return prompt
+}
+
 // DetectModelSize 根据模型名称自动判断模型大小
 // 返回 ModelLarge（大模型，使用精简版）或 ModelSmall（小模型，使用完整版）
 func DetectModelSize(modelName string) ModelSize {

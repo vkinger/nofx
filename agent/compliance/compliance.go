@@ -44,6 +44,10 @@ func RunCompliance(input *ComplianceInput, client mcp.AIClient) (*ComplianceOutp
 
 func buildComplianceUserPrompt(in *ComplianceInput) string {
 	var b strings.Builder
+	if in.AnalystBias != "" {
+		b.WriteString("## Analyst report (this round)\n")
+		b.WriteString(fmt.Sprintf("Bias: %s | Confidence: %d\n\n", in.AnalystBias, in.AnalystConfidence))
+	}
 	b.WriteString("## Trader thinking (chain-of-thought)\n")
 	b.WriteString(in.Thinking)
 	b.WriteString("\n\n## Pending decisions\n")
