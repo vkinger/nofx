@@ -1431,66 +1431,75 @@ func (s *Server) handleClosePosition(c *gin.Context) {
 	var tempTrader trader.Trader
 	var createErr error
 
-	// Use ExchangeType (e.g., "binance") instead of ExchangeID (which is now UUID)
-	// Convert EncryptedString fields to string
-	switch exchangeCfg.ExchangeType {
-	case "binance":
-		tempTrader = binance.NewFuturesTrader(string(exchangeCfg.APIKey), string(exchangeCfg.SecretKey), userID)
-	case "hyperliquid":
-		tempTrader, createErr = hyperliquidtrader.NewHyperliquidTrader(
-			string(exchangeCfg.APIKey),
-			exchangeCfg.HyperliquidWalletAddr,
-			exchangeCfg.Testnet,
-		)
-	case "aster":
-		tempTrader, createErr = aster.NewAsterTrader(
-			exchangeCfg.AsterUser,
-			exchangeCfg.AsterSigner,
-			string(exchangeCfg.AsterPrivateKey),
-		)
-	case "bybit":
-		tempTrader = bybit.NewBybitTrader(
-			string(exchangeCfg.APIKey),
-			string(exchangeCfg.SecretKey),
-		)
-	case "okx":
-		tempTrader = okx.NewOKXTrader(
-			string(exchangeCfg.APIKey),
-			string(exchangeCfg.SecretKey),
-			string(exchangeCfg.Passphrase),
-		)
-	case "bitget":
-		tempTrader = bitget.NewBitgetTrader(
-			string(exchangeCfg.APIKey),
-			string(exchangeCfg.SecretKey),
-			string(exchangeCfg.Passphrase),
-		)
-	case "gate":
-		tempTrader = gate.NewGateTrader(
-			string(exchangeCfg.APIKey),
-			string(exchangeCfg.SecretKey),
-		)
-	case "kucoin":
-		tempTrader = kucoin.NewKuCoinTrader(
-			string(exchangeCfg.APIKey),
-			string(exchangeCfg.SecretKey),
-			string(exchangeCfg.Passphrase),
-		)
-	case "lighter":
-		if exchangeCfg.LighterWalletAddr != "" && string(exchangeCfg.LighterAPIKeyPrivateKey) != "" {
-			// Lighter only supports mainnet
-			tempTrader, createErr = lighter.NewLighterTraderV2(
-				exchangeCfg.LighterWalletAddr,
-				string(exchangeCfg.LighterAPIKeyPrivateKey),
-				exchangeCfg.LighterAPIKeyIndex,
-				false, // Always use mainnet for Lighter
-			)
-		} else {
-			createErr = fmt.Errorf("Lighter requires wallet address and API Key private key")
+	if exchangeCfg.ExchangeType == "paper" {
+		_ = s.traderManager.LoadUserTradersFromStore(s.store, userID)
+		at, err := s.traderManager.GetTrader(traderID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "虚拟盘需先启动交易员后再平仓"})
+			return
 		}
-	default:
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Unsupported exchange type"})
-		return
+		tempTrader = at.GetTrader()
+	} else {
+		// Use ExchangeType (e.g., "binance") instead of ExchangeID (which is now UUID)
+		switch exchangeCfg.ExchangeType {
+		case "binance":
+			tempTrader = binance.NewFuturesTrader(string(exchangeCfg.APIKey), string(exchangeCfg.SecretKey), userID)
+		case "hyperliquid":
+			tempTrader, createErr = hyperliquidtrader.NewHyperliquidTrader(
+				string(exchangeCfg.APIKey),
+				exchangeCfg.HyperliquidWalletAddr,
+				exchangeCfg.Testnet,
+			)
+		case "aster":
+			tempTrader, createErr = aster.NewAsterTrader(
+				exchangeCfg.AsterUser,
+				exchangeCfg.AsterSigner,
+				string(exchangeCfg.AsterPrivateKey),
+			)
+		case "bybit":
+			tempTrader = bybit.NewBybitTrader(
+				string(exchangeCfg.APIKey),
+				string(exchangeCfg.SecretKey),
+			)
+		case "okx":
+			tempTrader = okx.NewOKXTrader(
+				string(exchangeCfg.APIKey),
+				string(exchangeCfg.SecretKey),
+				string(exchangeCfg.Passphrase),
+			)
+		case "bitget":
+			tempTrader = bitget.NewBitgetTrader(
+				string(exchangeCfg.APIKey),
+				string(exchangeCfg.SecretKey),
+				string(exchangeCfg.Passphrase),
+			)
+		case "gate":
+			tempTrader = gate.NewGateTrader(
+				string(exchangeCfg.APIKey),
+				string(exchangeCfg.SecretKey),
+			)
+		case "kucoin":
+			tempTrader = kucoin.NewKuCoinTrader(
+				string(exchangeCfg.APIKey),
+				string(exchangeCfg.SecretKey),
+				string(exchangeCfg.Passphrase),
+			)
+		case "lighter":
+			if exchangeCfg.LighterWalletAddr != "" && string(exchangeCfg.LighterAPIKeyPrivateKey) != "" {
+				// Lighter only supports mainnet
+				tempTrader, createErr = lighter.NewLighterTraderV2(
+					exchangeCfg.LighterWalletAddr,
+					string(exchangeCfg.LighterAPIKeyPrivateKey),
+					exchangeCfg.LighterAPIKeyIndex,
+					false, // Always use mainnet for Lighter
+				)
+			} else {
+				createErr = fmt.Errorf("Lighter requires wallet address and API Key private key")
+			}
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Unsupported exchange type"})
+			return
+		}
 	}
 
 	if createErr != nil {
