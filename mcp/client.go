@@ -246,6 +246,40 @@ func (client *Client) SetTimeout(timeout time.Duration) {
 }
 
 // SetJSONSchema sets JSON Schema for structured output (if model supports it)
+func (client *Client) SetMaxTokens(maxTokens int) {
+	client.MaxTokens = maxTokens
+	if client.config != nil {
+		client.config.MaxTokens = maxTokens
+	}
+}
+
+func (client *Client) SetTemperature(temperature float64) {
+	if client.config != nil {
+		client.config.Temperature = temperature
+	}
+}
+
+func (client *Client) SetTopP(topP float64) {
+	if client.config != nil {
+		p := topP
+		client.config.TopP = &p
+	}
+}
+
+func (client *Client) SetPresencePenalty(penalty float64) {
+	if client.config != nil {
+		p := penalty
+		client.config.PresencePenalty = &p
+	}
+}
+
+func (client *Client) SetFrequencyPenalty(penalty float64) {
+	if client.config != nil {
+		p := penalty
+		client.config.FrequencyPenalty = &p
+	}
+}
+
 func (client *Client) SetJSONSchema(jsonSchema string) {
 	client.JSONSchema = jsonSchema
 	if jsonSchema != "" {
@@ -373,6 +407,15 @@ func (client *Client) buildMCPRequestBody(systemPrompt, userPrompt string) map[s
 		requestBody["max_completion_tokens"] = client.MaxTokens
 	} else {
 		requestBody["max_tokens"] = client.MaxTokens
+	}
+	if client.config.TopP != nil {
+		requestBody["top_p"] = *client.config.TopP
+	}
+	if client.config.PresencePenalty != nil {
+		requestBody["presence_penalty"] = *client.config.PresencePenalty
+	}
+	if client.config.FrequencyPenalty != nil {
+		requestBody["frequency_penalty"] = *client.config.FrequencyPenalty
 	}
 
 	// Note: JSON Schema support is handled by specific client implementations (OpenAI/Claude)

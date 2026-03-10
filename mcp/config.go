@@ -18,9 +18,12 @@ type Config struct {
 	Model    string
 
 	// Behavior configuration
-	MaxTokens   int
-	Temperature float64
-	UseFullURL  bool
+	MaxTokens        int
+	Temperature      float64
+	TopP             *float64 // Nucleus sampling (0-1), nil = not set
+	PresencePenalty  *float64 // -2 to 2, nil = not set
+	FrequencyPenalty *float64 // -2 to 2, nil = not set
+	UseFullURL       bool
 
 	// Retry configuration
 	MaxRetries     int

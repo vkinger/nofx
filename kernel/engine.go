@@ -311,8 +311,7 @@ func GetFullDecision(ctx *Context, mcpClient mcp.AIClient) (*FullDecision, error
 }
 
 // GetFullDecisionWithStrategy uses StrategyEngine to get AI decision (unified prompt generation).
-// Optional analystSuffix: when provided (e.g. from multi-agent analyst report), appended to user prompt for trader reference.
-func GetFullDecisionWithStrategy(ctx *Context, mcpClient mcp.AIClient, engine *StrategyEngine, variant string, analystSuffix ...string) (*FullDecision, error) {
+func GetFullDecisionWithStrategy(ctx *Context, mcpClient mcp.AIClient, engine *StrategyEngine, variant string) (*FullDecision, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("context is nil")
 	}
@@ -355,16 +354,13 @@ func GetFullDecisionWithStrategy(ctx *Context, mcpClient mcp.AIClient, engine *S
 		}
 	}
 
-	// 2. Build System Prompt (multi-agent when analyst report is provided)
-	multiAgent := len(analystSuffix) > 0 && analystSuffix[0] != ""
-	riskConfig := engine.GetRiskControlConfig()
-	systemPrompt := engine.BuildSystemPrompt(ctx.Account.TotalEquity, variant, mcpClient, multiAgent)
+	// 2. Build System Prompt
+	systemPrompt := engine.BuildSystemPrompt(ctx.Account.TotalEquity, variant, mcpClient)
 
-	// 3. Build User Prompt: multi-agent 时先放分析师报告，再放完整数据
+	// 3. Build User Prompt
 	userPrompt := engine.BuildUserPrompt(ctx)
-	if multiAgent {
-		userPrompt = "## Analyst report (reference)\n" + analystSuffix[0] + "\n\n" + userPrompt
-	}
+
+	riskConfig := engine.GetRiskControlConfig()
 
 	// 3.5. 按当前 Agent 角色设置 JSON Schema（交易员），支持 json_schema 的模型会收到对应输出格式
 	PrepareClientForRole(mcpClient, "trader", engine.GetLanguage())
@@ -1076,9 +1072,8 @@ func (e *StrategyEngine) FetchPriceRankingData() *nofxos.PriceRankingData {
 // ============================================================================
 
 // BuildSystemPrompt builds System Prompt according to strategy configuration.
-// multiAgent: when true, use role/entry/decision tailored for multi-agent (analyst report first in user prompt).
 // mcpClient: 用于检查模型是否支持JSON Schema（API级别），如果为nil则使用提示词集成方式
-func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string, mcpClient mcp.AIClient, multiAgent bool) string {
+func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string, mcpClient mcp.AIClient) string {
 	var sb strings.Builder
 	riskControl := e.config.RiskControl
 	promptSections := e.config.PromptSections
@@ -1091,16 +1086,8 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString("\n\n")
 	sb.WriteString("---\n\n")
 
-	// 1. Role definition (editable; multi-agent uses dedicated role)
-	if multiAgent {
-		if lang == LangChinese {
-			sb.WriteString("# 你是交易员 Agent\n\n")
-			sb.WriteString("你依据**分析师报告**（用户提示词最上方）与下方完整市场数据做决策，不重复做宏观结论。\n\n")
-		} else {
-			sb.WriteString("# You are the Trader Agent\n\n")
-			sb.WriteString("You make decisions based on the **Analyst report** (at the top of the user prompt) and the full market data below. Do not re-do macro conclusions.\n\n")
-		}
-	} else if promptSections.RoleDefinition != "" {
+	// 1. Role definition (editable)
+	if promptSections.RoleDefinition != "" {
 		sb.WriteString(promptSections.RoleDefinition)
 		sb.WriteString("\n\n")
 	} else {
@@ -1180,17 +1167,8 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 		sb.WriteString("If you find yourself trading every period → standards too low; if closing positions < 30 minutes → too impatient.\n\n")
 	}
 
-	// 5. Entry standards (editable; multi-agent: combine analyst + MinConfidence)
-	if multiAgent {
-		sb.WriteString("# 🎯 Entry (Multi-Agent)\n\n")
-		sb.WriteString("You have:\n")
-		e.writeAvailableIndicators(&sb)
-		if lang == LangChinese {
-			sb.WriteString(fmt.Sprintf("\n结合分析师报告与上述指标：**confidence ≥ %d** 方可开仓；与分析师偏向严重相反时需在 thinking 中说明。\n\n", riskControl.MinConfidence))
-		} else {
-			sb.WriteString(fmt.Sprintf("\nCombine the analyst report with the indicators above: **confidence ≥ %d** to open; if your view strongly contradicts the analyst bias, explain in thinking.\n\n", riskControl.MinConfidence))
-		}
-	} else if promptSections.EntryStandards != "" {
+	// 5. Entry standards (editable)
+	if promptSections.EntryStandards != "" {
 		sb.WriteString(promptSections.EntryStandards)
 		sb.WriteString("\n\nYou have the following indicator data:\n")
 		e.writeAvailableIndicators(&sb)
@@ -1213,22 +1191,8 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 		sb.WriteString("- Before opening, ensure **expected price move** clearly exceeds **round-trip cost** (shown in data); otherwise profit is eroded by fees.\n\n")
 	}
 
-	// 6. Decision process (editable; multi-agent: read analyst first)
-	if multiAgent {
-		if lang == LangChinese {
-			sb.WriteString("# 📋 决策流程（多 Agent）\n\n")
-			sb.WriteString("1. 先阅读用户提示词顶部的**分析师报告**（bias / confidence / report_text）\n")
-			sb.WriteString("2. 查看当前持仓 → 是否止盈/止损\n")
-			sb.WriteString("3. 查看候选币与多周期数据 → 是否有强信号\n")
-			sb.WriteString("4. 先写 chain of thought，再输出结构化 JSON\n\n")
-		} else {
-			sb.WriteString("# 📋 Decision Process (Multi-Agent)\n\n")
-			sb.WriteString("1. Read the **Analyst report** at the top of the user prompt (bias / confidence / report_text)\n")
-			sb.WriteString("2. Check positions → Take profit / stop-loss?\n")
-			sb.WriteString("3. Scan candidate coins + multi-timeframe → Strong signals?\n")
-			sb.WriteString("4. Write chain of thought first, then output structured JSON\n\n")
-		}
-	} else if promptSections.DecisionProcess != "" {
+	// 6. Decision process (editable)
+	if promptSections.DecisionProcess != "" {
 		sb.WriteString(promptSections.DecisionProcess)
 		sb.WriteString("\n\n")
 	} else {
@@ -1745,12 +1709,9 @@ func PrepareClientForRole(mcpClient mcp.AIClient, role string, lang Language) {
 		}
 		jsonSchema = GetDecisionJSONSchemaForModel(lang, provider, modelName)
 		logger.Infof("🔧 [JSON Schema] role=trader, model %s/%s, %s schema", provider, modelName, schemaType)
-	case "analyst":
-		jsonSchema = GetAnalystJSONSchemaForModel(lang, provider, modelName)
-		logger.Infof("🔧 [JSON Schema] role=analyst, model %s/%s", provider, modelName)
-	case "compliance":
-		jsonSchema = GetComplianceJSONSchemaForModel(lang, provider, modelName)
-		logger.Infof("🔧 [JSON Schema] role=compliance, model %s/%s", provider, modelName)
+	case "analyst", "compliance":
+		jsonSchema = ""
+		logger.Infof("🔧 [JSON Schema] role=%s, model %s/%s (no schema)", role, provider, modelName)
 	default:
 		logger.Warnf("⚠️ [JSON Schema] Unknown role=%s, clearing schema", role)
 		mcpClient.SetJSONSchema("")

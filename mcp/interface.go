@@ -9,6 +9,11 @@ import (
 type AIClient interface {
 	SetAPIKey(apiKey string, customURL string, customModel string)
 	SetTimeout(timeout time.Duration)
+	SetMaxTokens(maxTokens int)
+	SetTemperature(temperature float64)
+	SetTopP(topP float64)
+	SetPresencePenalty(penalty float64)
+	SetFrequencyPenalty(penalty float64)
 	CallWithMessages(systemPrompt, userPrompt string) (string, error)
 	CallWithRequest(req *Request) (string, error) // Builder pattern API (supports advanced features)
 	SetJSONSchema(jsonSchema string)              // Set JSON Schema for structured output (if model supports it)
