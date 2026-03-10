@@ -167,7 +167,7 @@ export function RoundDetailModal({ traderId, roundId, onClose, language }: Round
                       className="whitespace-pre-wrap break-words"
                       style={{ color: 'var(--text-secondary)', wordBreak: 'break-word', overflowWrap: 'break-word' }}
                     >
-                      {data.decision_record.cot_trace}
+                      {(data.decision_record.cot_trace || '').replace(/\\n/g, '\n')}
                     </div>
                   ) : (
                     <div style={{ color: 'var(--text-muted)' }}>{t('cotEmpty', language)}</div>
@@ -262,9 +262,12 @@ export function RoundDetailModal({ traderId, roundId, onClose, language }: Round
                           <span className="whitespace-pre-wrap">{data.compliance_audit.reason}</span>
                         </div>
                       ) : null}
-                      {!data.compliance_audit.reason && !data.compliance_audit.violations_json && (
-                        <div className="text-xs opacity-80">{t('phaseNone', language)}</div>
-                      )}
+                      {(() => {
+                        const vj = (data.compliance_audit.violations_json || '').trim()
+                        const hasViolations = vj && vj !== 'null'
+                        if (data.compliance_audit.reason || hasViolations) return null
+                        return <div className="text-xs opacity-80">{t('phaseNone', language)}</div>
+                      })()}
                       {/* 单条审批列表：决策 + 通过/驳回 + 原因 */}
                       {hasPerDecision && (
                         <div className="mt-3">
@@ -306,17 +309,20 @@ export function RoundDetailModal({ traderId, roundId, onClose, language }: Round
                           </ul>
                         </div>
                       )}
-                      {/* 违规项：优先解析为 JSON 数组逐条展示 */}
+                      {/* 违规项：优先解析为 JSON 数组逐条展示；忽略 "null" 或 null 避免显示为文字 null */}
                       {data.compliance_audit.violations_json && (() => {
                         const raw = data.compliance_audit.violations_json.trim()
+                        if (raw === '' || raw === 'null') return null
                         let items: string[] = []
                         try {
                           const parsed = JSON.parse(raw) as unknown
+                          if (parsed == null) return null
                           if (Array.isArray(parsed)) items = parsed.filter((x): x is string => typeof x === 'string')
                           else items = [raw]
                         } catch {
                           items = [raw]
                         }
+                        if (items.length === 0) return null
                         return (
                           <div className="mt-2">
                             <div className="text-xs font-medium mb-1" style={{ color: 'var(--text-primary)' }}>
