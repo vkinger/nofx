@@ -1266,8 +1266,10 @@ func (at *AutoTrader) executeDecisionWithRecord(decision *kernel.Decision, actio
 	case "close_short":
 		err = at.executeCloseShortWithRecord(decision, actionRecord)
 		at.sendDecisionNotificationWithBalance(decision, actionRecord, err, preBalance)
-		// AI不参与平仓，完全由监控系统决定
-		//logger.Infof("⚠️  AI close_short decision for %s skipped: position closing is handled exclusively by monitoring system (stop-loss/drawdown)", decision.Symbol)
+		return nil
+	case "partial_close":
+		err = at.executePartialCloseWithRecord(decision, actionRecord)
+		at.sendDecisionNotificationWithBalance(decision, actionRecord, err, preBalance)
 		return nil
 	case "hold", "wait":
 		// No execution needed, just record
@@ -1586,8 +1588,15 @@ func (at *AutoTrader) executeCloseLongWithRecord(decision *kernel.Decision, acti
 		logger.Infof("  📊 Using exchange position data: qty=%.8f, entry=%.2f", quantity, entryPrice)
 	}
 
-	// Record quantity for notification pnl calculation
-	actionRecord.Quantity = quantity
+	// 部分平仓：decision.Quantity > 0 时平掉该数量（不超过持仓）；0 表示全平
+	closeQty := quantity
+	if decision.Quantity > 0 {
+		if decision.Quantity < quantity {
+			closeQty = decision.Quantity
+		}
+		logger.Infof("  📐 Partial close long: qty=%.8f (position=%.8f)", closeQty, quantity)
+	}
+	actionRecord.Quantity = closeQty
 
 	// Check if position is already being closed by stop-loss/drawdown system (conflict detection)
 	posKey := decision.Symbol + "_long"
@@ -1608,8 +1617,8 @@ func (at *AutoTrader) executeCloseLongWithRecord(decision *kernel.Decision, acti
 		at.closingPositionsMutex.Unlock()
 	}()
 
-	// Close position
-	order, err := at.trader.CloseLong(decision.Symbol, 0) // 0 = close all
+	// Close position (closeQty: 0 = close all, >0 = partial)
+	order, err := at.trader.CloseLong(decision.Symbol, closeQty)
 	if err != nil {
 		// Check if error is due to position not existing (already closed by stop-loss/drawdown)
 		errStr := strings.ToLower(err.Error())
@@ -1683,8 +1692,15 @@ func (at *AutoTrader) executeCloseShortWithRecord(decision *kernel.Decision, act
 		logger.Infof("  📊 Using exchange position data: qty=%.8f, entry=%.2f", quantity, entryPrice)
 	}
 
-	// Record quantity for notification pnl calculation
-	actionRecord.Quantity = quantity
+	// 部分平仓：decision.Quantity > 0 时平掉该数量（不超过持仓）；0 表示全平
+	closeQty := quantity
+	if decision.Quantity > 0 {
+		if decision.Quantity < quantity {
+			closeQty = decision.Quantity
+		}
+		logger.Infof("  📐 Partial close short: qty=%.8f (position=%.8f)", closeQty, quantity)
+	}
+	actionRecord.Quantity = closeQty
 
 	// Check if position is already being closed by stop-loss/drawdown system (conflict detection)
 	posKey := decision.Symbol + "_short"
@@ -1705,8 +1721,8 @@ func (at *AutoTrader) executeCloseShortWithRecord(decision *kernel.Decision, act
 		at.closingPositionsMutex.Unlock()
 	}()
 
-	// Close position
-	order, err := at.trader.CloseShort(decision.Symbol, 0) // 0 = close all
+	// Close position (closeQty: 0 = close all, >0 = partial)
+	order, err := at.trader.CloseShort(decision.Symbol, closeQty)
 	if err != nil {
 		return err
 	}
@@ -1721,6 +1737,58 @@ func (at *AutoTrader) executeCloseShortWithRecord(decision *kernel.Decision, act
 
 	logger.Infof("  ✓ Position closed successfully")
 	return nil
+}
+
+// executePartialCloseWithRecord 部分平仓：根据当前持仓方向平掉 decision.Quantity 数量
+func (at *AutoTrader) executePartialCloseWithRecord(decision *kernel.Decision, actionRecord *store.DecisionAction) error {
+	if decision.Quantity <= 0 {
+		return fmt.Errorf("partial_close requires quantity > 0, got %.8f", decision.Quantity)
+	}
+	normalizedSymbol := market.Normalize(decision.Symbol)
+	var side string
+	if at.store != nil {
+		if openPos, err := at.store.Position().GetOpenPositionBySymbol(at.id, normalizedSymbol, "LONG"); err == nil && openPos != nil {
+			side = "LONG"
+		}
+		if side == "" {
+			if openPos, err := at.store.Position().GetOpenPositionBySymbol(at.id, normalizedSymbol, "SHORT"); err == nil && openPos != nil {
+				side = "SHORT"
+			}
+		}
+	}
+	if side == "" {
+		positions, err := at.trader.GetPositions()
+		if err == nil {
+			for _, pos := range positions {
+				if pos["symbol"] == decision.Symbol {
+					if s, ok := pos["side"].(string); ok && (s == "long" || s == "short") {
+						if s == "long" {
+							side = "LONG"
+						} else {
+							side = "SHORT"
+						}
+						break
+					}
+					if amt, ok := pos["positionAmt"].(float64); ok {
+						if amt > 0 {
+							side = "LONG"
+						} else {
+							side = "SHORT"
+						}
+						break
+					}
+				}
+			}
+		}
+	}
+	if side == "" {
+		return fmt.Errorf("partial_close: no open position for %s", decision.Symbol)
+	}
+	logger.Infof("  🔄 Partial close: %s %s qty=%.8f", decision.Symbol, side, decision.Quantity)
+	if side == "LONG" {
+		return at.executeCloseLongWithRecord(decision, actionRecord)
+	}
+	return at.executeCloseShortWithRecord(decision, actionRecord)
 }
 
 // GetID gets trader ID
