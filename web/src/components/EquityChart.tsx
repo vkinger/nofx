@@ -163,15 +163,19 @@ export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
       : undefined) || // 备选：淨值 - 盈亏
     1000 // 默认值（与创建交易员时的默认配置一致）
 
-  // 转换数据格式
+  // 转换数据格式，保留完整时间供 tooltip 显示
   const chartData = displayHistory.map((point) => {
     const pnl = point.total_equity - initialBalance
     const pnlPct = ((pnl / initialBalance) * 100).toFixed(2)
+    const d = new Date(point.timestamp)
+    const timeLabel =
+      language === 'zh'
+        ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
+        : d.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'medium' })
     return {
-      time: new Date(point.timestamp).toLocaleTimeString('zh-CN', {
-        hour: '2-digit',
-        minute: '2-digit',
-      }),
+      time: d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+      timeLabel,
+      timestamp: point.timestamp,
       value: displayMode === 'dollar' ? point.total_equity : parseFloat(pnlPct),
       cycle: point.cycle_number,
       raw_equity: point.total_equity,
@@ -179,6 +183,9 @@ export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
       raw_pnl_pct: parseFloat(pnlPct),
     }
   })
+
+  // 打点周期：数据点多时按间隔打点（约 25～40 个点），少时每个点都打
+  const dotInterval = chartData.length <= 50 ? 1 : Math.max(1, Math.floor(chartData.length / 30))
 
   const currentValue = chartData[chartData.length - 1]
   const isProfit = currentValue.raw_pnl >= 0
@@ -204,36 +211,71 @@ export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
     }
   }
 
-  // 自定义Tooltip - 根据主题调整
-  const CustomTooltip = ({ active, payload }: any) => {
+  // 自定义 Tooltip：显示准确时间、周期、净值、盈亏（鼠标悬停时的具体坐标信息）
+  const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload
+      const rows: { label: string; value: string; color?: string }[] = [
+        {
+          label: language === 'zh' ? '时间' : 'Time',
+          value: data.timeLabel ?? data.timestamp ?? label,
+        },
+        {
+          label: language === 'zh' ? '周期' : 'Cycle',
+          value: `#${data.cycle}`,
+        },
+        {
+          label: language === 'zh' ? '净值' : 'Equity',
+          value: `${data.raw_equity.toFixed(2)} USDT`,
+        },
+        {
+          label: language === 'zh' ? '盈亏' : 'PnL',
+          value: `${data.raw_pnl >= 0 ? '+' : ''}${data.raw_pnl.toFixed(2)} USDT (${data.raw_pnl_pct >= 0 ? '+' : ''}${data.raw_pnl_pct}%)`,
+          color: data.raw_pnl >= 0 ? '#0ECB81' : '#F6465D',
+        },
+      ]
       return (
         <div
-          className="rounded p-3 shadow-xl"
-          style={{ 
-            background: chartColors.tooltipBg, 
-            border: `1px solid ${chartColors.tooltipBorder}` 
+          className="rounded-lg p-3 shadow-xl min-w-[200px]"
+          style={{
+            background: chartColors.tooltipBg,
+            border: `1px solid ${chartColors.tooltipBorder}`,
           }}
         >
-          <div className="text-xs mb-1" style={{ color: chartColors.tooltipLabel }}>
-            Cycle #{data.cycle}
-          </div>
-          <div className="font-bold mono" style={{ color: chartColors.tooltipText }}>
-            {data.raw_equity.toFixed(2)} USDT
-          </div>
-          <div
-            className="text-sm mono font-bold"
-            style={{ color: data.raw_pnl >= 0 ? '#0ECB81' : '#F6465D' }}
-          >
-            {data.raw_pnl >= 0 ? '+' : ''}
-            {data.raw_pnl.toFixed(2)} USDT ({data.raw_pnl_pct >= 0 ? '+' : ''}
-            {data.raw_pnl_pct}%)
-          </div>
+          {rows.map((row) => (
+            <div
+              key={row.label}
+              className="flex justify-between gap-4 text-sm mb-1.5 last:mb-0"
+            >
+              <span style={{ color: chartColors.tooltipLabel }}>{row.label}</span>
+              <span
+                className="font-mono font-semibold"
+                style={{ color: row.color ?? chartColors.tooltipText }}
+              >
+                {row.value}
+              </span>
+            </div>
+          ))}
         </div>
       )
     }
     return null
+  }
+
+  // 按周期打点：仅在第 0, dotInterval, 2*dotInterval... 处绘制圆点
+  const renderDot = (props: any) => {
+    const { cx, cy, index } = props
+    if (index % dotInterval !== 0) return null
+    return (
+      <circle
+        cx={cx}
+        cy={cy}
+        r={3}
+        fill="#F0B90B"
+        stroke={isDark ? '#1E2329' : '#fff'}
+        strokeWidth={1}
+      />
+    )
   }
 
   return (
@@ -442,7 +484,7 @@ export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
               dataKey="value"
               stroke="url(#colorGradient)"
               strokeWidth={3}
-              dot={chartData.length > 50 ? false : { fill: '#F0B90B', r: 3 }}
+              dot={renderDot}
               activeDot={{
                 r: 6,
                 fill: '#FCD535',
