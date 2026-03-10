@@ -182,7 +182,7 @@ type Context struct {
 
 // Decision AI trading decision
 //
-// 开仓(open_long/open_short)必填：symbol, action, reasoning, leverage, position_size_usd, stop_loss, take_profit；
+// 开仓(open_long/open_short)必填：symbol, action, reasoning, leverage, position_size_usd, stop_loss, take_profit, confidence；
 // 平仓(close_long/close_short)/hold/wait 必填：symbol, action, reasoning。
 // quantity/price 为网格或限价用，开仓市价单可不填（后端会用 position_size_usd 与 stop_loss/take_profit 推导展示用 quantity/price）。
 // 若开仓缺少必填或为 0，validateDecision 会直接报错拒绝。
@@ -1340,7 +1340,7 @@ func (e *StrategyEngine) buildOutputFormatLegacy(accountEquity float64, btcEthPo
 	sb.WriteString("1. **Action validation**: If `action` is not one of the 6 exact values above, the decision will be REJECTED\n")
 	sb.WriteString("2. **JSON format**: Must be valid JSON array, each element is an object\n")
 	sb.WriteString("3. **Numeric values**: Must be actual numbers, NOT formulas (e.g., use `27.76` not `3000 * 0.01`)\n")
-	sb.WriteString("4. **Required fields**: For open_long/open_short you MUST output non-zero: leverage, position_size_usd, stop_loss, take_profit. Missing or zero causes validation rejection.\n")
+	sb.WriteString("4. **Required fields**: For open_long/open_short you MUST output non-zero: leverage, position_size_usd, stop_loss, take_profit, confidence. Missing or zero causes validation rejection.\n")
 	sb.WriteString("5. **Price validation**: stop_loss and take_profit must be valid price levels from actual market data\n")
 	sb.WriteString("6. **Stop Loss/Take Profit relationship** (CRITICAL):\n")
 	sb.WriteString("   - For `open_long`: stop_loss MUST be < take_profit (止损必须低于止盈), otherwise REJECTED\n")
@@ -1426,7 +1426,7 @@ func (e *StrategyEngine) buildOutputFormatWithPromptIntegration(accountEquity fl
 		sb.WriteString("- **decisions**: 决策数组（必需，0-10个决策对象）\n")
 		sb.WriteString(fmt.Sprintf("- **action**: 必须是以下之一：open_long, open_short, close_long, close_short, hold, wait, partial_close, full_close, add_position\n"))
 		sb.WriteString(fmt.Sprintf("- **confidence**: 0-100整数（开新仓时要求≥%d）\n", riskControl.MinConfidence))
-		sb.WriteString("- **开新仓必需字段**: leverage, position_size_usd, stop_loss, take_profit（缺一或为 0 将导致校验拒绝）\n")
+		sb.WriteString("- **开新仓必需字段**: leverage, position_size_usd, stop_loss, take_profit, confidence（缺一或为 0 将导致校验拒绝）\n")
 		sb.WriteString("- **价格精度**: 根据实际市场价格动态确定（价格<0.0001用8位小数，<0.001用6位小数，<0.01用6位小数，<1.0用4位小数，<100用4位小数，≥100用2位小数）\n")
 		sb.WriteString("- **止盈止损关系**: 做多时stop_loss必须 < take_profit，做空时stop_loss必须 > take_profit\n")
 		sb.WriteString("- **风险回报比**: 必须≥3:1（止盈空间至少是止损空间的3倍）\n")
@@ -1796,7 +1796,7 @@ func (e *StrategyEngine) buildOutputFormatWithJSONSchemaAPI(accountEquity float6
 		sb.WriteString("- **decisions**: 决策数组（必需，0-10个决策）\n")
 		sb.WriteString(fmt.Sprintf("- **action**: 必须是以下之一：open_long, open_short, close_long, close_short, hold, wait\n"))
 		sb.WriteString(fmt.Sprintf("- **confidence**: 0-100整数（开新仓时要求≥%d）\n", riskControl.MinConfidence))
-		sb.WriteString("- **开新仓必需字段**: leverage, position_size_usd, stop_loss, take_profit（缺一或为 0 将导致校验拒绝）\n")
+		sb.WriteString("- **开新仓必需字段**: leverage, position_size_usd, stop_loss, take_profit, confidence（缺一或为 0 将导致校验拒绝）\n")
 		sb.WriteString("- **价格精度**: 根据实际市场价格动态确定\n")
 		sb.WriteString("- **止盈止损关系**: 做多时stop_loss < take_profit，做空时stop_loss > take_profit\n")
 		sb.WriteString("- **风险回报比**: 必须≥3:1\n\n")
@@ -4157,6 +4157,9 @@ func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoi
 		}
 		if d.StopLoss <= 0 || d.TakeProfit <= 0 {
 			return fmt.Errorf("stop loss and take profit must be greater than 0")
+		}
+		if d.Confidence <= 0 || d.Confidence > 100 {
+			return fmt.Errorf("open position requires confidence (1-100), got %d", d.Confidence)
 		}
 
 		if d.Action == "open_long" {

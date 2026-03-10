@@ -24,6 +24,7 @@ func TestLeverageFallback(t *testing.T) {
 				PositionSizeUSD: 100,
 				StopLoss:        50,
 				TakeProfit:      200,
+				Confidence:      85,
 			},
 			accountEquity:   100,
 			btcEthLeverage:  10,
@@ -40,6 +41,7 @@ func TestLeverageFallback(t *testing.T) {
 				PositionSizeUSD: 1000,
 				StopLoss:        90000,
 				TakeProfit:      110000,
+				Confidence:      85,
 			},
 			accountEquity:   100,
 			btcEthLeverage:  10, // Limit 10x
@@ -56,6 +58,7 @@ func TestLeverageFallback(t *testing.T) {
 				PositionSizeUSD: 500,
 				StopLoss:        4000,
 				TakeProfit:      3000,
+				Confidence:      80,
 			},
 			accountEquity:   100,
 			btcEthLeverage:  10,
