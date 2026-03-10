@@ -46,7 +46,7 @@ You **must** output exactly one JSON object; do NOT wrap in markdown code fences
 **⚠️ Critical:** When approved=false in decisions_audit you MUST set "reason". Response must be a single JSON object only.
 
 Rules:
-- Reject a decision if excluded coins, exceeds max leverage/position ratio/max positions, or **confidence < min_confidence** for opens (strictly less than).
+- Reject a decision only for: **excluded coins**, **exceeds max leverage** (btc_eth_max_leverage / altcoin_max_leverage), or **confidence < min_confidence** for opens (strictly less than). Do NOT reject for position value ratio or max positions count—these are enforced by the execution layer (code will cap or block).
 - **Confidence rule:** Use **each decision's confidence** (trader's score for that decision in "Pending decisions"); do NOT use analyst confidence. Reject for confidence only when **decision.confidence < rules.min_confidence**. Example: decision confidence=85 and min_confidence=82 → do NOT reject (85 >= 82). Example: decision confidence=80 and min_confidence=82 → reject, reason e.g. "confidence 80 below min_confidence=82". Never say "confidence X below min_confidence=Y" when X >= Y.
 - **wait and hold:** ALWAYS approve (approved=true, reason=""). NEVER reject. They do not open positions or add risk. Rejecting "wait" by saying "recommend to wait" is invalid.
 - **min_confidence applies ONLY to open_long and open_short.** Do NOT reject wait/hold for confidence or min_confidence; do NOT add "min_confidence" to violations for wait/hold.
@@ -86,7 +86,7 @@ const complianceSystemPromptZH = `你是风控官。你的职责是在执行前�
 **⚠️ 重要提醒：** decisions_audit 中 approved=false 时 "reason" 必填。回复必须是单一 JSON 对象。
 
 规则：
-- 涉及排除币种、超杠杆/仓位占比/最大持仓数、或开仓时 **confidence < min_confidence**（严格小于）时驳回该条。
+- 仅在以下情况驳回：**排除币种**、**超过最大杠杆**（btc_eth_max_leverage / altcoin_max_leverage）、或开仓时 **confidence < min_confidence**（严格小于）。**不得**以仓位占比或最大持仓数为由驳回——由执行层代码兜底（超限会自动裁剪或拦截）。
 - **置信度规则：** 使用**每条决策的 confidence**（即「待执行决策」里该条的评分，交易员决策评分），不要使用分析师置信度。仅当 **该条 decision.confidence < 规则的 min_confidence** 时才能以置信度为由驳回。例如某条 confidence=85、min_confidence=82 时不得以置信度驳回（85≥82）；例如某条 confidence=80、min_confidence=82 时可驳回，reason 如「置信度80低于min_confidence=82」。禁止出现「置信度 X 低于 min_confidence=Y」且 X≥Y 的矛盾表述。
 - **wait 与 hold：** 一律通过（approved=true，reason=""），不得驳回。二者不新开仓、不增加风险。以「建议等待」等理由驳回 wait 无效。
 - **min_confidence 仅适用于 open_long、open_short。** 不得以置信度或 min_confidence 驳回 wait/hold，不得将 min_confidence 列入 violations。
@@ -284,12 +284,9 @@ func buildComplianceUserPrompt(in *ComplianceInput) string {
 	}
 	b.WriteString(labelRules)
 	r := in.Rules
-	b.WriteString(fmt.Sprintf("max_positions=%d btc_eth_max_leverage=%d altcoin_max_leverage=%d ",
-		r.MaxPositions, r.BTCETHMaxLeverage, r.AltcoinMaxLeverage))
-	b.WriteString(fmt.Sprintf("btc_eth_max_position_ratio=%.2f altcoin_max_position_ratio=%.2f ",
-		r.BTCETHMaxPositionValueRatio, r.AltcoinMaxPositionValueRatio))
-	b.WriteString(fmt.Sprintf("max_margin_usage=%.2f min_position_size=%.0f min_confidence=%d\n",
-		r.MaxMarginUsage, r.MinPositionSize, r.MinConfidence))
+	// 仓位占比、最大持仓数由执行层代码兜底，不交给风控官审计，避免重复判定与误判
+	b.WriteString(fmt.Sprintf("btc_eth_max_leverage=%d altcoin_max_leverage=%d min_confidence=%d\n",
+		r.BTCETHMaxLeverage, r.AltcoinMaxLeverage, r.MinConfidence))
 	if len(r.ExcludedCoins) > 0 {
 		b.WriteString("excluded_coins: " + strings.Join(r.ExcludedCoins, ", ") + "\n")
 	}
