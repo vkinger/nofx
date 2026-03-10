@@ -328,6 +328,16 @@ function PositionRow({ position }: { position: HistoricalPosition }) {
         {formatNumber(entryPrice * displayQty)}
       </td>
 
+      {/* Margin (Value / Leverage) */}
+      <td className="py-3 px-4 text-right font-mono" style={{ color: 'var(--text-secondary)' }}>
+        {formatNumber((entryPrice * displayQty) / Math.max(1, position.leverage || 1))}
+      </td>
+
+      {/* Leverage */}
+      <td className="py-3 px-4 text-right font-mono" style={{ color: 'var(--text-secondary)' }}>
+        {position.leverage ?? 1}×
+      </td>
+
       {/* P&L */}
       <td className="py-3 px-4 text-right">
         <div className="font-mono font-semibold" style={{ color: pnlColor }}>
@@ -813,6 +823,18 @@ export function PositionHistory({ traderId }: PositionHistoryProps) {
                   style={{ color: 'var(--text-secondary)' }}
                 >
                   {t('positionHistory.value', language)}
+                </th>
+                <th
+                  className="py-3 px-4 text-right text-xs font-semibold uppercase tracking-wider"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  {t('positionHistory.margin', language)}
+                </th>
+                <th
+                  className="py-3 px-4 text-right text-xs font-semibold uppercase tracking-wider"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  {t('positionHistory.lev', language)}
                 </th>
                 <th
                   className="py-3 px-4 text-right text-xs font-semibold uppercase tracking-wider"
