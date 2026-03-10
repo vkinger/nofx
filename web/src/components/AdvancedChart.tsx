@@ -343,25 +343,18 @@ export function AdvancedChart({
             positionSide = orderAction.includes('LONG') ? 'long' : 'short'
           }
         } else {
-          // 如果没有 order_action，根据 side 判断
           positionSide = side === 'buy' ? 'long' : 'short'
         }
 
-        console.log('[AdvancedChart] Order marker:', {
-          time: timeSeconds,
-          price: avgPrice,
-          side: positionSide,
-          rawSide: side,
-          action,
-          orderAction
-        })
+        const pnl = order.realized_pnl ?? order.realizedPnl ?? order.realized_pnl_pct
 
         markers.push({
           time: timeSeconds,
           price: avgPrice,
           side: positionSide,
-          rawSide: side, // 原始 side 字段 (buy/sell)
-          action: action,
+          rawSide: side,
+          action,
+          pnl: typeof pnl === 'number' ? pnl : undefined,
           symbol,
         })
       })
@@ -705,29 +698,7 @@ export function AdvancedChart({
               return klineTimes[left]
             }
 
-            // 按 K 线时间分组统计订单
-            const ordersByCandle = new Map<number, { buys: number; sells: number }>()
-
-            orders.forEach(order => {
-              // 使用二分查找找到对应的 K 线蜡烛时间
-              const candleTime = findCandleTime(order.time)
-
-              if (candleTime === null) {
-                console.warn('[AdvancedChart] ⚠️ Skipping order outside kline range:',
-                  order.time, '(', new Date(order.time * 1000).toISOString(), ')')
-                return
-              }
-
-              const existing = ordersByCandle.get(candleTime) || { buys: 0, sells: 0 }
-              if (order.rawSide === 'buy') {
-                existing.buys++
-              } else {
-                existing.sells++
-              }
-              ordersByCandle.set(candleTime, existing)
-            })
-
-            // 为每个有订单的 K 线创建标记
+            // 每个订单单独打点，显示买卖/开平价格；开仓与平仓成对标记（开/平 + 价格）
             const markers: Array<{
               time: Time
               position: 'belowBar' | 'aboveBar'
@@ -737,29 +708,47 @@ export function AdvancedChart({
               size: number
             }> = []
 
-            ordersByCandle.forEach((counts, candleTime) => {
-              // 显示买入标记（绿色，在K线下方）
-              if (counts.buys > 0) {
-                markers.push({
-                  time: candleTime as Time,
-                  position: 'belowBar' as const,
-                  color: '#0ECB81',
-                  shape: 'circle' as const,
-                  text: counts.buys > 1 ? `B${counts.buys}` : 'B',
-                  size: 1,
-                })
+            const isZh = language === 'zh' || language === 'zh-CN'
+            const labelOpen = isZh ? '开' : 'Open'
+            const labelClose = isZh ? '平' : 'Close'
+
+            orders.forEach((order) => {
+              const candleTime = findCandleTime(order.time)
+              if (candleTime === null) return
+
+              const priceStr = order.price >= 1 ? order.price.toFixed(2) : order.price.toFixed(4)
+              const isOpen = order.action === 'open'
+              const isLong = order.side === 'long'
+
+              let text: string
+              let position: 'belowBar' | 'aboveBar'
+              let color: string
+
+              if (isOpen) {
+                text = isLong
+                  ? (isZh ? `开多 ${priceStr}` : `Long ${priceStr}`)
+                  : (isZh ? `开空 ${priceStr}` : `Short ${priceStr}`)
+                position = isLong ? 'belowBar' : 'aboveBar'
+                color = isLong ? '#0ECB81' : '#F6465D'
+              } else {
+                const pnlStr =
+                  order.pnl != null
+                    ? (order.pnl >= 0 ? ` +$${order.pnl.toFixed(2)}` : ` -$${Math.abs(order.pnl).toFixed(2)}`)
+                    : ''
+                text = `${labelClose} ${priceStr}${pnlStr}`.trim()
+                position = isLong ? 'aboveBar' : 'belowBar'
+                color =
+                  order.pnl != null ? (order.pnl >= 0 ? '#0ECB81' : '#F6465D') : isLong ? '#0ECB81' : '#F6465D'
               }
-              // 显示卖出标记（红色，在K线上方）
-              if (counts.sells > 0) {
-                markers.push({
-                  time: candleTime as Time,
-                  position: 'aboveBar' as const,
-                  color: '#F6465D',
-                  shape: 'circle' as const,
-                  text: counts.sells > 1 ? `S${counts.sells}` : 'S',
-                  size: 1,
-                })
-              }
+
+              markers.push({
+                time: candleTime as Time,
+                position,
+                color,
+                shape: 'circle' as const,
+                text,
+                size: 1,
+              })
             })
 
             // 按时间排序（lightweight-charts 要求标记按时间顺序）
