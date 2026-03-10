@@ -2815,19 +2815,20 @@ func (at *AutoTrader) recordPositionChange(orderID, symbol, side, action string,
 
 	switch action {
 	case "open_long", "open_short":
-		// Open position: create new position record
+		// Open position: create new position record (fee = 开仓费，平仓时 totalFee = position.Fee + closeFee)
 		nowMs := time.Now().UTC().UnixMilli()
 		pos := &store.TraderPosition{
 			TraderID:     at.id,
-			ExchangeID:   at.exchangeID, // Exchange account UUID
-			ExchangeType: at.exchange,   // Exchange type: binance/bybit/okx/etc
+			ExchangeID:   at.exchangeID,
+			ExchangeType: at.exchange,
 			Symbol:       symbol,
-			Side:         side, // LONG or SHORT
+			Side:         side,
 			Quantity:     quantity,
 			EntryPrice:   price,
 			EntryOrderID: orderID,
 			EntryTime:    nowMs,
 			Leverage:     leverage,
+			Fee:          fee, // 开仓手续费，平仓时与平仓费累加为总手续费
 			Status:       "OPEN",
 			CreatedAt:    nowMs,
 			UpdatedAt:    nowMs,
@@ -2839,15 +2840,33 @@ func (at *AutoTrader) recordPositionChange(orderID, symbol, side, action string,
 		}
 
 	case "close_long", "close_short":
-		// Close position using PositionBuilder for consistent handling
-		// PositionBuilder will handle both cases:
-		// 1. If open position exists: close it properly
-		// 2. If no open position (e.g., table cleared): create a closed position record
+		// 平仓费 + 估算资金费（开仓费已在 position.Fee，ProcessTrade 内会 totalFee = position.Fee + fee）
+		feeWithFunding := fee
+		if at.exchange != "paper" {
+			if openPos, err := at.store.Position().GetOpenPositionBySymbol(at.id, symbol, side); err == nil && openPos != nil {
+				// 资金费每 8h 结算一次，估算持仓期间累计资金费：notional * rate * 期数；多头 rate>0 为支出，空头 rate>0 为收入
+				const fundingPeriodMs = 8 * 3600 * 1000
+				holdMs := time.Now().UTC().UnixMilli() - openPos.EntryTime
+				if holdMs > 0 {
+					periods := float64(holdMs) / float64(fundingPeriodMs)
+					notional := openPos.EntryPrice * quantity
+					if rate, _, getErr := market.GetFundingRate(symbol, at.exchange); getErr == nil && rate != 0 && notional > 0 {
+						sign := 1.0
+						if side == "SHORT" {
+							sign = -1.0
+						}
+						fundingFee := notional * rate * periods * sign
+						feeWithFunding += fundingFee
+						logger.Infof("  📊 Funding estimated: rate=%.4f%%, periods=%.2f, fee=%.4f (added to close fee)", rate*100, periods, fundingFee)
+					}
+				}
+			}
+		}
 		posBuilder := store.NewPositionBuilder(at.store.Position())
 		if err := posBuilder.ProcessTrade(
 			at.id, at.exchangeID, at.exchange,
 			symbol, side, action,
-			quantity, price, fee, 0, // realizedPnL will be calculated
+			quantity, price, feeWithFunding, 0,
 			time.Now().UTC().UnixMilli(), orderID,
 		); err != nil {
 			logger.Infof("  ⚠️ Failed to process close position: %v", err)
