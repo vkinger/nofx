@@ -1680,6 +1680,19 @@ func (s *Server) recordClosePositionOrder(traderID, exchangeID, exchangeType, sy
 	} else {
 		logger.Infof("  ✅ Fill record created: price=%.6f qty=%.6f", exitPrice, quantity)
 	}
+
+	// 同步更新持仓表：将对应 TraderPosition 标为 CLOSED，这样「交易记录」接口能查到本次平仓
+	normalizedSymbol := market.Normalize(symbol)
+	posBuilder := store.NewPositionBuilder(s.store.Position())
+	if err := posBuilder.ProcessTrade(
+		traderID, exchangeID, exchangeType, normalizedSymbol, side, orderAction,
+		quantity, exitPrice, fee, realizedPnL,
+		time.Now().UTC().UnixMilli(), orderID,
+	); err != nil {
+		logger.Infof("  ⚠️ Failed to process close position (trade history may be incomplete): %v", err)
+	} else {
+		logger.Infof("  ✅ Position closed in store: %s %s (visible in trade history)", symbol, side)
+	}
 }
 
 // pollAndUpdateOrderStatus Poll order status and update with fill data
