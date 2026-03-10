@@ -1662,8 +1662,27 @@ func getProviderFromClient(mcpClient mcp.AIClient) string {
 	return ""
 }
 
-// PrepareClientForRole 根据当前 Agent 角色设置 client 的 JSON Schema（供 API response_format 使用）。
-// 单一流程/多 Agent 在调用模型前应调用此函数，确保分析师/风控使用各自输出格式，而非固定交易员 schema。
+// 各 Agent 角色推荐的请求参数（对齐 Qwen3.5-35B-A3B 等模型最佳实践，按角色职责定制）
+const (
+	TraderMaxTokens      = 2048
+	AnalystMaxTokens     = 4096
+	ComplianceMaxTokens  = 2048
+	TraderTemperature    = 0.5   // 技术+决策：稳定可执行
+	AnalystTemperature   = 0.75  // 宏观分析：适度多样性
+	ComplianceTemperature = 0.0  // 审计：极度确定性
+	TraderTopP           = 0.85
+	AnalystTopP          = 0.95
+	ComplianceTopP       = 0.1
+	TraderPresencePenalty   = 0.5
+	AnalystPresencePenalty  = 1.0
+	CompliancePresencePenalty = 0.0
+	TraderFrequencyPenalty   = 0.0
+	AnalystFrequencyPenalty  = 0.0
+	ComplianceFrequencyPenalty = 0.0
+)
+
+// PrepareClientForRole 根据当前 Agent 角色设置 client 的 JSON Schema 与请求参数（MaxTokens、Temperature、TopP、PresencePenalty、FrequencyPenalty），
+// 以适配不同角色并确保输出质量。单一流程/多 Agent 在调用模型前应调用此函数。
 // role: "trader" | "analyst" | "compliance"
 func PrepareClientForRole(mcpClient mcp.AIClient, role string, lang Language) {
 	if mcpClient == nil {
@@ -1671,6 +1690,30 @@ func PrepareClientForRole(mcpClient mcp.AIClient, role string, lang Language) {
 	}
 	modelName := getModelNameFromClient(mcpClient)
 	provider := getProviderFromClient(mcpClient)
+
+	// 按角色设置四类请求参数（对齐 Qwen3.5 等官方实践 + 分析师宏观/交易员技术/风控审计）
+	switch role {
+	case "trader":
+		mcpClient.SetMaxTokens(TraderMaxTokens)
+		mcpClient.SetTemperature(TraderTemperature)
+		mcpClient.SetTopP(TraderTopP)
+		mcpClient.SetPresencePenalty(TraderPresencePenalty)
+		mcpClient.SetFrequencyPenalty(TraderFrequencyPenalty)
+	case "analyst":
+		mcpClient.SetMaxTokens(AnalystMaxTokens)
+		mcpClient.SetTemperature(AnalystTemperature)
+		mcpClient.SetTopP(AnalystTopP)
+		mcpClient.SetPresencePenalty(AnalystPresencePenalty)
+		mcpClient.SetFrequencyPenalty(AnalystFrequencyPenalty)
+	case "compliance":
+		mcpClient.SetMaxTokens(ComplianceMaxTokens)
+		mcpClient.SetTemperature(ComplianceTemperature)
+		mcpClient.SetTopP(ComplianceTopP)
+		mcpClient.SetPresencePenalty(CompliancePresencePenalty)
+		mcpClient.SetFrequencyPenalty(ComplianceFrequencyPenalty)
+	default:
+		// 未知角色仅清 Schema，不改请求参数
+	}
 
 	// 注册 mcp 包使用的 JSON Schema 检查回调
 	mcp.JSONSchemaChecker = func(p, m string) bool {

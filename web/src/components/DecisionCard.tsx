@@ -123,7 +123,7 @@ function ActionCard({ action, language, onSymbolClick }: { action: DecisionActio
               {t('entryPrice', language)}
             </div>
             <div className="font-mono font-semibold" style={{ color: 'var(--text-primary)' }}>
-              {formatPrice(displayPrice)}
+              {formatPrice(referencePrice)}
             </div>
           </div>
 
@@ -135,9 +135,9 @@ function ActionCard({ action, language, onSymbolClick }: { action: DecisionActio
             <div className="font-mono font-semibold" style={{ color: '#F6465D' }}>
               {formatPrice(action.stop_loss)}
             </div>
-            {displayPrice != null && displayPrice > 0 && action.stop_loss != null && action.stop_loss > 0 ? (
+            {referencePrice != null && referencePrice > 0 && action.stop_loss != null && action.stop_loss > 0 ? (
               <div className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-                {calcPctChange(displayPrice, action.stop_loss, isLong)}
+                {calcPctChange(referencePrice, action.stop_loss, isLong)}
               </div>
             ) : null}
           </div>
@@ -150,9 +150,9 @@ function ActionCard({ action, language, onSymbolClick }: { action: DecisionActio
             <div className="font-mono font-semibold" style={{ color: '#0ECB81' }}>
               {formatPrice(action.take_profit)}
             </div>
-            {displayPrice != null && displayPrice > 0 && action.take_profit != null && action.take_profit > 0 ? (
+            {referencePrice != null && referencePrice > 0 && action.take_profit != null && action.take_profit > 0 ? (
               <div className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-                {calcPctChange(displayPrice, action.take_profit, isLong)}
+                {calcPctChange(referencePrice, action.take_profit, isLong)}
               </div>
             ) : null}
           </div>
@@ -181,13 +181,13 @@ function ActionCard({ action, language, onSymbolClick }: { action: DecisionActio
       )}
 
       {/* Risk/Reward Ratio for open positions */}
-      {isOpen && action.stop_loss != null && action.stop_loss > 0 && action.take_profit != null && action.take_profit > 0 && displayPrice != null && displayPrice > 0 ? (
+      {isOpen && action.stop_loss != null && action.stop_loss > 0 && action.take_profit != null && action.take_profit > 0 && referencePrice != null && referencePrice > 0 ? (
         <div className="mt-3 pt-3 flex items-center justify-between" style={{ borderTop: `1px solid var(--panel-border)` }}>
           <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{t('riskReward', language)}</span>
           <div className="flex items-center gap-2">
             {(() => {
-              const slDist = Math.abs((displayPrice ?? 0) - action.stop_loss)
-              const tpDist = Math.abs(action.take_profit - (displayPrice ?? 0))
+              const slDist = Math.abs((referencePrice ?? 0) - action.stop_loss)
+              const tpDist = Math.abs(action.take_profit - (referencePrice ?? 0))
               const ratio = slDist > 0 ? (tpDist / slDist) : 0
               const ratioColor = ratio >= 3 ? '#0ECB81' : ratio >= 2 ? '#F0B90B' : '#F6465D'
               return (

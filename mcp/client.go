@@ -252,6 +252,34 @@ func (client *Client) SetMaxTokens(tokens int) {
 	}
 }
 
+// SetTemperature sets sampling temperature (0-2). Lower for deterministic output (e.g. compliance), higher for diversity (e.g. analyst).
+func (client *Client) SetTemperature(temp float64) {
+	if client.config != nil {
+		client.config.Temperature = temp
+	}
+}
+
+// SetTopP sets top_p nucleus sampling (0-1). Role-based: e.g. analyst 0.95, compliance 0.1.
+func (client *Client) SetTopP(p float64) {
+	if client.config != nil {
+		client.config.TopP = p
+	}
+}
+
+// SetPresencePenalty sets presence penalty (-2 to 2). Encourages diverse topics when > 0.
+func (client *Client) SetPresencePenalty(p float64) {
+	if client.config != nil {
+		client.config.PresencePenalty = p
+	}
+}
+
+// SetFrequencyPenalty sets frequency penalty (-2 to 2). Usually 0 to allow domain term repetition.
+func (client *Client) SetFrequencyPenalty(p float64) {
+	if client.config != nil {
+		client.config.FrequencyPenalty = p
+	}
+}
+
 // SetJSONSchema sets JSON Schema for structured output (if model supports it)
 func (client *Client) SetJSONSchema(jsonSchema string) {
 	client.JSONSchema = jsonSchema
@@ -369,11 +397,20 @@ func (client *Client) buildMCPRequestBody(systemPrompt, userPrompt string) map[s
 		"content": userPrompt,
 	})
 
-	// Build request body
+	// Build request body (temperature + optional sampling params for role-based quality)
 	requestBody := map[string]interface{}{
 		"model":       client.Model,
 		"messages":    messages,
-		"temperature": client.config.Temperature, // Use configured temperature
+		"temperature": client.config.Temperature,
+	}
+	if client.config.TopP > 0 {
+		requestBody["top_p"] = client.config.TopP
+	}
+	if client.config.PresencePenalty != 0 {
+		requestBody["presence_penalty"] = client.config.PresencePenalty
+	}
+	if client.config.FrequencyPenalty != 0 {
+		requestBody["frequency_penalty"] = client.config.FrequencyPenalty
 	}
 	// OpenAI newer models use max_completion_tokens instead of max_tokens
 	if client.Provider == ProviderOpenAI {

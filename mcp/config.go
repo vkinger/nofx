@@ -18,9 +18,12 @@ type Config struct {
 	Model    string
 
 	// Behavior configuration
-	MaxTokens   int
-	Temperature float64
-	UseFullURL  bool
+	MaxTokens        int
+	Temperature      float64
+	TopP             float64 // Nucleus sampling (0-1). Role-based: analyst 0.95, trader 0.85, compliance 0.1
+	PresencePenalty  float64 // Presence penalty (-2 to 2). Role-based for diversity vs determinism
+	FrequencyPenalty float64 // Frequency penalty (-2 to 2). Usually 0 to allow domain terms
+	UseFullURL       bool
 
 	// Retry configuration
 	MaxRetries     int
