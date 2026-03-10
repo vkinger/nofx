@@ -45,6 +45,15 @@ function getConfidenceColor(confidence: number | undefined): string {
   return '#F6465D'
 }
 
+// 开仓时用于计算百分比/风险回报比的参考价：有 limit price 用 price，否则用 (stop_loss+take_profit)/2
+function getReferencePriceForCalc(action: DecisionAction): number | undefined {
+  if (action.price != null && action.price > 0) return action.price
+  if (action.stop_loss != null && action.stop_loss > 0 && action.take_profit != null && action.take_profit > 0) {
+    return (action.stop_loss + action.take_profit) / 2
+  }
+  return undefined
+}
+
 // Single Action Card Component
 function ActionCard({ action, language, onSymbolClick }: { action: DecisionAction; language: Language; onSymbolClick?: (symbol: string) => void }) {
   const { theme } = useTheme()
@@ -52,6 +61,7 @@ function ActionCard({ action, language, onSymbolClick }: { action: DecisionActio
   const config = ACTION_CONFIG[action.action] || ACTION_CONFIG.wait
   const isLong = action.action.includes('long')
   const isOpen = action.action.includes('open')
+  const referencePrice = isOpen ? getReferencePriceForCalc(action) : action.price
 
   return (
     <div
@@ -107,17 +117,17 @@ function ActionCard({ action, language, onSymbolClick }: { action: DecisionActio
       {/* Trading Details Grid */}
       {isOpen && (
         <div className="grid grid-cols-4 gap-3 mt-3 pt-3" style={{ borderTop: `1px solid var(--panel-border)` }}>
-          {/* Entry Price */}
+          {/* Entry Price：无 price 时用 (stop_loss+take_profit)/2 展示参考价，避免为空 */}
           <div className="text-center">
             <div className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
               {t('entryPrice', language)}
             </div>
             <div className="font-mono font-semibold" style={{ color: 'var(--text-primary)' }}>
-              {formatPrice(action.price)}
+              {formatPrice(displayPrice)}
             </div>
           </div>
 
-          {/* Stop Loss */}
+          {/* Stop Loss：条件用布尔，避免 React 渲染数字 0 */}
           <div className="text-center">
             <div className="text-xs mb-1" style={{ color: '#F6465D' }}>
               {t('stopLoss', language)}
@@ -125,14 +135,14 @@ function ActionCard({ action, language, onSymbolClick }: { action: DecisionActio
             <div className="font-mono font-semibold" style={{ color: '#F6465D' }}>
               {formatPrice(action.stop_loss)}
             </div>
-            {action.stop_loss && action.price && (
+            {displayPrice != null && displayPrice > 0 && action.stop_loss != null && action.stop_loss > 0 ? (
               <div className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-                {calcPctChange(action.price, action.stop_loss, isLong)}
+                {calcPctChange(displayPrice, action.stop_loss, isLong)}
               </div>
-            )}
+            ) : null}
           </div>
 
-          {/* Take Profit */}
+          {/* Take Profit：条件用布尔，避免 React 渲染数字 0 */}
           <div className="text-center">
             <div className="text-xs mb-1" style={{ color: '#0ECB81' }}>
               {t('takeProfit', language)}
@@ -140,11 +150,11 @@ function ActionCard({ action, language, onSymbolClick }: { action: DecisionActio
             <div className="font-mono font-semibold" style={{ color: '#0ECB81' }}>
               {formatPrice(action.take_profit)}
             </div>
-            {action.take_profit && action.price && (
+            {displayPrice != null && displayPrice > 0 && action.take_profit != null && action.take_profit > 0 ? (
               <div className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-                {calcPctChange(action.price, action.take_profit, isLong)}
+                {calcPctChange(displayPrice, action.take_profit, isLong)}
               </div>
-            )}
+            ) : null}
           </div>
 
           {/* Leverage & Size: 避免为 0 时显示；有 position_size_usd 时展示仓位 */}
@@ -171,13 +181,13 @@ function ActionCard({ action, language, onSymbolClick }: { action: DecisionActio
       )}
 
       {/* Risk/Reward Ratio for open positions */}
-      {isOpen && action.stop_loss && action.take_profit && action.price && (
+      {isOpen && action.stop_loss != null && action.stop_loss > 0 && action.take_profit != null && action.take_profit > 0 && displayPrice != null && displayPrice > 0 ? (
         <div className="mt-3 pt-3 flex items-center justify-between" style={{ borderTop: `1px solid var(--panel-border)` }}>
           <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{t('riskReward', language)}</span>
           <div className="flex items-center gap-2">
             {(() => {
-              const slDist = Math.abs(action.price - action.stop_loss)
-              const tpDist = Math.abs(action.take_profit - action.price)
+              const slDist = Math.abs((displayPrice ?? 0) - action.stop_loss)
+              const tpDist = Math.abs(action.take_profit - (displayPrice ?? 0))
               const ratio = slDist > 0 ? (tpDist / slDist) : 0
               const ratioColor = ratio >= 3 ? '#0ECB81' : ratio >= 2 ? '#F0B90B' : '#F6465D'
               return (
@@ -207,7 +217,7 @@ function ActionCard({ action, language, onSymbolClick }: { action: DecisionActio
             })()}
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Reasoning */}
       {action.reasoning && (
