@@ -46,7 +46,8 @@ You **must** output exactly one JSON object; do NOT wrap in markdown code fences
 **⚠️ Critical:** When approved=false in decisions_audit you MUST set "reason". Response must be a single JSON object only.
 
 Rules:
-- Reject a decision if excluded coins, exceeds max leverage/position ratio/max positions, or confidence below min_confidence for opens.
+- Reject a decision if excluded coins, exceeds max leverage/position ratio/max positions, or **confidence < min_confidence** for opens (strictly less than).
+- **Confidence rule:** Only reject for confidence when **decision.confidence < rules.min_confidence**. Example: confidence=85 and min_confidence=82 → do NOT reject for confidence (85 >= 82). Example: confidence=80 and min_confidence=82 → reject, reason e.g. "confidence 80 below min_confidence=82". Never say "confidence X below min_confidence=Y" when X >= Y.
 - Close/hedge (close_long, close_short, reduce) usually approve unless they violate rules.`
 
 const complianceSystemPromptZH = `你是风控官。你的职责是在执行前审计交易决策。你必须按条输出审计结果：每条输入决策对应一条审批结果（多条决策 = decisions_audit 里多个对象）。
@@ -83,7 +84,8 @@ const complianceSystemPromptZH = `你是风控官。你的职责是在执行前�
 **⚠️ 重要提醒：** decisions_audit 中 approved=false 时 "reason" 必填。回复必须是单一 JSON 对象。
 
 规则：
-- 涉及排除币种、超杠杆/仓位占比/最大持仓数、或开仓置信度低于 min_confidence 时驳回该条。
+- 涉及排除币种、超杠杆/仓位占比/最大持仓数、或开仓时 **confidence < min_confidence**（严格小于）时驳回该条。
+- **置信度规则：** 仅当 **决策的 confidence < 规则的 min_confidence** 时才能以置信度为由驳回。例如 confidence=85、min_confidence=82 时不得以置信度驳回（85≥82）；例如 confidence=80、min_confidence=82 时可驳回，reason 如「置信度80低于min_confidence=82」。禁止出现「置信度 X 低于 min_confidence=Y」且 X≥Y 的矛盾表述。
 - 平仓/对冲（close_long, close_short, reduce）通常应放行，仅违反规则时驳回。JSON 字段名保持英文。`
 
 var (
@@ -138,8 +140,46 @@ func RunCompliance(input *ComplianceInput, client mcp.AIClient) (*ComplianceOutp
 		if anyApproved {
 			out.Approved = true
 		}
+		// 双重保障：若某条因「置信度」被驳回但实际 confidence >= min_confidence，按实际结果改为通过并执行
+		fixConfidenceReasonContradiction(input, out)
+		// 修正后可能由驳回变通过，需重算批级 approved
+		anyApproved = false
+		for i := range out.DecisionsAudit {
+			if out.DecisionsAudit[i].Approved {
+				anyApproved = true
+				break
+			}
+		}
+		if anyApproved {
+			out.Approved = true
+		}
 	}
 	return out, nil
+}
+
+// fixConfidenceReasonContradiction 当驳回原因提到置信度但实际 confidence >= min_confidence 时，按实际结果将该条改为通过（approved=true），以便执行
+func fixConfidenceReasonContradiction(input *ComplianceInput, out *ComplianceOutput) {
+	if input == nil || out == nil || len(out.DecisionsAudit) == 0 || input.Rules.MinConfidence <= 0 {
+		return
+	}
+	for i := range out.DecisionsAudit {
+		if out.DecisionsAudit[i].Approved {
+			continue
+		}
+		if i >= len(input.Decisions) {
+			continue
+		}
+		d := &input.Decisions[i]
+		if d.Confidence < input.Rules.MinConfidence {
+			continue
+		}
+		r := strings.ToLower(out.DecisionsAudit[i].Reason)
+		if strings.Contains(r, "confidence") || strings.Contains(r, "min_confidence") || strings.Contains(r, "置信度") {
+			out.DecisionsAudit[i].Approved = true
+			out.DecisionsAudit[i].Reason = ""
+			logger.Infof("[Compliance] Override to approved for decision %d: confidence=%d >= min_confidence=%d (was wrongly rejected)", i, d.Confidence, input.Rules.MinConfidence)
+		}
+	}
 }
 
 func buildComplianceUserPrompt(in *ComplianceInput) string {
