@@ -994,6 +994,11 @@ func getOpenInterestDataOKX(symbol string) (*OIData, error) {
 	return &OIData{Latest: oi, Average: oi * 0.999}, nil
 }
 
+// GetFundingRate returns the current funding rate and next funding time for the symbol on the given exchange (binance, bybit, okx). Used e.g. to estimate funding fee when closing a position. Empty exchange defaults to binance. Cached per exchange+symbol.
+func GetFundingRate(symbol string, exchange string) (rate float64, nextFundingTimeMs int64, err error) {
+	return getFundingRate(Normalize(symbol), exchange)
+}
+
 // getFundingRate retrieves funding rate and next funding time from the specified exchange (binance, bybit, okx). Empty exchange defaults to binance. Uses 1-hour cache per exchange+symbol.
 func getFundingRate(symbol string, exchange string) (rate float64, nextFundingTimeMs int64, err error) {
 	ex := strings.ToLower(strings.TrimSpace(exchange))

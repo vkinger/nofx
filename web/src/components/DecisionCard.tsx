@@ -543,7 +543,7 @@ export function DecisionCard({ decision, language, onSymbolClick, onViewRoundDet
               }}
             >
               {decision.cot_trace && decision.cot_trace.trim() ? (
-                decision.cot_trace
+                (decision.cot_trace || '').replace(/\\n/g, '\n')
               ) : decision.raw_response && decision.raw_response.trim() ? (
                 <>
                   <div className="text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
