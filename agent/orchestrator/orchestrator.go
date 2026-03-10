@@ -30,6 +30,8 @@ func RunOneRound(
 	// 1. Run analyst (P4-4 阶段日志)
 	logger.Infof("[Phase] analyst_start trader_id=%s", traderID)
 	logger.Infof("[Orchestrator] Running analyst...")
+	// 按角色设置 JSON Schema，避免使用交易员输出格式
+	kernel.PrepareClientForRole(analystClient, "analyst", engine.GetLanguage())
 	analystReport, err = analyst.RunAnalyst(ctx, engine, analystClient)
 	if err != nil {
 		logger.Infof("[Phase] analyst_end error=%v", err)

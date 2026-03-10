@@ -2147,7 +2147,7 @@ func CheckModelSupportsAdvancedJSONSchemaFeatures(provider, modelName string) bo
 }
 
 // GetDecisionJSONSchemaForModel 根据模型类型获取合适的 JSON Schema 版本
-// 
+//
 // 返回值：
 //   - 如果模型支持高级 JSON Schema 特性（OpenAI/Claude）：
 //     返回完整版本（包含 allOf, pattern, exclusiveMinimum 等高级特性）
@@ -2155,7 +2155,7 @@ func CheckModelSupportsAdvancedJSONSchemaFeatures(provider, modelName string) bo
 //     返回简化版本（移除高级特性，仅保留基础 JSON Schema）
 //   - 如果模型不支持 JSON Schema（其他模型）：
 //     返回简化版本（作为兜底，用于提示词集成方式）
-// 
+//
 // 注意：此函数不检查模型是否支持 JSON Schema，调用者应确保在支持 JSON Schema 的模型上使用
 func GetDecisionJSONSchemaForModel(lang Language, provider, modelName string) string {
 	providerLower := strings.ToLower(provider)
@@ -2177,4 +2177,97 @@ func GetDecisionJSONSchemaForModel(lang Language, provider, modelName string) st
 		}
 		return getDecisionJSONSchemaSimplifiedEN()
 	}
+}
+
+// getAnalystJSONSchema 分析师输出 JSON Schema（API response_format 用，与 analyst.AnalystReport 一致）
+func getAnalystJSONSchema() string {
+	return `{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "description": "Analyst report: bias, confidence, report_text, optional key_risks",
+  "required": ["bias", "confidence", "report_text"],
+  "properties": {
+    "bias": {
+      "type": "string",
+      "description": "Macro bias",
+      "enum": ["bullish", "bearish", "neutral", "strong_bullish", "strong_bearish"]
+    },
+    "confidence": {
+      "type": "integer",
+      "description": "Confidence 0-100",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "report_text": {
+      "type": "string",
+      "description": "2-5 sentences: trend, main risk, recommended stance"
+    },
+    "key_risks": {
+      "type": "array",
+      "description": "Optional 1-3 risk phrases",
+      "items": { "type": "string" },
+      "maxItems": 5
+    }
+  }
+}`
+}
+
+// getComplianceJSONSchema 风控官输出 JSON Schema（API response_format 用，与 compliance.ComplianceOutput 一致）
+func getComplianceJSONSchema() string {
+	return `{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "description": "Compliance audit: approved, reason, violations, decisions_audit, force_actions",
+  "required": ["approved", "reason", "decisions_audit"],
+  "properties": {
+    "approved": {
+      "type": "boolean",
+      "description": "Batch approved (true if at least one decision approved)"
+    },
+    "reason": {
+      "type": "string",
+      "description": "Brief summary"
+    },
+    "violations": {
+      "type": "array",
+      "description": "Optional rule names violated",
+      "items": { "type": "string" }
+    },
+    "decisions_audit": {
+      "type": "array",
+      "description": "One object per input decision, same order (index 0,1,2...)",
+      "items": {
+        "type": "object",
+        "required": ["index", "approved", "reason"],
+        "properties": {
+          "index": { "type": "integer", "description": "0-based index" },
+          "approved": { "type": "boolean" },
+          "reason": { "type": "string", "description": "Required when approved=false" }
+        }
+      }
+    },
+    "force_actions": {
+      "type": "array",
+      "description": "Optional force actions",
+      "items": {
+        "type": "object",
+        "properties": {
+          "action": { "type": "string" },
+          "symbol": { "type": "string" },
+          "param": { "type": "number" }
+        }
+      }
+    }
+  }
+}`
+}
+
+// GetAnalystJSONSchemaForModel 返回分析师输出的 JSON Schema（供 API response_format 使用）
+func GetAnalystJSONSchemaForModel(lang Language, provider, modelName string) string {
+	return getAnalystJSONSchema()
+}
+
+// GetComplianceJSONSchemaForModel 返回风控官输出的 JSON Schema（供 API response_format 使用）
+func GetComplianceJSONSchemaForModel(lang Language, provider, modelName string) string {
+	return getComplianceJSONSchema()
 }

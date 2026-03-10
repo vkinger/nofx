@@ -906,6 +906,8 @@ func (at *AutoTrader) runCycle() error {
 			}
 		}
 		complianceClient := at.getComplianceClient()
+		// 按角色设置 JSON Schema，避免使用交易员输出格式
+		kernel.PrepareClientForRole(complianceClient, "compliance", at.strategyEngine.GetLanguage())
 		logger.Infof("[Phase] compliance_start trader_id=%s pending_id=%d", at.id, pending.ID)
 		output, compErr := compliance.RunCompliance(input, complianceClient)
 		if compErr != nil {

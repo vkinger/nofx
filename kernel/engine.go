@@ -361,52 +361,8 @@ func GetFullDecisionWithStrategy(ctx *Context, mcpClient mcp.AIClient, engine *S
 		userPrompt = "## Analyst report (reference)\n" + analystSuffix[0] + "\n\n" + userPrompt
 	}
 
-	// 3.5. Set JSON Schema for structured output if model supports it
-	if mcpClient != nil {
-		// 先获取模型信息（避免重复获取）
-		modelName := getModelNameFromClient(mcpClient)
-		provider := getProviderFromClient(mcpClient)
-
-		// Register JSON Schema checker callback in mcp package
-		// This allows mcp package to use the full implementation from kernel
-		// 注意：这个回调供 mcp 包在构建请求时使用，避免循环依赖
-		mcp.JSONSchemaChecker = func(provider, modelName string) bool {
-			// 调用 schema.go 中的统一检查函数
-			modelNameLower := strings.ToLower(modelName)
-			providerLower := strings.ToLower(provider)
-			return CheckModelSupportsJSONSchema(providerLower, modelNameLower)
-		}
-
-		// Check if model supports JSON Schema (直接使用已获取的 provider 和 modelName)
-		if modelName != "" || provider != "" {
-			modelNameLower := strings.ToLower(modelName)
-			providerLower := strings.ToLower(provider)
-			supportsJSONSchema := CheckModelSupportsJSONSchema(providerLower, modelNameLower)
-
-			if supportsJSONSchema {
-				// Get JSON Schema based on language and model
-				lang := engine.GetLanguage()
-
-				// 检查是否支持高级特性，用于日志记录
-				supportsAdvanced := CheckModelSupportsAdvancedJSONSchemaFeatures(providerLower, modelNameLower)
-				schemaType := "SIMPLIFIED"
-				if supportsAdvanced {
-					schemaType = "FULL (with advanced features)"
-				}
-
-				// 使用统一的函数获取合适的 Schema 版本
-				jsonSchema := GetDecisionJSONSchemaForModel(lang, provider, modelName)
-
-				// Set JSON Schema in client
-				mcpClient.SetJSONSchema(jsonSchema)
-				logger.Infof("🔧 [JSON Schema] Enabled structured output for model %s/%s, using %s schema version (language: %s)", provider, modelName, schemaType, lang)
-			} else {
-				logger.Infof("📝 [JSON Schema] Model %s/%s does not support JSON Schema API, will use prompt integration mode", provider, modelName)
-			}
-		} else {
-			logger.Warnf("⚠️  [JSON Schema] Cannot determine model info (provider=%s, modelName=%s), skipping JSON Schema setup", provider, modelName)
-		}
-	}
+	// 3.5. 按当前 Agent 角色设置 JSON Schema（交易员），支持 json_schema 的模型会收到对应输出格式
+	PrepareClientForRole(mcpClient, "trader", engine.GetLanguage())
 
 	// Calculate estimated token count
 	systemTokens := EstimateTokenCount(systemPrompt)
@@ -1699,6 +1655,60 @@ func getProviderFromClient(mcpClient mcp.AIClient) string {
 
 	// 如果反射失败，返回空字符串
 	return ""
+}
+
+// PrepareClientForRole 根据当前 Agent 角色设置 client 的 JSON Schema（供 API response_format 使用）。
+// 单一流程/多 Agent 在调用模型前应调用此函数，确保分析师/风控使用各自输出格式，而非固定交易员 schema。
+// role: "trader" | "analyst" | "compliance"
+func PrepareClientForRole(mcpClient mcp.AIClient, role string, lang Language) {
+	if mcpClient == nil {
+		return
+	}
+	modelName := getModelNameFromClient(mcpClient)
+	provider := getProviderFromClient(mcpClient)
+
+	// 注册 mcp 包使用的 JSON Schema 检查回调
+	mcp.JSONSchemaChecker = func(p, m string) bool {
+		return CheckModelSupportsJSONSchema(strings.ToLower(p), strings.ToLower(m))
+	}
+
+	if modelName == "" && provider == "" {
+		logger.Warnf("⚠️ [JSON Schema] Cannot determine model (provider=%s, modelName=%s), clearing schema for role=%s", provider, modelName, role)
+		mcpClient.SetJSONSchema("")
+		return
+	}
+	providerLower := strings.ToLower(provider)
+	modelNameLower := strings.ToLower(modelName)
+	supportsJSONSchema := CheckModelSupportsJSONSchema(providerLower, modelNameLower)
+
+	if !supportsJSONSchema {
+		logger.Infof("📝 [JSON Schema] Model %s/%s does not support JSON Schema API, role=%s uses prompt-only format", provider, modelName, role)
+		mcpClient.SetJSONSchema("")
+		return
+	}
+
+	var jsonSchema string
+	switch role {
+	case "trader":
+		supportsAdvanced := CheckModelSupportsAdvancedJSONSchemaFeatures(providerLower, modelNameLower)
+		schemaType := "SIMPLIFIED"
+		if supportsAdvanced {
+			schemaType = "FULL"
+		}
+		jsonSchema = GetDecisionJSONSchemaForModel(lang, provider, modelName)
+		logger.Infof("🔧 [JSON Schema] role=trader, model %s/%s, %s schema", provider, modelName, schemaType)
+	case "analyst":
+		jsonSchema = GetAnalystJSONSchemaForModel(lang, provider, modelName)
+		logger.Infof("🔧 [JSON Schema] role=analyst, model %s/%s", provider, modelName)
+	case "compliance":
+		jsonSchema = GetComplianceJSONSchemaForModel(lang, provider, modelName)
+		logger.Infof("🔧 [JSON Schema] role=compliance, model %s/%s", provider, modelName)
+	default:
+		logger.Warnf("⚠️ [JSON Schema] Unknown role=%s, clearing schema", role)
+		mcpClient.SetJSONSchema("")
+		return
+	}
+	mcpClient.SetJSONSchema(jsonSchema)
 }
 
 // buildOutputFormatWithJSONSchemaAPI 构建输出格式（模型支持JSON Schema API级别）
