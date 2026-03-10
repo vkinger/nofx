@@ -708,8 +708,7 @@ export function AdvancedChart({
               size: number
             }> = []
 
-            const isZh = language === 'zh' || language === 'zh-CN'
-            const labelOpen = isZh ? '开' : 'Open'
+            const isZh = String(language).startsWith('zh')
             const labelClose = isZh ? '平' : 'Close'
 
             orders.forEach((order) => {
