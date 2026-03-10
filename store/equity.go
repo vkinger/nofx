@@ -12,7 +12,7 @@ type EquityStore struct {
 	db *gorm.DB
 }
 
-// EquitySnapshot equity snapshot
+// EquitySnapshot equity snapshot（每个交易周期或定时写入一条，用于净值曲线）
 type EquitySnapshot struct {
 	ID            int64     `gorm:"primaryKey;autoIncrement" json:"id"`
 	TraderID      string    `gorm:"column:trader_id;not null;index:idx_equity_trader_time" json:"trader_id"`
@@ -22,6 +22,7 @@ type EquitySnapshot struct {
 	UnrealizedPnL float64   `gorm:"column:unrealized_pnl;not null;default:0" json:"unrealized_pnl"`
 	PositionCount int       `gorm:"column:position_count;default:0" json:"position_count"`
 	MarginUsedPct float64   `gorm:"column:margin_used_pct;default:0" json:"margin_used_pct"`
+	CycleNumber   int       `gorm:"column:cycle_number;default:0" json:"cycle_number"` // 交易周期号，与决策记录一致，便于曲线打点显示
 	CreatedAt     time.Time `json:"created_at"`
 }
 
@@ -32,16 +33,8 @@ func NewEquityStore(db *gorm.DB) *EquityStore {
 	return &EquityStore{db: db}
 }
 
-// initTables initializes equity tables
+// initTables initializes equity tables（含 cycle_number 等新字段的自动迁移）
 func (s *EquityStore) initTables() error {
-	// For PostgreSQL with existing table, skip AutoMigrate
-	if s.db.Dialector.Name() == "postgres" {
-		var tableExists int64
-		s.db.Raw(`SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'trader_equity_snapshots'`).Scan(&tableExists)
-		if tableExists > 0 {
-			return nil
-		}
-	}
 	return s.db.AutoMigrate(&EquitySnapshot{})
 }
 

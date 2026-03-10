@@ -163,8 +163,8 @@ export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
       : undefined) || // 备选：淨值 - 盈亏
     1000 // 默认值（与创建交易员时的默认配置一致）
 
-  // 转换数据格式，保留完整时间供 tooltip 显示
-  const chartData = displayHistory.map((point) => {
+  // 转换数据格式，保留完整时间供 tooltip 显示；cycle_number 可能未定义，用序号兜底
+  const chartData = displayHistory.map((point, index) => {
     const pnl = point.total_equity - initialBalance
     const pnlPct = ((pnl / initialBalance) * 100).toFixed(2)
     const d = new Date(point.timestamp)
@@ -172,12 +172,16 @@ export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
       language === 'zh'
         ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
         : d.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'medium' })
+    const cycle =
+      point.cycle_number != null && Number.isFinite(point.cycle_number)
+        ? point.cycle_number
+        : index + 1
     return {
       time: d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
       timeLabel,
       timestamp: point.timestamp,
       value: displayMode === 'dollar' ? point.total_equity : parseFloat(pnlPct),
-      cycle: point.cycle_number,
+      cycle,
       raw_equity: point.total_equity,
       raw_pnl: pnl,
       raw_pnl_pct: parseFloat(pnlPct),
@@ -222,7 +226,12 @@ export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
         },
         {
           label: language === 'zh' ? '周期' : 'Cycle',
-          value: `#${data.cycle}`,
+          value:
+            data.cycle != null && data.cycle !== ''
+              ? `#${Number(data.cycle)}`
+              : language === 'zh'
+                ? '—'
+                : '—',
         },
         {
           label: language === 'zh' ? '净值' : 'Equity',

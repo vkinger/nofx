@@ -3132,7 +3132,7 @@ func (s *Server) handleEquityHistory(c *gin.Context) {
 		return
 	}
 
-	// Build return rate historical data points
+	// Build return rate historical data points（与前端 EquityPoint 对齐：含 cycle_number 供净值曲线打点显示）
 	type EquityPoint struct {
 		Timestamp        string  `json:"timestamp"`
 		TotalEquity      float64 `json:"total_equity"`      // Account equity (wallet + unrealized)
@@ -3141,6 +3141,9 @@ func (s *Server) handleEquityHistory(c *gin.Context) {
 		TotalPnLPct      float64 `json:"total_pnl_pct"`     // Total PnL percentage
 		PositionCount    int     `json:"position_count"`    // Position count
 		MarginUsedPct    float64 `json:"margin_used_pct"`   // Margin used percentage
+		CycleNumber      int     `json:"cycle_number"`      // 交易周期号，与决策一致，前端打点显示
+		PnL              float64 `json:"pnl"`               // 相对初始余额的累计盈亏（前端可自算，此处兼容）
+		PnLPct           float64 `json:"pnl_pct"`           // 累计盈亏百分比（前端可自算，此处兼容）
 	}
 
 	// Use the balance of the first record as initial balance to calculate return rate
@@ -3151,12 +3154,15 @@ func (s *Server) handleEquityHistory(c *gin.Context) {
 
 	var history []EquityPoint
 	for _, snap := range snapshots {
-		// Calculate PnL percentage
 		totalPnLPct := 0.0
 		if initialBalance > 0 {
 			totalPnLPct = (snap.UnrealizedPnL / initialBalance) * 100
 		}
-
+		cumulativePnL := snap.TotalEquity - initialBalance
+		cumulativePnLPct := 0.0
+		if initialBalance > 0 {
+			cumulativePnLPct = (cumulativePnL / initialBalance) * 100
+		}
 		history = append(history, EquityPoint{
 			Timestamp:        snap.Timestamp.Format("2006-01-02 15:04:05"),
 			TotalEquity:      snap.TotalEquity,
@@ -3165,6 +3171,9 @@ func (s *Server) handleEquityHistory(c *gin.Context) {
 			TotalPnLPct:      totalPnLPct,
 			PositionCount:    snap.PositionCount,
 			MarginUsedPct:    snap.MarginUsedPct,
+			CycleNumber:      snap.CycleNumber,
+			PnL:              cumulativePnL,
+			PnLPct:           cumulativePnLPct,
 		})
 	}
 
