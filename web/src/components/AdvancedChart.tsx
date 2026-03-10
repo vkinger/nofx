@@ -21,15 +21,19 @@ import {
 } from '../utils/indicators'
 import { Settings, BarChart2 } from 'lucide-react'
 
-// 订单接口定义
+// 订单接口定义（含启发式成对序号与持仓开仓标记）
 interface OrderMarker {
   time: number
   price: number
   side: 'long' | 'short'
-  rawSide: string // 原始 side 字段 (buy/sell from database)
+  rawSide: string
   action: 'open' | 'close'
   pnl?: number
   symbol: string
+  /** 启发式成对序号：同一对开/平相同 */
+  pairIndex?: number
+  /** 来自当前持仓的开仓标记（无订单时间，用最后一根 K 线时间） */
+  fromPosition?: boolean
 }
 
 // 挂单接口定义 (交易所的止盈止损订单)
@@ -165,6 +169,12 @@ export function AdvancedChart({
   const indicatorSeriesRef = useRef<Map<string, ISeriesApi<any>>>(new Map())
   const seriesMarkersRef = useRef<any>(null) // Markers primitive for v5
   const currentMarkersDataRef = useRef<any[]>([]) // 存储当前的标记数据
+  const currentOrderPointsRef = useRef<Array<{ time: number; price: number; pairIndex?: number; pnl?: number }>>([]) // 每个 marker 对应的时间/价格/配对序号/盈亏，用于悬停检测与连线
+  const pairLineSeriesRef = useRef<ISeriesApi<'Line'> | null>(null) // 成对买卖点连线
+  const lastHoveredPairRef = useRef<number | null | undefined>(undefined) // 上次悬停的 pairIndex，undefined 表示未初始化
+  const [hoveredPairPnl, setHoveredPairPnl] = useState<number | null>(null) // 悬停成对连线时显示的盈亏
+  const setHoveredPairPnlRef = useRef(setHoveredPairPnl)
+  setHoveredPairPnlRef.current = setHoveredPairPnl
   const klineDataRef = useRef<Map<number, { volume: number; quoteVolume: number }>>(new Map()) // 存储 kline 额外数据
   const currentKlineDataRef = useRef<Kline[]>([]) // 存储当前的完整 K 线数据，用于指标更新
   const priceLinesRef = useRef<any[]>([]) // 存储挂单价格线
@@ -173,6 +183,8 @@ export function AdvancedChart({
   const [error, setError] = useState<string | null>(null)
   const [showIndicatorPanel, setShowIndicatorPanel] = useState(false)
   const [showOrderMarkers, setShowOrderMarkers] = useState(true) // 订单标记显示开关，默认显示
+  const showOrderMarkersRef = useRef(showOrderMarkers)
+  showOrderMarkersRef.current = showOrderMarkers
   const isInitialLoadRef = useRef(true) // 跟踪是否为初始加载
   const [tooltipData, setTooltipData] = useState<any>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
@@ -317,6 +329,9 @@ export function AdvancedChart({
         const orderAction = order.order_action || order.OrderAction
         const side = (order.side || order.Side)?.toLowerCase() // BUY/SELL
         const symbol = order.symbol || order.Symbol
+        const closePosition = order.close_position ?? order.ClosePosition ?? false
+        const reduceOnly = order.reduce_only ?? order.ReduceOnly ?? false
+        const positionSideFromOrder = (order.position_side || order.PositionSide)?.toLowerCase()
 
         // 跳过没有成交时间或价格的订单
         if (!filledAt || !avgPrice || avgPrice === 0) {
@@ -330,21 +345,31 @@ export function AdvancedChart({
           return
         }
 
-        // 根据 order_action 判断是开仓还是平仓
+        // 根据 order_action / close_position / reduce_only 判断开仓还是平仓（兼容大小写与 snake_case）
         let action: 'open' | 'close' = 'open'
         let positionSide: 'long' | 'short' = 'long'
+        const actionUpper = typeof orderAction === 'string' ? orderAction.toUpperCase() : ''
 
-        if (orderAction) {
-          if (orderAction.includes('OPEN')) {
+        if (actionUpper) {
+          if (actionUpper.includes('OPEN')) {
             action = 'open'
-            positionSide = orderAction.includes('LONG') ? 'long' : 'short'
-          } else if (orderAction.includes('CLOSE')) {
+            positionSide = actionUpper.includes('LONG') ? 'long' : 'short'
+          } else if (actionUpper.includes('CLOSE')) {
             action = 'close'
-            positionSide = orderAction.includes('LONG') ? 'long' : 'short'
+            positionSide = actionUpper.includes('LONG') ? 'long' : 'short'
           }
-        } else {
-          positionSide = side === 'buy' ? 'long' : 'short'
         }
+        if (action === 'open' && (closePosition || reduceOnly)) {
+          action = 'close'
+          if (positionSideFromOrder === 'long' || positionSideFromOrder === 'short') {
+            positionSide = positionSideFromOrder as 'long' | 'short'
+          } else {
+            positionSide = side === 'buy' ? 'long' : 'short'
+          }
+        }
+        if (positionSide === 'long' && positionSideFromOrder === 'short') positionSide = 'short'
+        if (positionSide === 'short' && positionSideFromOrder === 'long') positionSide = 'long'
+        if (!actionUpper && action === 'open') positionSide = side === 'buy' ? 'long' : 'short'
 
         const pnl = order.realized_pnl ?? order.realizedPnl ?? order.realized_pnl_pct
 
@@ -359,7 +384,34 @@ export function AdvancedChart({
         })
       })
 
-      console.log('[AdvancedChart] Final markers:', markers)
+      // 启发式成对：按时间 FIFO，同一 symbol+side 的开与平配对，分配 pairIndex
+      markers.sort((a, b) => a.time - b.time)
+      const openStack: { long: number[]; short: number[] } = { long: [], short: [] }
+      let nextPairIndex = 1
+      for (let i = 0; i < markers.length; i++) {
+        const m = markers[i]
+        if (m.action === 'open') {
+          openStack[m.side].push(i)
+          // 先不分配，等平仓时一起分配
+        } else {
+          const stack = openStack[m.side]
+          if (stack.length > 0) {
+            const openIdx = stack.shift()!
+            const pairId = nextPairIndex++
+            markers[openIdx].pairIndex = pairId
+            m.pairIndex = pairId
+          } else {
+            m.pairIndex = nextPairIndex++
+          }
+        }
+      }
+      for (let i = 0; i < markers.length; i++) {
+        if (markers[i].action === 'open' && markers[i].pairIndex == null) {
+          markers[i].pairIndex = nextPairIndex++
+        }
+      }
+
+      console.log('[AdvancedChart] Final markers (with pairIndex):', markers)
       return markers
     } catch (err) {
       console.error('[AdvancedChart] Error fetching orders:', err)
@@ -521,6 +573,16 @@ export function AdvancedChart({
     })
     volumeSeriesRef.current = volumeSeries as any
 
+    // 成对买卖点连线（悬停时显示）
+    const pairLineSeries = chart.addSeries(LineSeries, {
+      color: 'rgba(240, 185, 11, 0.75)',
+      lineWidth: 2,
+      lastValueVisible: false,
+      priceLineVisible: false,
+      crosshairMarkerVisible: false,
+    })
+    pairLineSeriesRef.current = pairLineSeries as any
+
     // 响应式调整 (ResizeObserver)
     const resizeObserver = new ResizeObserver((entries) => {
       if (entries.length === 0 || !entries[0].contentRect) return
@@ -561,9 +623,90 @@ export function AdvancedChart({
         x: param.point.x,
         y: param.point.y,
       })
+
+      // 悬停检测：找到最近的买卖点，高亮并连线
+      const cursorTime = param.time as number
+      let cursorPrice: number
+      try {
+        cursorPrice = (candlestickSeriesRef.current as any).coordinateToPrice(param.point.y)
+      } catch {
+        applyMarkerHover(null)
+        return
+      }
+      const points = currentOrderPointsRef.current
+      if (points.length === 0) {
+        applyMarkerHover(null)
+        return
+      }
+      let bestIdx = -1
+      let bestDist = Infinity
+      for (let i = 0; i < points.length; i++) {
+        const p = points[i]
+        const timeDist = Math.abs(cursorTime - p.time)
+        const priceDist = p.price !== 0 ? Math.abs((cursorPrice - p.price) / p.price) : 1
+        const dist = timeDist / 60 + priceDist * 500
+        if (dist < bestDist) {
+          bestDist = dist
+          bestIdx = i
+        }
+      }
+      const hoverThreshold = 20
+      if (bestIdx >= 0 && bestDist < hoverThreshold) {
+        applyMarkerHover(points[bestIdx].pairIndex)
+      } else {
+        applyMarkerHover(null)
+      }
     })
 
+    function applyMarkerHover(hoveredPairIndex: number | null | undefined) {
+      if (lastHoveredPairRef.current === hoveredPairIndex) return
+      lastHoveredPairRef.current = hoveredPairIndex
+
+      const baseMarkers = currentMarkersDataRef.current
+      const points = currentOrderPointsRef.current
+      const showMarkers = showOrderMarkersRef.current
+
+      if (!seriesMarkersRef.current || baseMarkers.length === 0) {
+        if (pairLineSeriesRef.current) pairLineSeriesRef.current.setData([])
+        setHoveredPairPnlRef.current(null)
+        return
+      }
+
+      if (hoveredPairIndex == null) {
+        seriesMarkersRef.current.setMarkers(showMarkers ? baseMarkers : [])
+        if (pairLineSeriesRef.current) pairLineSeriesRef.current.setData([])
+        setHoveredPairPnlRef.current(null)
+        return
+      }
+
+      const highlighted = baseMarkers.map((m, i) => {
+        const pt = points[i]
+        const isInPair = pt && pt.pairIndex === hoveredPairIndex
+        return { ...m, size: isInPair ? 1.6 : 1 }
+      })
+      seriesMarkersRef.current.setMarkers(showMarkers ? highlighted : [])
+
+      const pairPoints = points.filter((p) => p.pairIndex === hoveredPairIndex)
+      if (pairLineSeriesRef.current && pairPoints.length >= 2) {
+        const sorted = [...pairPoints].sort((a, b) => a.time - b.time)
+        pairLineSeriesRef.current.setData(
+          sorted.map((p) => ({ time: p.time as Time, value: p.price }))
+        )
+        const closePoint = sorted[sorted.length - 1]
+        const pnl = closePoint.pnl != null ? closePoint.pnl : null
+        setHoveredPairPnlRef.current(pnl)
+      } else {
+        if (pairLineSeriesRef.current) pairLineSeriesRef.current.setData([])
+        setHoveredPairPnlRef.current(null)
+      }
+    }
+
+    const chartEl = chartContainerRef.current
+    const onChartMouseLeave = () => applyMarkerHover(null)
+    chartEl?.addEventListener('mouseleave', onChartMouseLeave)
+
     return () => {
+      chartEl?.removeEventListener('mouseleave', onChartMouseLeave)
       resizeObserver.disconnect()
       chart.remove()
     }
@@ -661,44 +804,56 @@ export function AdvancedChart({
         // 3. 添加指标
         updateIndicators(klineData)
 
-        // 4. 获取并显示订单标记
+        // 4. 获取并显示订单标记（含启发式成对 + 持仓开仓补充）
         if (traderID && candlestickSeriesRef.current) {
           console.log('[AdvancedChart] Starting to fetch orders...')
-          const orders = await fetchOrders(traderID, symbol)
+          let orders = await fetchOrders(traderID, symbol)
           console.log('[AdvancedChart] Received orders:', orders)
 
-          if (orders.length > 0) {
-            console.log('[AdvancedChart] Creating markers from', orders.length, 'orders')
+          const klineTimes = klineData.map((k: any) => k.time as number)
+          const klineMinTime = klineTimes[0] || 0
+          const klineMaxTime = klineTimes[klineTimes.length - 1] || 0
+          const lastCandleTime = klineTimes.length > 0 ? klineTimes[klineTimes.length - 1] : 0
 
-            // 提取 K 线时间数组（已排序）
-            const klineTimes = klineData.map((k: any) => k.time as number)
-            const klineMinTime = klineTimes[0] || 0
-            const klineMaxTime = klineTimes[klineTimes.length - 1] || 0
+          // 补充当前持仓的开仓标记（无历史订单时也显示持仓入口价）
+          if (positions && positions.length > 0 && lastCandleTime) {
+            const norm = (s: string) => (s || '').toUpperCase().replace(/USDT$/, '') + 'USDT'
+            const symNorm = norm(symbol)
+            positions.forEach((pos: Position) => {
+              if (norm(pos.symbol || '') !== symNorm) return
+              const side = (pos.side || '').toLowerCase() as 'long' | 'short'
+              if (side !== 'long' && side !== 'short') return
+              const entryPrice = pos.entry_price ?? (pos as any).entryPrice
+              if (entryPrice == null || entryPrice === 0) return
+              orders.push({
+                time: lastCandleTime,
+                price: entryPrice,
+                side,
+                rawSide: side === 'long' ? 'buy' : 'sell',
+                action: 'open',
+                symbol: pos.symbol || symbol,
+                fromPosition: true,
+              })
+            })
+          }
+
+          if (orders.length > 0) {
+            console.log('[AdvancedChart] Creating markers from', orders.length, 'orders (incl. position opens)')
+
             console.log('[AdvancedChart] Kline time range:', klineMinTime, '-', klineMaxTime, '(', klineTimes.length, 'candles)')
 
-            // 二分查找：找到订单时间所属的 K 线蜡烛
-            // 返回 time <= orderTime 的最大 K 线时间
             const findCandleTime = (orderTime: number): number | null => {
-              if (orderTime < klineMinTime || orderTime > klineMaxTime) {
-                return null // 超出范围
-              }
-
+              if (orderTime < klineMinTime || orderTime > klineMaxTime) return null
               let left = 0
               let right = klineTimes.length - 1
-
               while (left < right) {
                 const mid = Math.ceil((left + right + 1) / 2)
-                if (klineTimes[mid] <= orderTime) {
-                  left = mid
-                } else {
-                  right = mid - 1
-                }
+                if (klineTimes[mid] <= orderTime) left = mid
+                else right = mid - 1
               }
-
               return klineTimes[left]
             }
 
-            // 每个订单单独打点，显示买卖/开平价格；开仓与平仓成对标记（开/平 + 价格）
             const markers: Array<{
               time: Time
               position: 'belowBar' | 'aboveBar'
@@ -707,17 +862,32 @@ export function AdvancedChart({
               text: string
               size: number
             }> = []
+            const orderPoints: Array<{ time: number; price: number; pairIndex?: number; pnl?: number }> = []
 
             const isZh = String(language).startsWith('zh')
             const labelClose = isZh ? '平' : 'Close'
 
             orders.forEach((order) => {
-              const candleTime = findCandleTime(order.time)
+              const candleTime = order.fromPosition ? lastCandleTime : findCandleTime(order.time)
               if (candleTime === null) return
 
-              const priceStr = order.price >= 1 ? order.price.toFixed(2) : order.price.toFixed(4)
+              const pnlVal = order.pnl
+              orderPoints.push({
+                time: candleTime as number,
+                price: order.price,
+                pairIndex: order.pairIndex,
+                pnl: typeof pnlVal === 'number' ? pnlVal : undefined,
+              })
+
+              const priceStr = formatPriceWithDynamicPrecision(order.price)
               const isOpen = order.action === 'open'
               const isLong = order.side === 'long'
+              const pairSuffix =
+                order.fromPosition
+                  ? (isZh ? ' (持仓)' : ' (Pos)')
+                  : order.pairIndex != null
+                    ? ` (${order.pairIndex})`
+                    : ''
 
               let text: string
               let position: 'belowBar' | 'aboveBar'
@@ -725,8 +895,8 @@ export function AdvancedChart({
 
               if (isOpen) {
                 text = isLong
-                  ? (isZh ? `开多 ${priceStr}` : `Long ${priceStr}`)
-                  : (isZh ? `开空 ${priceStr}` : `Short ${priceStr}`)
+                  ? (isZh ? `开多 ${priceStr}` : `Long ${priceStr}`) + pairSuffix
+                  : (isZh ? `开空 ${priceStr}` : `Short ${priceStr}`) + pairSuffix
                 position = isLong ? 'belowBar' : 'aboveBar'
                 color = isLong ? '#0ECB81' : '#F6465D'
               } else {
@@ -734,7 +904,7 @@ export function AdvancedChart({
                   order.pnl != null
                     ? (order.pnl >= 0 ? ` +$${order.pnl.toFixed(2)}` : ` -$${Math.abs(order.pnl).toFixed(2)}`)
                     : ''
-                text = `${labelClose} ${priceStr}${pnlStr}`.trim()
+                text = `${labelClose} ${priceStr}${pnlStr}`.trim() + pairSuffix
                 position = isLong ? 'aboveBar' : 'belowBar'
                 color =
                   order.pnl != null ? (order.pnl >= 0 ? '#0ECB81' : '#F6465D') : isLong ? '#0ECB81' : '#F6465D'
@@ -750,8 +920,16 @@ export function AdvancedChart({
               })
             })
 
-            // 按时间排序（lightweight-charts 要求标记按时间顺序）
-            markers.sort((a, b) => (a.time as number) - (b.time as number))
+            // 按时间排序，保持 markers 与 orderPoints 一一对应
+            const combined = markers.map((m, i) => ({ marker: m, point: orderPoints[i] }))
+            combined.sort((a, b) => (a.marker.time as number) - (b.marker.time as number))
+            markers.length = 0
+            orderPoints.length = 0
+            combined.forEach(({ marker, point }) => {
+              markers.push(marker)
+              orderPoints.push(point)
+            })
+            currentOrderPointsRef.current = orderPoints
 
             console.log('[AdvancedChart] Valid markers:', markers.length, 'out of', orders.length)
 
@@ -778,10 +956,12 @@ export function AdvancedChart({
             }
           } else {
             console.log('[AdvancedChart] No orders found, clearing markers')
+            currentOrderPointsRef.current = []
             try {
               if (seriesMarkersRef.current) {
                 seriesMarkersRef.current.setMarkers([])
               }
+              pairLineSeriesRef.current?.setData([])
             } catch (err) {
               console.error('[AdvancedChart] Failed to clear markers:', err)
             }
@@ -1374,6 +1554,32 @@ export function AdvancedChart({
                 </>
               )}
             </div>
+          </div>
+        )}
+
+        {/* 成对连线时的盈亏显示 */}
+        {hoveredPairPnl !== null && (
+          <div
+            style={{
+              position: 'absolute',
+              left: '10px',
+              bottom: '10px',
+              padding: '6px 10px',
+              background: 'rgba(15, 18, 21, 0.95)',
+              border: `1px solid ${hoveredPairPnl >= 0 ? 'rgba(14, 203, 129, 0.5)' : 'rgba(246, 70, 93, 0.5)'}`,
+              borderRadius: '6px',
+              color: hoveredPairPnl >= 0 ? '#0ECB81' : '#F6465D',
+              fontSize: '13px',
+              fontWeight: 'bold',
+              fontFamily: 'monospace',
+              pointerEvents: 'none',
+              zIndex: 10,
+              backdropFilter: 'blur(10px)',
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
+            }}
+          >
+            {String(language).startsWith('zh') ? '盈亏: ' : 'PnL: '}
+            {hoveredPairPnl >= 0 ? '+' : ''}${hoveredPairPnl.toFixed(2)}
           </div>
         )}
 
