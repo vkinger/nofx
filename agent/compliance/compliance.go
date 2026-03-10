@@ -47,7 +47,7 @@ You **must** output exactly one JSON object; do NOT wrap in markdown code fences
 
 Rules:
 - Reject a decision if excluded coins, exceeds max leverage/position ratio/max positions, or **confidence < min_confidence** for opens (strictly less than).
-- **Confidence rule:** Only reject for confidence when **decision.confidence < rules.min_confidence**. Example: confidence=85 and min_confidence=82 → do NOT reject for confidence (85 >= 82). Example: confidence=80 and min_confidence=82 → reject, reason e.g. "confidence 80 below min_confidence=82". Never say "confidence X below min_confidence=Y" when X >= Y.
+- **Confidence rule:** Use **each decision's confidence** (trader's score for that decision in "Pending decisions"); do NOT use analyst confidence. Reject for confidence only when **decision.confidence < rules.min_confidence**. Example: decision confidence=85 and min_confidence=82 → do NOT reject (85 >= 82). Example: decision confidence=80 and min_confidence=82 → reject, reason e.g. "confidence 80 below min_confidence=82". Never say "confidence X below min_confidence=Y" when X >= Y.
 - **min_confidence applies only to open actions (open_long, open_short).** For wait, hold, or other non-open/close actions, do NOT reject for confidence and do NOT add "min_confidence" to violations.
 - **Close / 部分平仓 (close_long, close_short, partial_close):** Do NOT apply min_confidence or open-only rules. Prefer to approve (closing reduces risk). Reject only when a rule explicitly forbids it (e.g. symbol not in current positions is an execution concern, not a reason to reject—execution layer will handle). Do NOT add "min_confidence" to violations for close/partial_close.`
 
@@ -86,7 +86,7 @@ const complianceSystemPromptZH = `你是风控官。你的职责是在执行前�
 
 规则：
 - 涉及排除币种、超杠杆/仓位占比/最大持仓数、或开仓时 **confidence < min_confidence**（严格小于）时驳回该条。
-- **置信度规则：** 仅当 **决策的 confidence < 规则的 min_confidence** 时才能以置信度为由驳回。例如 confidence=85、min_confidence=82 时不得以置信度驳回（85≥82）；例如 confidence=80、min_confidence=82 时可驳回，reason 如「置信度80低于min_confidence=82」。禁止出现「置信度 X 低于 min_confidence=Y」且 X≥Y 的矛盾表述。
+- **置信度规则：** 使用**每条决策的 confidence**（即「待执行决策」里该条的评分，交易员决策评分），不要使用分析师置信度。仅当 **该条 decision.confidence < 规则的 min_confidence** 时才能以置信度为由驳回。例如某条 confidence=85、min_confidence=82 时不得以置信度驳回（85≥82）；例如某条 confidence=80、min_confidence=82 时可驳回，reason 如「置信度80低于min_confidence=82」。禁止出现「置信度 X 低于 min_confidence=Y」且 X≥Y 的矛盾表述。
 - **min_confidence 仅适用于开仓动作（open_long、open_short）。** 对 wait、hold 等非开平仓动作，不得以置信度驳回，且不得将 min_confidence 列入 violations。
 - **平仓/部分平仓（close_long、close_short、partial_close）：** 不适用 min_confidence 及仅针对开仓的规则。原则上放行（平仓降低敞口）。仅当某条规则明确禁止时才驳回（例如「该 symbol 无持仓」属执行层问题，不作为驳回理由，由执行层处理）。平仓/部分平仓不得将 min_confidence 列入 violations。JSON 字段名保持英文。`
 
@@ -209,7 +209,11 @@ func buildComplianceUserPrompt(in *ComplianceInput) string {
 	var b strings.Builder
 	if in.AnalystBias != "" {
 		b.WriteString(labelAnalyst)
-		b.WriteString(fmt.Sprintf("Bias: %s | Confidence: %d\n\n", in.AnalystBias, in.AnalystConfidence))
+		if zh {
+			b.WriteString(fmt.Sprintf("Bias: %s | 分析师置信度: %d（仅供参考；min_confidence 以下方每条决策的 confidence 为准）\n\n", in.AnalystBias, in.AnalystConfidence))
+		} else {
+			b.WriteString(fmt.Sprintf("Bias: %s | Analyst confidence: %d (for context only; min_confidence uses each decision's confidence below)\n\n", in.AnalystBias, in.AnalystConfidence))
+		}
 	}
 	b.WriteString(labelThinking)
 	b.WriteString(in.Thinking)
@@ -223,9 +227,8 @@ func buildComplianceUserPrompt(in *ComplianceInput) string {
 		if d.PositionSizeUSD > 0 {
 			b.WriteString(fmt.Sprintf(" position_size_usd=%.0f", d.PositionSizeUSD))
 		}
-		if d.Confidence > 0 {
-			b.WriteString(fmt.Sprintf(" confidence=%d", d.Confidence))
-		}
+		// 始终输出交易员决策评分，供 min_confidence 规则使用（与分析师置信度区分）
+		b.WriteString(fmt.Sprintf(" confidence=%d", d.Confidence))
 		b.WriteString(fmt.Sprintf(" reasoning=%q\n", d.Reasoning))
 	}
 	b.WriteString(labelAccount)
