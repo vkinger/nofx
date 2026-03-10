@@ -1529,11 +1529,12 @@ func (s *Server) handleClosePosition(c *gin.Context) {
 
 // recordClosePositionOrder Record close position order to database (Lighter version - direct FILLED status)
 func (s *Server) recordClosePositionOrder(traderID, exchangeID, exchangeType, symbol, side string, quantity, exitPrice float64, result map[string]interface{}) {
-	// Skip for exchanges with OrderSync - let the background sync handle it to avoid duplicates
+	// OrderSync 交易所：不写 Order/Fill（由后台同步），但仍需立即更新持仓表，否则手动平仓不会出现在交易记录
+	skipOrderAndFill := false
 	switch exchangeType {
 	case "binance", "lighter", "hyperliquid", "bybit", "okx", "bitget", "aster", "gate":
-		logger.Infof("  📝 Close order will be synced by OrderSync, skipping immediate record")
-		return
+		skipOrderAndFill = true
+		logger.Infof("  📝 Close order will be synced by OrderSync, skipping order/fill record (will still update position for trade history)")
 	}
 
 	// Check if order was placed (skip if NO_POSITION)
@@ -1584,6 +1585,26 @@ func (s *Server) recordClosePositionOrder(traderID, exchangeID, exchangeType, sy
 	if commission, ok := result["commission"].(float64); ok && commission >= 0 {
 		fee = commission
 	}
+	realizedPnL := 0.0
+	if pnl, ok := result["realizedPnl"].(float64); ok {
+		realizedPnL = pnl
+	}
+
+	// 所有手动平仓都立即更新持仓表，使「交易记录」立即可见（OrderSync 交易所不写 Order/Fill，但需更新持仓）
+	normalizedSymbol := market.Normalize(symbol)
+	posBuilder := store.NewPositionBuilder(s.store.Position())
+	if err := posBuilder.ProcessTrade(
+		traderID, exchangeID, exchangeType, normalizedSymbol, side, orderAction,
+		quantity, exitPrice, fee, realizedPnL,
+		time.Now().UTC().UnixMilli(), orderID,
+	); err != nil {
+		logger.Infof("  ⚠️ Failed to process close position (trade history may be incomplete): %v", err)
+	} else {
+		logger.Infof("  ✅ Position closed in store: %s %s (visible in trade history)", symbol, side)
+	}
+	if skipOrderAndFill {
+		return
+	}
 
 	// Create order record - DIRECTLY as FILLED (paper / Lighter market orders fill immediately)
 	orderRecord := &store.TraderOrder{
@@ -1615,10 +1636,6 @@ func (s *Server) recordClosePositionOrder(traderID, exchangeID, exchangeType, sy
 	logger.Infof("  ✅ Order recorded as FILLED: %s [%s] %s qty=%.6f price=%.6f", orderID, orderAction, symbol, quantity, exitPrice)
 
 	// Create fill record immediately
-	realizedPnL := 0.0
-	if pnl, ok := result["realizedPnl"].(float64); ok {
-		realizedPnL = pnl
-	}
 	tradeID := fmt.Sprintf("%s-%d", orderID, time.Now().UnixNano())
 	fillRecord := &store.TraderFill{
 		TraderID:        traderID,
@@ -1643,19 +1660,6 @@ func (s *Server) recordClosePositionOrder(traderID, exchangeID, exchangeType, sy
 		logger.Infof("  ⚠️ Failed to record fill: %v", err)
 	} else {
 		logger.Infof("  ✅ Fill record created: price=%.6f qty=%.6f", exitPrice, quantity)
-	}
-
-	// 同步更新持仓表：将对应 TraderPosition 标为 CLOSED，这样「交易记录」接口能查到本次平仓
-	normalizedSymbol := market.Normalize(symbol)
-	posBuilder := store.NewPositionBuilder(s.store.Position())
-	if err := posBuilder.ProcessTrade(
-		traderID, exchangeID, exchangeType, normalizedSymbol, side, orderAction,
-		quantity, exitPrice, fee, realizedPnL,
-		time.Now().UTC().UnixMilli(), orderID,
-	); err != nil {
-		logger.Infof("  ⚠️ Failed to process close position (trade history may be incomplete): %v", err)
-	} else {
-		logger.Infof("  ✅ Position closed in store: %s %s (visible in trade history)", symbol, side)
 	}
 }
 
