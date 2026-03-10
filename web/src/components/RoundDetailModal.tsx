@@ -107,34 +107,44 @@ export function RoundDetailModal({ traderId, roundId, onClose, language }: Round
                 </div>
                 {data.analyst_report && (
                   <div className="mt-3 space-y-3">
-                    <div className="text-xs font-medium" style={{ color: 'var(--nofx-gold)' }}>
+                    <h4 className="text-xs font-semibold" style={{ color: 'var(--nofx-gold)' }}>
                       {language === 'zh' ? '分析师 系统提示词 / 用户提示词' : 'Analyst system & user prompts'}
-                    </div>
-                    <div
-                      className="rounded-lg p-4 text-sm whitespace-pre-wrap overflow-x-auto"
-                      style={{
-                        background: 'var(--panel-bg-hover)',
-                        border: '1px solid var(--panel-border)',
-                        color: 'var(--text-secondary)',
-                        maxHeight: '200px',
-                        overflowY: 'auto',
-                      }}
-                    >
-                      <span className="text-xs font-medium" style={{ color: 'var(--nofx-gold)' }}>{language === 'zh' ? '系统提示词' : 'System'}: </span>
-                      {(data.analyst_report.system_prompt ?? (data.analyst_report as unknown as Record<string, string>).systemPrompt) || (language === 'zh' ? '本轮回测未记录' : 'Not recorded for this round')}
-                    </div>
-                    <div
-                      className="rounded-lg p-4 text-sm whitespace-pre-wrap overflow-x-auto"
-                      style={{
-                        background: 'var(--panel-bg-hover)',
-                        border: '1px solid var(--panel-border)',
-                        color: 'var(--text-secondary)',
-                        maxHeight: '200px',
-                        overflowY: 'auto',
-                      }}
-                    >
-                      <span className="text-xs font-medium" style={{ color: 'var(--nofx-gold)' }}>{language === 'zh' ? '用户提示词' : 'User'}: </span>
-                      {(data.analyst_report.user_prompt ?? (data.analyst_report as unknown as Record<string, string>).userPrompt) || (language === 'zh' ? '本轮回测未记录' : 'Not recorded for this round')}
+                    </h4>
+                    <div className="space-y-2">
+                      <div className="text-xs font-medium" style={{ color: 'var(--nofx-gold)' }}>
+                        {language === 'zh' ? '系统提示词' : 'System'}
+                      </div>
+                      <div
+                        className="rounded-lg p-4 text-sm whitespace-pre-wrap break-words overflow-x-auto"
+                        style={{
+                          background: 'var(--panel-bg-hover)',
+                          border: '1px solid var(--panel-border)',
+                          color: 'var(--text-secondary)',
+                          maxHeight: '200px',
+                          overflowY: 'auto',
+                          wordBreak: 'break-word',
+                          overflowWrap: 'break-word',
+                        }}
+                      >
+                        {(data.analyst_report.system_prompt ?? (data.analyst_report as unknown as Record<string, string>).systemPrompt) || (language === 'zh' ? '本轮回测未记录' : 'Not recorded for this round')}
+                      </div>
+                      <div className="text-xs font-medium" style={{ color: 'var(--nofx-gold)' }}>
+                        {language === 'zh' ? '用户提示词' : 'User'}
+                      </div>
+                      <div
+                        className="rounded-lg p-4 text-sm whitespace-pre-wrap break-words overflow-x-auto"
+                        style={{
+                          background: 'var(--panel-bg-hover)',
+                          border: '1px solid var(--panel-border)',
+                          color: 'var(--text-secondary)',
+                          maxHeight: '200px',
+                          overflowY: 'auto',
+                          wordBreak: 'break-word',
+                          overflowWrap: 'break-word',
+                        }}
+                      >
+                        {(data.analyst_report.user_prompt ?? (data.analyst_report as unknown as Record<string, string>).userPrompt) || (language === 'zh' ? '本轮回测未记录' : 'Not recorded for this round')}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -153,7 +163,10 @@ export function RoundDetailModal({ traderId, roundId, onClose, language }: Round
                   }}
                 >
                   {data.decision_record.cot_trace ? (
-                    <div className="whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>
+                    <div
+                      className="whitespace-pre-wrap break-words"
+                      style={{ color: 'var(--text-secondary)', wordBreak: 'break-word', overflowWrap: 'break-word' }}
+                    >
                       {data.decision_record.cot_trace}
                     </div>
                   ) : (
@@ -326,34 +339,44 @@ export function RoundDetailModal({ traderId, roundId, onClose, language }: Round
                 </div>
                 {data.compliance_audit && (
                   <div className="mt-3 space-y-3">
-                    <div className="text-xs font-medium" style={{ color: 'var(--nofx-gold)' }}>
+                    <h4 className="text-xs font-semibold" style={{ color: 'var(--nofx-gold)' }}>
                       {language === 'zh' ? '风控官 系统提示词 / 用户提示词' : 'Compliance system & user prompts'}
-                    </div>
-                    <div
-                      className="rounded-lg p-4 text-sm whitespace-pre-wrap overflow-x-auto"
-                      style={{
-                        background: 'var(--panel-bg-hover)',
-                        border: '1px solid var(--panel-border)',
-                        color: 'var(--text-secondary)',
-                        maxHeight: '200px',
-                        overflowY: 'auto',
-                      }}
-                    >
-                      <span className="text-xs font-medium" style={{ color: 'var(--nofx-gold)' }}>{language === 'zh' ? '系统提示词' : 'System'}: </span>
-                      {(data.compliance_audit.system_prompt ?? (data.compliance_audit as unknown as Record<string, string>).systemPrompt) || (language === 'zh' ? '本轮回测未记录' : 'Not recorded for this round')}
-                    </div>
-                    <div
-                      className="rounded-lg p-4 text-sm whitespace-pre-wrap overflow-x-auto"
-                      style={{
-                        background: 'var(--panel-bg-hover)',
-                        border: '1px solid var(--panel-border)',
-                        color: 'var(--text-secondary)',
-                        maxHeight: '200px',
-                        overflowY: 'auto',
-                      }}
-                    >
-                      <span className="text-xs font-medium" style={{ color: 'var(--nofx-gold)' }}>{language === 'zh' ? '用户提示词' : 'User'}: </span>
-                      {(data.compliance_audit.user_prompt ?? (data.compliance_audit as unknown as Record<string, string>).userPrompt) || (language === 'zh' ? '本轮回测未记录' : 'Not recorded for this round')}
+                    </h4>
+                    <div className="space-y-2">
+                      <div className="text-xs font-medium" style={{ color: 'var(--nofx-gold)' }}>
+                        {language === 'zh' ? '系统提示词' : 'System'}
+                      </div>
+                      <div
+                        className="rounded-lg p-4 text-sm whitespace-pre-wrap break-words overflow-x-auto"
+                        style={{
+                          background: 'var(--panel-bg-hover)',
+                          border: '1px solid var(--panel-border)',
+                          color: 'var(--text-secondary)',
+                          maxHeight: '200px',
+                          overflowY: 'auto',
+                          wordBreak: 'break-word',
+                          overflowWrap: 'break-word',
+                        }}
+                      >
+                        {(data.compliance_audit.system_prompt ?? (data.compliance_audit as unknown as Record<string, string>).systemPrompt) || (language === 'zh' ? '本轮回测未记录' : 'Not recorded for this round')}
+                      </div>
+                      <div className="text-xs font-medium" style={{ color: 'var(--nofx-gold)' }}>
+                        {language === 'zh' ? '用户提示词' : 'User'}
+                      </div>
+                      <div
+                        className="rounded-lg p-4 text-sm whitespace-pre-wrap break-words overflow-x-auto"
+                        style={{
+                          background: 'var(--panel-bg-hover)',
+                          border: '1px solid var(--panel-border)',
+                          color: 'var(--text-secondary)',
+                          maxHeight: '200px',
+                          overflowY: 'auto',
+                          wordBreak: 'break-word',
+                          overflowWrap: 'break-word',
+                        }}
+                      >
+                        {(data.compliance_audit.user_prompt ?? (data.compliance_audit as unknown as Record<string, string>).userPrompt) || (language === 'zh' ? '本轮回测未记录' : 'Not recorded for this round')}
+                      </div>
                     </div>
                   </div>
                 )}

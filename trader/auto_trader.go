@@ -671,21 +671,47 @@ func (at *AutoTrader) Stop() {
 }
 
 // runCycle runs one trading cycle (using AI full decision-making)
-// kernelDecisionToStoreAction 将 kernel.Decision 转为 store.DecisionAction，保证列表展示有完整字段（symbol/action/leverage/price/stop_loss/take_profit/confidence/reasoning）
+// kernelDecisionToStoreAction 将 kernel.Decision 转为 store.DecisionAction，保证列表展示有完整字段（含 position_size_usd；quantity/leverage/price 为 0 时用合理值补全）
 func kernelDecisionToStoreAction(d *kernel.Decision, success bool, errMsg string) store.DecisionAction {
+	quantity := d.Quantity
+	price := d.Price
+	leverage := d.Leverage
+	// 开仓时：若 AI 只给了 position_size_usd 未给 quantity/price，用 position_size_usd 与参考价反推 quantity/price
+	if (d.Action == "open_long" || d.Action == "open_short") && d.PositionSizeUSD > 0 {
+		if leverage == 0 {
+			leverage = 1
+		}
+		refPrice := price
+		if refPrice <= 0 && (d.StopLoss > 0 || d.TakeProfit > 0) {
+			if d.StopLoss > 0 && d.TakeProfit > 0 {
+				refPrice = (d.StopLoss + d.TakeProfit) / 2
+			} else if d.StopLoss > 0 {
+				refPrice = d.StopLoss
+			} else {
+				refPrice = d.TakeProfit
+			}
+		}
+		if quantity == 0 && refPrice > 0 {
+			quantity = d.PositionSizeUSD / refPrice
+		}
+		if price == 0 && refPrice > 0 {
+			price = refPrice
+		}
+	}
 	return store.DecisionAction{
-		Action:     d.Action,
-		Symbol:     d.Symbol,
-		Quantity:   d.Quantity,
-		Leverage:   d.Leverage,
-		Price:      d.Price,
-		StopLoss:   d.StopLoss,
-		TakeProfit: d.TakeProfit,
-		Confidence: d.Confidence,
-		Reasoning:  d.Reasoning,
-		Timestamp:  time.Now().UTC(),
-		Success:    success,
-		Error:      errMsg,
+		Action:          d.Action,
+		Symbol:          d.Symbol,
+		Quantity:        quantity,
+		Leverage:        leverage,
+		Price:           price,
+		PositionSizeUSD: d.PositionSizeUSD,
+		StopLoss:        d.StopLoss,
+		TakeProfit:      d.TakeProfit,
+		Confidence:      d.Confidence,
+		Reasoning:       d.Reasoning,
+		Timestamp:       time.Now().UTC(),
+		Success:         success,
+		Error:           errMsg,
 	}
 }
 

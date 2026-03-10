@@ -147,13 +147,24 @@ function ActionCard({ action, language, onSymbolClick }: { action: DecisionActio
             )}
           </div>
 
-          {/* Leverage */}
+          {/* Leverage & Size: 避免为 0 时显示；有 position_size_usd 时展示仓位 */}
           <div className="text-center">
             <div className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
               {t('leverage', language)}
+              {(action.position_size_usd != null && action.position_size_usd > 0) || (action.quantity > 0 && action.price > 0) ? ` / ${language === 'zh' ? '仓位' : 'Size'}` : ''}
             </div>
             <div className="font-mono font-semibold" style={{ color: '#F0B90B' }}>
-              {action.leverage}x
+              {(action.leverage ?? 0) > 0 ? `${action.leverage}x` : '-'}
+              {(action.position_size_usd != null && action.position_size_usd > 0) && (
+                <span className="block text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+                  {action.position_size_usd.toFixed(0)} USDT
+                </span>
+              )}
+              {(!action.position_size_usd || action.position_size_usd <= 0) && action.quantity > 0 && action.price > 0 && (
+                <span className="block text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+                  {(action.quantity * action.price).toFixed(0)} USDT
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -512,13 +523,13 @@ export function DecisionCard({ decision, language, onSymbolClick, onViewRoundDet
           </button>
           {showCoT && (
             <div
-              className="mt-2 rounded-lg p-4 text-sm font-mono max-h-96 overflow-y-auto break-words"
+              className="mt-2 rounded-lg p-4 text-sm font-mono max-h-96 overflow-y-auto whitespace-pre-wrap break-words"
               style={{
                 background: 'var(--panel-bg)',
                 border: `1px solid var(--panel-border)`,
                 color: 'var(--text-primary)',
-                whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word',
+                overflowWrap: 'break-word',
               }}
             >
               {decision.cot_trace && decision.cot_trace.trim() ? (
@@ -528,7 +539,9 @@ export function DecisionCard({ decision, language, onSymbolClick, onViewRoundDet
                   <div className="text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
                     {t('cotEmptyFallback', language)}
                   </div>
-                  <div className="whitespace-pre-wrap break-words">{decision.raw_response}</div>
+                  <div className="whitespace-pre-wrap break-words" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+                    {decision.raw_response}
+                  </div>
                 </>
               ) : (
                 <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>

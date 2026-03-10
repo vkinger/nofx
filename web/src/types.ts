@@ -68,6 +68,8 @@ export interface DecisionAction {
   quantity: number
   leverage: number
   price: number
+  /** 开仓时 USDT 仓位（与 quantity 互补；后端会补全避免为 0） */
+  position_size_usd?: number
   stop_loss?: number      // Stop loss price
   take_profit?: number    // Take profit price
   confidence?: number     // AI confidence (0-100)
