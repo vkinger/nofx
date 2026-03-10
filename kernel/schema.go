@@ -1080,7 +1080,7 @@ func getDecisionJSONSchemaZH() string {
       },
       "confidence": {
         "type": "integer",
-        "description": "信心度（0-100），表示对该决策的把握程度",
+        "description": "信心度（0-100）。开仓(open_long/open_short)时必填，且需≥策略min_confidence，风控据此审批；非开仓可选。",
         "minimum": 0,
         "maximum": 100,
         "examples": [75, 85, 90]
@@ -1129,13 +1129,16 @@ func getDecisionJSONSchemaZH() string {
           }
         },
         "then": {
-          "required": ["leverage", "position_size_usd", "stop_loss", "take_profit"],
+          "required": ["leverage", "position_size_usd", "stop_loss", "take_profit", "confidence"],
           "properties": {
             "stop_loss": {
               "description": "开新仓时必需。做多时：stop_loss必须 < take_profit（止损在下方，止盈在上方）。做空时：stop_loss必须 > take_profit（止损在上方，止盈在下方）。必须考虑手续费和风险回报比≥1:3。价格精度根据实际市场价格动态确定。"
             },
             "take_profit": {
               "description": "开新仓时必需。做多时：take_profit必须 > stop_loss（止盈在上方，止损在下方）。做空时：take_profit必须 < stop_loss（止盈在下方，止损在上方）。必须考虑手续费和风险回报比≥3:1。价格精度根据实际市场价格动态确定。"
+            },
+            "confidence": {
+              "description": "开仓(open_long/open_short)时必填。信心度0-100，需≥策略min_confidence方可执行，风控据此审批。"
             }
           }
         }
@@ -1270,7 +1273,7 @@ func getDecisionJSONSchemaEN() string {
       },
       "confidence": {
         "type": "integer",
-        "description": "Confidence level (0-100), indicating certainty of this decision",
+        "description": "Confidence level (0-100). Required when action is open_long or open_short; must be ≥ strategy min_confidence for execution; compliance uses it for approval. Optional for non-open actions.",
         "minimum": 0,
         "maximum": 100,
         "examples": [75, 85, 90]
@@ -1319,13 +1322,16 @@ func getDecisionJSONSchemaEN() string {
           }
         },
         "then": {
-          "required": ["leverage", "position_size_usd", "stop_loss", "take_profit"],
+          "required": ["leverage", "position_size_usd", "stop_loss", "take_profit", "confidence"],
           "properties": {
             "stop_loss": {
               "description": "Required for new positions. For LONG: stop_loss must < take_profit (SL below, TP above). For SHORT: stop_loss must > take_profit (SL above, TP below). Must consider fees and risk-reward ratio ≥1:3. Price precision dynamically determined based on actual market price."
             },
             "take_profit": {
               "description": "Required for new positions. For LONG: take_profit must > stop_loss (TP above, SL below). For SHORT: take_profit must < stop_loss (TP below, SL above). Must consider fees and risk-reward ratio ≥3:1. Price precision dynamically determined based on actual market price."
+            },
+            "confidence": {
+              "description": "Required when action is open_long or open_short. Integer 0-100; must be ≥ strategy min_confidence for execution; compliance uses it for approval."
             }
           }
         }
@@ -1442,7 +1448,7 @@ func getDecisionJSONSchemaSimplifiedEN() string {
           },
           "confidence": {
             "type": "integer",
-            "description": "Confidence level (0-100), indicating certainty of this decision",
+            "description": "Confidence level (0-100). Required when action is open_long or open_short; must be ≥ min_confidence for compliance approval. Optional for non-open actions.",
             "minimum": 0,
             "maximum": 100
           },
@@ -1475,7 +1481,13 @@ func getDecisionJSONSchemaSimplifiedEN() string {
             "type": "string",
             "description": "Order ID (for canceling orders)"
           }
-        }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "action": { "enum": ["open_long", "open_short"] } } },
+            "then": { "required": ["symbol", "action", "reasoning", "leverage", "position_size_usd", "stop_loss", "take_profit", "confidence"] }
+          }
+        ]
       }
     }
   }
@@ -1546,7 +1558,7 @@ func getDecisionJSONSchemaSimplifiedZH() string {
           },
           "confidence": {
             "type": "integer",
-            "description": "信心度（0-100），表示对该决策的把握程度",
+            "description": "信心度（0-100）。开仓(open_long/open_short)时必填，且需≥策略min_confidence，风控据此审批；非开仓可选。",
             "minimum": 0,
             "maximum": 100
           },
@@ -1579,7 +1591,13 @@ func getDecisionJSONSchemaSimplifiedZH() string {
             "type": "string",
             "description": "订单ID（用于取消订单）"
           }
-        }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "action": { "enum": ["open_long", "open_short"] } } },
+            "then": { "required": ["symbol", "action", "reasoning", "leverage", "position_size_usd", "stop_loss", "take_profit", "confidence"] }
+          }
+        ]
       }
     }
   }

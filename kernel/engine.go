@@ -176,15 +176,22 @@ type Context struct {
 	Exchange            string                             `json:"-"` // Exchange type for market data (binance, bybit, okx, hyperliquid, etc.); used so K-line/funding/OI match trading venue
 	RealtimePriceGetter func(symbol string) (float64, error) `json:"-"` // Optional: if set, used to fill RealtimePrice after market data fetch (e.g. exchange ticker for execution reference)
 	RealtimePrice       map[string]float64                  `json:"-"` // Symbol -> live ticker price; filled when RealtimePriceGetter is set (for prompt: "实时价")
+	// P3-5 可选：同一 base 现货+合约双流价差/基差，key=base（如 "BTC"），value=perp_price - spot_price
+	SpotPerpBasis map[string]float64 `json:"-"`
 }
 
 // Decision AI trading decision
+//
+// 开仓(open_long/open_short)必填：symbol, action, reasoning, leverage, position_size_usd, stop_loss, take_profit, confidence；
+// 平仓(close_long/close_short)/hold/wait 必填：symbol, action, reasoning。
+// quantity/price 为网格或限价用，开仓市价单可不填（后端会用 position_size_usd 与 stop_loss/take_profit 推导展示用 quantity/price）。
+// 若开仓缺少必填或为 0，validateDecision 会直接报错拒绝。
 type Decision struct {
 	Symbol string `json:"symbol"`
 	Action string `json:"action"` // Standard: "open_long", "open_short", "close_long", "close_short", "hold", "wait"
 	// Grid actions: "place_buy_limit", "place_sell_limit", "cancel_order", "cancel_all_orders", "pause_grid", "resume_grid", "adjust_grid"
 
-	// Opening position parameters
+	// Opening position parameters (REQUIRED when action is open_long or open_short)
 	Leverage        int     `json:"leverage,omitempty"`
 	PositionSizeUSD float64 `json:"position_size_usd,omitempty"`
 	StopLoss        float64 `json:"stop_loss,omitempty"`
@@ -192,7 +199,7 @@ type Decision struct {
 
 	// Grid trading parameters
 	Price      float64 `json:"price,omitempty"`       // Limit order price (for grid)
-	Quantity   float64 `json:"quantity,omitempty"`    // Order quantity (for grid)
+	Quantity   float64 `json:"quantity,omitempty"`   // Order quantity (for grid); for open_* market order often 0, backend may derive from position_size_usd
 	LevelIndex int     `json:"level_index,omitempty"` // Grid level index
 	OrderID    string  `json:"order_id,omitempty"`    // Order ID (for cancel)
 
@@ -303,8 +310,9 @@ func GetFullDecision(ctx *Context, mcpClient mcp.AIClient) (*FullDecision, error
 	return GetFullDecisionWithStrategy(ctx, mcpClient, engine, "")
 }
 
-// GetFullDecisionWithStrategy uses StrategyEngine to get AI decision (unified prompt generation)
-func GetFullDecisionWithStrategy(ctx *Context, mcpClient mcp.AIClient, engine *StrategyEngine, variant string) (*FullDecision, error) {
+// GetFullDecisionWithStrategy uses StrategyEngine to get AI decision (unified prompt generation).
+// Optional analystSuffix: when provided (e.g. from multi-agent analyst report), appended to user prompt for trader reference.
+func GetFullDecisionWithStrategy(ctx *Context, mcpClient mcp.AIClient, engine *StrategyEngine, variant string, analystSuffix ...string) (*FullDecision, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("context is nil")
 	}
@@ -347,59 +355,19 @@ func GetFullDecisionWithStrategy(ctx *Context, mcpClient mcp.AIClient, engine *S
 		}
 	}
 
-	// 2. Build System Prompt using strategy engine
+	// 2. Build System Prompt (multi-agent when analyst report is provided)
+	multiAgent := len(analystSuffix) > 0 && analystSuffix[0] != ""
 	riskConfig := engine.GetRiskControlConfig()
-	systemPrompt := engine.BuildSystemPrompt(ctx.Account.TotalEquity, variant, mcpClient)
+	systemPrompt := engine.BuildSystemPrompt(ctx.Account.TotalEquity, variant, mcpClient, multiAgent)
 
-	// 3. Build User Prompt using strategy engine
+	// 3. Build User Prompt: multi-agent 时先放分析师报告，再放完整数据
 	userPrompt := engine.BuildUserPrompt(ctx)
-
-	// 3.5. Set JSON Schema for structured output if model supports it
-	if mcpClient != nil {
-		// 先获取模型信息（避免重复获取）
-		modelName := getModelNameFromClient(mcpClient)
-		provider := getProviderFromClient(mcpClient)
-
-		// Register JSON Schema checker callback in mcp package
-		// This allows mcp package to use the full implementation from kernel
-		// 注意：这个回调供 mcp 包在构建请求时使用，避免循环依赖
-		mcp.JSONSchemaChecker = func(provider, modelName string) bool {
-			// 调用 schema.go 中的统一检查函数
-			modelNameLower := strings.ToLower(modelName)
-			providerLower := strings.ToLower(provider)
-			return CheckModelSupportsJSONSchema(providerLower, modelNameLower)
-		}
-
-		// Check if model supports JSON Schema (直接使用已获取的 provider 和 modelName)
-		if modelName != "" || provider != "" {
-			modelNameLower := strings.ToLower(modelName)
-			providerLower := strings.ToLower(provider)
-			supportsJSONSchema := CheckModelSupportsJSONSchema(providerLower, modelNameLower)
-
-			if supportsJSONSchema {
-				// Get JSON Schema based on language and model
-				lang := engine.GetLanguage()
-
-				// 检查是否支持高级特性，用于日志记录
-				supportsAdvanced := CheckModelSupportsAdvancedJSONSchemaFeatures(providerLower, modelNameLower)
-				schemaType := "SIMPLIFIED"
-				if supportsAdvanced {
-					schemaType = "FULL (with advanced features)"
-				}
-
-				// 使用统一的函数获取合适的 Schema 版本
-				jsonSchema := GetDecisionJSONSchemaForModel(lang, provider, modelName)
-
-				// Set JSON Schema in client
-				mcpClient.SetJSONSchema(jsonSchema)
-				logger.Infof("🔧 [JSON Schema] Enabled structured output for model %s/%s, using %s schema version (language: %s)", provider, modelName, schemaType, lang)
-			} else {
-				logger.Infof("📝 [JSON Schema] Model %s/%s does not support JSON Schema API, will use prompt integration mode", provider, modelName)
-			}
-		} else {
-			logger.Warnf("⚠️  [JSON Schema] Cannot determine model info (provider=%s, modelName=%s), skipping JSON Schema setup", provider, modelName)
-		}
+	if multiAgent {
+		userPrompt = "## Analyst report (reference)\n" + analystSuffix[0] + "\n\n" + userPrompt
 	}
+
+	// 3.5. 按当前 Agent 角色设置 JSON Schema（交易员），支持 json_schema 的模型会收到对应输出格式
+	PrepareClientForRole(mcpClient, "trader", engine.GetLanguage())
 
 	// Calculate estimated token count
 	systemTokens := EstimateTokenCount(systemPrompt)
@@ -1107,9 +1075,10 @@ func (e *StrategyEngine) FetchPriceRankingData() *nofxos.PriceRankingData {
 // Prompt Building - System Prompt
 // ============================================================================
 
-// BuildSystemPrompt builds System Prompt according to strategy configuration
+// BuildSystemPrompt builds System Prompt according to strategy configuration.
+// multiAgent: when true, use role/entry/decision tailored for multi-agent (analyst report first in user prompt).
 // mcpClient: 用于检查模型是否支持JSON Schema（API级别），如果为nil则使用提示词集成方式
-func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string, mcpClient mcp.AIClient) string {
+func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string, mcpClient mcp.AIClient, multiAgent bool) string {
 	var sb strings.Builder
 	riskControl := e.config.RiskControl
 	promptSections := e.config.PromptSections
@@ -1122,8 +1091,16 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString("\n\n")
 	sb.WriteString("---\n\n")
 
-	// 1. Role definition (editable)
-	if promptSections.RoleDefinition != "" {
+	// 1. Role definition (editable; multi-agent uses dedicated role)
+	if multiAgent {
+		if lang == LangChinese {
+			sb.WriteString("# 你是交易员 Agent\n\n")
+			sb.WriteString("你依据**分析师报告**（用户提示词最上方）与下方完整市场数据做决策，不重复做宏观结论。\n\n")
+		} else {
+			sb.WriteString("# You are the Trader Agent\n\n")
+			sb.WriteString("You make decisions based on the **Analyst report** (at the top of the user prompt) and the full market data below. Do not re-do macro conclusions.\n\n")
+		}
+	} else if promptSections.RoleDefinition != "" {
 		sb.WriteString(promptSections.RoleDefinition)
 		sb.WriteString("\n\n")
 	} else {
@@ -1203,8 +1180,17 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 		sb.WriteString("If you find yourself trading every period → standards too low; if closing positions < 30 minutes → too impatient.\n\n")
 	}
 
-	// 5. Entry standards (editable)
-	if promptSections.EntryStandards != "" {
+	// 5. Entry standards (editable; multi-agent: combine analyst + MinConfidence)
+	if multiAgent {
+		sb.WriteString("# 🎯 Entry (Multi-Agent)\n\n")
+		sb.WriteString("You have:\n")
+		e.writeAvailableIndicators(&sb)
+		if lang == LangChinese {
+			sb.WriteString(fmt.Sprintf("\n结合分析师报告与上述指标：**confidence ≥ %d** 方可开仓；与分析师偏向严重相反时需在 thinking 中说明。\n\n", riskControl.MinConfidence))
+		} else {
+			sb.WriteString(fmt.Sprintf("\nCombine the analyst report with the indicators above: **confidence ≥ %d** to open; if your view strongly contradicts the analyst bias, explain in thinking.\n\n", riskControl.MinConfidence))
+		}
+	} else if promptSections.EntryStandards != "" {
 		sb.WriteString(promptSections.EntryStandards)
 		sb.WriteString("\n\nYou have the following indicator data:\n")
 		e.writeAvailableIndicators(&sb)
@@ -1227,8 +1213,22 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 		sb.WriteString("- Before opening, ensure **expected price move** clearly exceeds **round-trip cost** (shown in data); otherwise profit is eroded by fees.\n\n")
 	}
 
-	// 6. Decision process (editable)
-	if promptSections.DecisionProcess != "" {
+	// 6. Decision process (editable; multi-agent: read analyst first)
+	if multiAgent {
+		if lang == LangChinese {
+			sb.WriteString("# 📋 决策流程（多 Agent）\n\n")
+			sb.WriteString("1. 先阅读用户提示词顶部的**分析师报告**（bias / confidence / report_text）\n")
+			sb.WriteString("2. 查看当前持仓 → 是否止盈/止损\n")
+			sb.WriteString("3. 查看候选币与多周期数据 → 是否有强信号\n")
+			sb.WriteString("4. 先写 chain of thought，再输出结构化 JSON\n\n")
+		} else {
+			sb.WriteString("# 📋 Decision Process (Multi-Agent)\n\n")
+			sb.WriteString("1. Read the **Analyst report** at the top of the user prompt (bias / confidence / report_text)\n")
+			sb.WriteString("2. Check positions → Take profit / stop-loss?\n")
+			sb.WriteString("3. Scan candidate coins + multi-timeframe → Strong signals?\n")
+			sb.WriteString("4. Write chain of thought first, then output structured JSON\n\n")
+		}
+	} else if promptSections.DecisionProcess != "" {
 		sb.WriteString(promptSections.DecisionProcess)
 		sb.WriteString("\n\n")
 	} else {
@@ -1314,7 +1314,7 @@ func (e *StrategyEngine) buildOutputFormatLegacy(accountEquity float64, btcEthPo
 	sb.WriteString("- `symbol`: Trading pair symbol from provided data (e.g., \"BTCUSDT\", \"ETHUSDT\")\n")
 	sb.WriteString(fmt.Sprintf("- `action`: EXACTLY one of: open_long, open_short, close_long, close_short, hold, wait (case-sensitive)\n"))
 	sb.WriteString(fmt.Sprintf("- `confidence`: Integer 0-100 (opening positions require ≥ %d)\n\n", riskControl.MinConfidence))
-	sb.WriteString("- Required when opening: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd\n")
+	sb.WriteString("- **Open position (open_long/open_short) REQUIRED fields** (backend rejects if missing or zero): leverage, position_size_usd, stop_loss, take_profit, confidence. Optional: risk_usd. Do NOT omit or use 0 for these.\n")
 	sb.WriteString("- **Stop Loss and Take Profit validation** (CRITICAL - 关键验证):\n")
 	sb.WriteString("  - For `open_long`: `stop_loss` MUST be LOWER than `take_profit` (止损必须低于止盈)\n")
 	sb.WriteString("  - For `open_short`: `take_profit` MUST be LOWER than `stop_loss` (止盈必须低于止损)\n")
@@ -1340,7 +1340,7 @@ func (e *StrategyEngine) buildOutputFormatLegacy(accountEquity float64, btcEthPo
 	sb.WriteString("1. **Action validation**: If `action` is not one of the 6 exact values above, the decision will be REJECTED\n")
 	sb.WriteString("2. **JSON format**: Must be valid JSON array, each element is an object\n")
 	sb.WriteString("3. **Numeric values**: Must be actual numbers, NOT formulas (e.g., use `27.76` not `3000 * 0.01`)\n")
-	sb.WriteString("4. **Required fields**: Missing required fields for opening positions will cause rejection\n")
+	sb.WriteString("4. **Required fields**: For open_long/open_short you MUST output non-zero: leverage, position_size_usd, stop_loss, take_profit, confidence. Missing or zero causes validation rejection.\n")
 	sb.WriteString("5. **Price validation**: stop_loss and take_profit must be valid price levels from actual market data\n")
 	sb.WriteString("6. **Stop Loss/Take Profit relationship** (CRITICAL):\n")
 	sb.WriteString("   - For `open_long`: stop_loss MUST be < take_profit (止损必须低于止盈), otherwise REJECTED\n")
@@ -1426,7 +1426,7 @@ func (e *StrategyEngine) buildOutputFormatWithPromptIntegration(accountEquity fl
 		sb.WriteString("- **decisions**: 决策数组（必需，0-10个决策对象）\n")
 		sb.WriteString(fmt.Sprintf("- **action**: 必须是以下之一：open_long, open_short, close_long, close_short, hold, wait, partial_close, full_close, add_position\n"))
 		sb.WriteString(fmt.Sprintf("- **confidence**: 0-100整数（开新仓时要求≥%d）\n", riskControl.MinConfidence))
-		sb.WriteString("- **开新仓必需字段**: leverage, position_size_usd, stop_loss, take_profit\n")
+		sb.WriteString("- **开新仓必需字段**: leverage, position_size_usd, stop_loss, take_profit, confidence（缺一或为 0 将导致校验拒绝）\n")
 		sb.WriteString("- **价格精度**: 根据实际市场价格动态确定（价格<0.0001用8位小数，<0.001用6位小数，<0.01用6位小数，<1.0用4位小数，<100用4位小数，≥100用2位小数）\n")
 		sb.WriteString("- **止盈止损关系**: 做多时stop_loss必须 < take_profit，做空时stop_loss必须 > take_profit\n")
 		sb.WriteString("- **风险回报比**: 必须≥3:1（止盈空间至少是止损空间的3倍）\n")
@@ -1486,7 +1486,7 @@ func (e *StrategyEngine) buildOutputFormatWithPromptIntegration(accountEquity fl
 		sb.WriteString("- **decisions**: Decisions array (required, 0-10 decision objects)\n")
 		sb.WriteString(fmt.Sprintf("- **action**: Must be one of: open_long, open_short, close_long, close_short, hold, wait, partial_close, full_close, add_position\n"))
 		sb.WriteString(fmt.Sprintf("- **confidence**: Integer 0-100 (opening positions require ≥%d)\n", riskControl.MinConfidence))
-		sb.WriteString("- **Required for new positions**: leverage, position_size_usd, stop_loss, take_profit\n")
+		sb.WriteString("- **Required for new positions**: leverage, position_size_usd, stop_loss, take_profit (missing or zero causes validation rejection)\n")
 		sb.WriteString("- **Price precision**: Dynamically determined based on actual market price (<0.0001 use 8 decimals, <0.001 use 6 decimals, <0.01 use 6 decimals, <1.0 use 4 decimals, <100 use 4 decimals, ≥100 use 2 decimals)\n")
 		sb.WriteString("- **SL/TP relationship**: For LONG: stop_loss must < take_profit, For SHORT: stop_loss must > take_profit\n")
 		sb.WriteString("- **Risk-reward ratio**: Must be ≥3:1 (take profit space must be at least 3x stop loss space)\n")
@@ -1662,6 +1662,103 @@ func getProviderFromClient(mcpClient mcp.AIClient) string {
 	return ""
 }
 
+// 各 Agent 角色推荐的请求参数（对齐 Qwen3.5-35B-A3B 等模型最佳实践，按角色职责定制）
+const (
+	TraderMaxTokens      = 2048
+	AnalystMaxTokens     = 4096
+	ComplianceMaxTokens  = 2048
+	TraderTemperature    = 0.5   // 技术+决策：稳定可执行
+	AnalystTemperature   = 0.75  // 宏观分析：适度多样性
+	ComplianceTemperature = 0.0  // 审计：极度确定性
+	TraderTopP           = 0.85
+	AnalystTopP          = 0.95
+	ComplianceTopP       = 0.1
+	TraderPresencePenalty   = 0.5
+	AnalystPresencePenalty  = 1.0
+	CompliancePresencePenalty = 0.0
+	TraderFrequencyPenalty   = 0.0
+	AnalystFrequencyPenalty  = 0.0
+	ComplianceFrequencyPenalty = 0.0
+)
+
+// PrepareClientForRole 根据当前 Agent 角色设置 client 的 JSON Schema 与请求参数（MaxTokens、Temperature、TopP、PresencePenalty、FrequencyPenalty），
+// 以适配不同角色并确保输出质量。单一流程/多 Agent 在调用模型前应调用此函数。
+// role: "trader" | "analyst" | "compliance"
+func PrepareClientForRole(mcpClient mcp.AIClient, role string, lang Language) {
+	if mcpClient == nil {
+		return
+	}
+	modelName := getModelNameFromClient(mcpClient)
+	provider := getProviderFromClient(mcpClient)
+
+	// 按角色设置四类请求参数（对齐 Qwen3.5 等官方实践 + 分析师宏观/交易员技术/风控审计）
+	switch role {
+	case "trader":
+		mcpClient.SetMaxTokens(TraderMaxTokens)
+		mcpClient.SetTemperature(TraderTemperature)
+		mcpClient.SetTopP(TraderTopP)
+		mcpClient.SetPresencePenalty(TraderPresencePenalty)
+		mcpClient.SetFrequencyPenalty(TraderFrequencyPenalty)
+	case "analyst":
+		mcpClient.SetMaxTokens(AnalystMaxTokens)
+		mcpClient.SetTemperature(AnalystTemperature)
+		mcpClient.SetTopP(AnalystTopP)
+		mcpClient.SetPresencePenalty(AnalystPresencePenalty)
+		mcpClient.SetFrequencyPenalty(AnalystFrequencyPenalty)
+	case "compliance":
+		mcpClient.SetMaxTokens(ComplianceMaxTokens)
+		mcpClient.SetTemperature(ComplianceTemperature)
+		mcpClient.SetTopP(ComplianceTopP)
+		mcpClient.SetPresencePenalty(CompliancePresencePenalty)
+		mcpClient.SetFrequencyPenalty(ComplianceFrequencyPenalty)
+	default:
+		// 未知角色仅清 Schema，不改请求参数
+	}
+
+	// 注册 mcp 包使用的 JSON Schema 检查回调
+	mcp.JSONSchemaChecker = func(p, m string) bool {
+		return CheckModelSupportsJSONSchema(strings.ToLower(p), strings.ToLower(m))
+	}
+
+	if modelName == "" && provider == "" {
+		logger.Warnf("⚠️ [JSON Schema] Cannot determine model (provider=%s, modelName=%s), clearing schema for role=%s", provider, modelName, role)
+		mcpClient.SetJSONSchema("")
+		return
+	}
+	providerLower := strings.ToLower(provider)
+	modelNameLower := strings.ToLower(modelName)
+	supportsJSONSchema := CheckModelSupportsJSONSchema(providerLower, modelNameLower)
+
+	if !supportsJSONSchema {
+		logger.Infof("📝 [JSON Schema] Model %s/%s does not support JSON Schema API, role=%s uses prompt-only format", provider, modelName, role)
+		mcpClient.SetJSONSchema("")
+		return
+	}
+
+	var jsonSchema string
+	switch role {
+	case "trader":
+		supportsAdvanced := CheckModelSupportsAdvancedJSONSchemaFeatures(providerLower, modelNameLower)
+		schemaType := "SIMPLIFIED"
+		if supportsAdvanced {
+			schemaType = "FULL"
+		}
+		jsonSchema = GetDecisionJSONSchemaForModel(lang, provider, modelName)
+		logger.Infof("🔧 [JSON Schema] role=trader, model %s/%s, %s schema", provider, modelName, schemaType)
+	case "analyst":
+		jsonSchema = GetAnalystJSONSchemaForModel(lang, provider, modelName)
+		logger.Infof("🔧 [JSON Schema] role=analyst, model %s/%s", provider, modelName)
+	case "compliance":
+		jsonSchema = GetComplianceJSONSchemaForModel(lang, provider, modelName)
+		logger.Infof("🔧 [JSON Schema] role=compliance, model %s/%s", provider, modelName)
+	default:
+		logger.Warnf("⚠️ [JSON Schema] Unknown role=%s, clearing schema", role)
+		mcpClient.SetJSONSchema("")
+		return
+	}
+	mcpClient.SetJSONSchema(jsonSchema)
+}
+
 // buildOutputFormatWithJSONSchemaAPI 构建输出格式（模型支持JSON Schema API级别）
 // 当模型支持API级别的JSON Schema时，使用此方法
 // JSON Schema会通过API的response_format参数传递，提示词中只需简要说明
@@ -1699,7 +1796,7 @@ func (e *StrategyEngine) buildOutputFormatWithJSONSchemaAPI(accountEquity float6
 		sb.WriteString("- **decisions**: 决策数组（必需，0-10个决策）\n")
 		sb.WriteString(fmt.Sprintf("- **action**: 必须是以下之一：open_long, open_short, close_long, close_short, hold, wait\n"))
 		sb.WriteString(fmt.Sprintf("- **confidence**: 0-100整数（开新仓时要求≥%d）\n", riskControl.MinConfidence))
-		sb.WriteString("- **开新仓必需字段**: leverage, position_size_usd, stop_loss, take_profit\n")
+		sb.WriteString("- **开新仓必需字段**: leverage, position_size_usd, stop_loss, take_profit, confidence（缺一或为 0 将导致校验拒绝）\n")
 		sb.WriteString("- **价格精度**: 根据实际市场价格动态确定\n")
 		sb.WriteString("- **止盈止损关系**: 做多时stop_loss < take_profit，做空时stop_loss > take_profit\n")
 		sb.WriteString("- **风险回报比**: 必须≥3:1\n\n")
@@ -1732,7 +1829,7 @@ func (e *StrategyEngine) buildOutputFormatWithJSONSchemaAPI(accountEquity float6
 		sb.WriteString("- **decisions**: Decisions array (required, 0-10 decisions)\n")
 		sb.WriteString(fmt.Sprintf("- **action**: Must be one of: open_long, open_short, close_long, close_short, hold, wait\n"))
 		sb.WriteString(fmt.Sprintf("- **confidence**: Integer 0-100 (opening positions require ≥%d)\n", riskControl.MinConfidence))
-		sb.WriteString("- **Required for new positions**: leverage, position_size_usd, stop_loss, take_profit\n")
+		sb.WriteString("- **Required for new positions**: leverage, position_size_usd, stop_loss, take_profit (missing or zero causes validation rejection)\n")
 		sb.WriteString("- **Price precision**: Dynamically determined based on actual market price\n")
 		sb.WriteString("- **SL/TP relationship**: For LONG: stop_loss < take_profit, For SHORT: stop_loss > take_profit\n")
 		sb.WriteString("- **Risk-reward ratio**: Must be ≥3:1\n\n")
@@ -2063,21 +2160,21 @@ func (e *StrategyEngine) BuildUserPrompt(ctx *Context) string {
 	// OI Ranking data (market-wide open interest changes)
 	// 优化：显示 Top 5，平衡信息完整性与token消耗（Top 5提供更全面的市场信号）
 	if ctx.OIRankingData != nil {
-		limitedOIRanking := limitOIRankingData(ctx.OIRankingData, 5)
+		limitedOIRanking := limitOIRankingData(ctx.OIRankingData, AnalystRankingsTopN)
 		sb.WriteString(nofxos.FormatOIRankingForAI(limitedOIRanking, nofxosLang))
 	}
 
 	// NetFlow Ranking data (market-wide fund flow)
 	// 优化：显示 Top 5，平衡信息完整性与token消耗（Top 5提供更全面的市场信号）
 	if ctx.NetFlowRankingData != nil {
-		limitedNetFlowRanking := limitNetFlowRankingData(ctx.NetFlowRankingData, 5)
+		limitedNetFlowRanking := limitNetFlowRankingData(ctx.NetFlowRankingData, AnalystRankingsTopN)
 		sb.WriteString(nofxos.FormatNetFlowRankingForAI(limitedNetFlowRanking, nofxosLang))
 	}
 
 	// Price Ranking data (market-wide gainers/losers)
 	// 优化：显示 Top 5，平衡信息完整性与token消耗（Top 5提供更全面的市场信号）
 	if ctx.PriceRankingData != nil {
-		limitedPriceRanking := limitPriceRankingData(ctx.PriceRankingData, 5)
+		limitedPriceRanking := limitPriceRankingData(ctx.PriceRankingData, AnalystRankingsTopN)
 		sb.WriteString(nofxos.FormatPriceRankingForAI(limitedPriceRanking, nofxosLang))
 	}
 
@@ -4061,6 +4158,9 @@ func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoi
 		if d.StopLoss <= 0 || d.TakeProfit <= 0 {
 			return fmt.Errorf("stop loss and take profit must be greater than 0")
 		}
+		if d.Confidence <= 0 || d.Confidence > 100 {
+			return fmt.Errorf("open position requires confidence (1-100), got %d", d.Confidence)
+		}
 
 		if d.Action == "open_long" {
 			if d.StopLoss >= d.TakeProfit {
@@ -4226,4 +4326,36 @@ func limitPriceRankingData(data *nofxos.PriceRankingData, limit int) *nofxos.Pri
 	}
 
 	return limited
+}
+
+// AnalystRankingsTopN 分析师用全市场排名条数（与 OI movers 一致，便于宏观宽度判断）
+const AnalystRankingsTopN = 10
+
+// FormatMarketRankingsForAnalyst 为分析师生成全市场排名摘要（OI / 资金流 / 涨跌榜），Top 10，与交易员同源
+// 供分析师做宏观宽度与资金流向判断；无数据时返回空字符串，由调用方决定是否显示占位
+func FormatMarketRankingsForAnalyst(ctx *Context, lang Language) string {
+	if ctx == nil {
+		return ""
+	}
+	nofxosLang := nofxos.LangEnglish
+	if lang == LangChinese {
+		nofxosLang = nofxos.LangChinese
+	}
+	var sb strings.Builder
+	if ctx.OIRankingData != nil {
+		limited := limitOIRankingData(ctx.OIRankingData, AnalystRankingsTopN)
+		sb.WriteString(nofxos.FormatOIRankingForAI(limited, nofxosLang))
+	}
+	if ctx.NetFlowRankingData != nil {
+		limited := limitNetFlowRankingData(ctx.NetFlowRankingData, AnalystRankingsTopN)
+		sb.WriteString(nofxos.FormatNetFlowRankingForAI(limited, nofxosLang))
+	}
+	if ctx.PriceRankingData != nil {
+		limited := limitPriceRankingData(ctx.PriceRankingData, AnalystRankingsTopN)
+		sb.WriteString(nofxos.FormatPriceRankingForAI(limited, nofxosLang))
+	}
+	if sb.Len() == 0 {
+		return ""
+	}
+	return sb.String()
 }
