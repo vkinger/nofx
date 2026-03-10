@@ -262,18 +262,18 @@ export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
     return null
   }
 
-  // 按周期打点：仅在第 0, dotInterval, 2*dotInterval... 处绘制圆点
+  // 按周期打点：仅在第 0, dotInterval, 2*dotInterval... 处绘制圆点（Recharts dot 不能返回 null，不显示时用 r=0）
   const renderDot = (props: any) => {
     const { cx, cy, index } = props
-    if (index % dotInterval !== 0) return null
+    const show = index % dotInterval === 0
     return (
       <circle
         cx={cx}
         cy={cy}
-        r={3}
+        r={show ? 3 : 0}
         fill="#F0B90B"
-        stroke={isDark ? '#1E2329' : '#fff'}
-        strokeWidth={1}
+        stroke={show ? (isDark ? '#1E2329' : '#fff') : 'transparent'}
+        strokeWidth={show ? 1 : 0}
       />
     )
   }
