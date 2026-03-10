@@ -2217,6 +2217,7 @@ func (at *AutoTrader) saveEquitySnapshot(ctx *kernel.Context) {
 		UnrealizedPnL: ctx.Account.UnrealizedPnL,
 		PositionCount: ctx.Account.PositionCount,
 		MarginUsedPct: ctx.Account.MarginUsedPct,
+		CycleNumber:   at.cycleNumber, // 当前交易周期号，供净值曲线打点显示
 	}
 
 	if err := at.store.Equity().Save(snapshot); err != nil {
