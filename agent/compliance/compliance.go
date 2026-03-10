@@ -48,7 +48,8 @@ You **must** output exactly one JSON object; do NOT wrap in markdown code fences
 Rules:
 - Reject a decision if excluded coins, exceeds max leverage/position ratio/max positions, or **confidence < min_confidence** for opens (strictly less than).
 - **Confidence rule:** Use **each decision's confidence** (trader's score for that decision in "Pending decisions"); do NOT use analyst confidence. Reject for confidence only when **decision.confidence < rules.min_confidence**. Example: decision confidence=85 and min_confidence=82 → do NOT reject (85 >= 82). Example: decision confidence=80 and min_confidence=82 → reject, reason e.g. "confidence 80 below min_confidence=82". Never say "confidence X below min_confidence=Y" when X >= Y.
-- **min_confidence applies only to open actions (open_long, open_short).** For wait, hold, or other non-open/close actions, do NOT reject for confidence and do NOT add "min_confidence" to violations.
+- **wait and hold:** ALWAYS approve (approved=true, reason=""). NEVER reject. They do not open positions or add risk. Rejecting "wait" by saying "recommend to wait" is invalid.
+- **min_confidence applies ONLY to open_long and open_short.** Do NOT reject wait/hold for confidence or min_confidence; do NOT add "min_confidence" to violations for wait/hold.
 - **Close / 部分平仓 (close_long, close_short, partial_close):** Do NOT apply min_confidence or open-only rules. Prefer to approve (closing reduces risk). Reject only when a rule explicitly forbids it (e.g. symbol not in current positions is an execution concern, not a reason to reject—execution layer will handle). Do NOT add "min_confidence" to violations for close/partial_close.`
 
 const complianceSystemPromptZH = `你是风控官。你的职责是在执行前审计交易决策。你必须按条输出审计结果：每条输入决策对应一条审批结果（多条决策 = decisions_audit 里多个对象）。
@@ -87,7 +88,8 @@ const complianceSystemPromptZH = `你是风控官。你的职责是在执行前�
 规则：
 - 涉及排除币种、超杠杆/仓位占比/最大持仓数、或开仓时 **confidence < min_confidence**（严格小于）时驳回该条。
 - **置信度规则：** 使用**每条决策的 confidence**（即「待执行决策」里该条的评分，交易员决策评分），不要使用分析师置信度。仅当 **该条 decision.confidence < 规则的 min_confidence** 时才能以置信度为由驳回。例如某条 confidence=85、min_confidence=82 时不得以置信度驳回（85≥82）；例如某条 confidence=80、min_confidence=82 时可驳回，reason 如「置信度80低于min_confidence=82」。禁止出现「置信度 X 低于 min_confidence=Y」且 X≥Y 的矛盾表述。
-- **min_confidence 仅适用于开仓动作（open_long、open_short）。** 对 wait、hold 等非开平仓动作，不得以置信度驳回，且不得将 min_confidence 列入 violations。
+- **wait 与 hold：** 一律通过（approved=true，reason=""），不得驳回。二者不新开仓、不增加风险。以「建议等待」等理由驳回 wait 无效。
+- **min_confidence 仅适用于 open_long、open_short。** 不得以置信度或 min_confidence 驳回 wait/hold，不得将 min_confidence 列入 violations。
 - **平仓/部分平仓（close_long、close_short、partial_close）：** 不适用 min_confidence 及仅针对开仓的规则。原则上放行（平仓降低敞口）。仅当某条规则明确禁止时才驳回（例如「该 symbol 无持仓」属执行层问题，不作为驳回理由，由执行层处理）。平仓/部分平仓不得将 min_confidence 列入 violations。JSON 字段名保持英文。`
 
 var (
@@ -142,6 +144,8 @@ func RunCompliance(input *ComplianceInput, client mcp.AIClient) (*ComplianceOutp
 		if anyApproved {
 			out.Approved = true
 		}
+		// wait/hold 不适用 min_confidence：若因置信度被驳回则强制改为通过
+		fixWaitHoldWrongRejection(input, out)
 		// 双重保障：若某条因「置信度」被驳回但实际 confidence >= min_confidence，按实际结果改为通过并执行
 		fixConfidenceReasonContradiction(input, out)
 		// 修正后可能由驳回变通过，需重算批级 approved
@@ -157,6 +161,42 @@ func RunCompliance(input *ComplianceInput, client mcp.AIClient) (*ComplianceOutp
 		}
 	}
 	return out, nil
+}
+
+// fixWaitHoldWrongRejection 对 wait/hold 动作：不新开仓、不增加风险，一律通过；若被驳回则强制改为通过（无论理由）
+func fixWaitHoldWrongRejection(input *ComplianceInput, out *ComplianceOutput) {
+	if input == nil || out == nil || len(out.DecisionsAudit) == 0 {
+		return
+	}
+	anyOverridden := false
+	for i := range out.DecisionsAudit {
+		if out.DecisionsAudit[i].Approved {
+			continue
+		}
+		if i >= len(input.Decisions) {
+			continue
+		}
+		action := strings.ToLower(strings.TrimSpace(input.Decisions[i].Action))
+		if action != "wait" && action != "hold" {
+			continue
+		}
+		wasReason := out.DecisionsAudit[i].Reason
+		out.DecisionsAudit[i].Approved = true
+		out.DecisionsAudit[i].Reason = ""
+		anyOverridden = true
+		logger.Infof("[Compliance] Override to approved for decision %d: action=%s (wait/hold are always approved, was rejected: %q)", i, action, wasReason)
+	}
+	if anyOverridden && len(out.Violations) > 0 {
+		var filtered []string
+		for _, v := range out.Violations {
+			lower := strings.ToLower(v)
+			if lower == "min_confidence" || strings.Contains(lower, "min_confidence") {
+				continue
+			}
+			filtered = append(filtered, v)
+		}
+		out.Violations = filtered
+	}
 }
 
 // fixConfidenceReasonContradiction 当驳回原因提到置信度但实际 confidence >= min_confidence 时，按实际结果将该条改为通过（approved=true），以便执行
