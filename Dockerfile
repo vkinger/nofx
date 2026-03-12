@@ -84,16 +84,22 @@ RUN mkdir -p /app/data
 # 前端静态资源
 COPY --from=frontend-builder /build/dist /usr/share/nginx/html
 
-# 启动脚本：生成 nginx 配置、启动后端(8081)、启动 nginx(PORT)
+# 构建时生成自签名 SSL 证书并打包进镜像
+RUN mkdir -p /app/ssl && \
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+        -keyout /app/ssl/key.pem -out /app/ssl/cert.pem \
+        -subj "/CN=localhost/O=NOFX/C=US"
+
+# 启动脚本：生成 nginx 配置（使用镜像内证书）、启动后端(8081)、启动 nginx(PORT)
 COPY railway/start.sh /app/start.sh
 RUN chmod +x /app/start.sh
 
 ENV DB_PATH=/app/data/data.db
-ENV PORT=8080
+ENV PORT=80
 
-EXPOSE 8080
+EXPOSE 80
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider "http://localhost:${PORT:-8080}/health" || exit 1
+  CMD wget --no-verbose --tries=1 --spider --no-check-certificate "https://localhost:${PORT:-80}/health" || exit 1
 
 CMD ["/app/start.sh"]

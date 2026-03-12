@@ -13,11 +13,17 @@ if [ -z "$DATA_ENCRYPTION_KEY" ]; then
     export DATA_ENCRYPTION_KEY=$(openssl rand -base64 32)
 fi
 
-# 生成 nginx 配置
+# 生成 nginx 配置（HTTPS on PORT，使用镜像内构建时打包的证书）
 cat > /etc/nginx/http.d/default.conf << NGINX_EOF
 server {
-    listen $PORT;
+    listen $PORT ssl http2;
     server_name _;
+    ssl_certificate     /app/ssl/cert.pem;
+    ssl_certificate_key /app/ssl/key.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers on;
+
     root /usr/share/nginx/html;
     index index.html;
     gzip on;
@@ -32,6 +38,7 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_connect_timeout 300s;
         proxy_send_timeout 300s;
         proxy_read_timeout 300s;
