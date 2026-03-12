@@ -21,7 +21,7 @@ services:
     container_name: nofx-agent
     restart: unless-stopped
     ports:
-      - "${NOFX_BACKEND_PORT:-80}:80"
+      - "80:80"
     volumes:
 #      - ./data:/app/data
       - /etc/localtime:/etc/localtime:ro
