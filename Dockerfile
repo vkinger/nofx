@@ -100,6 +100,6 @@ ENV PORT=80
 EXPOSE 80
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider --no-check-certificate "https://localhost:${PORT:-80}/health" || exit 1
+  CMD wget --no-verbose --tries=1 --spider --no-check-certificate "https://127.0.0.1/health" || exit 1
 
 CMD ["/app/start.sh"]
