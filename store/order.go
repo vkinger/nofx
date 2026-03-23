@@ -132,6 +132,10 @@ func (s *OrderStore) InitTables() error {
 			s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_orders_status ON trader_orders(status)`)
 			s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_fills_trader_id ON trader_fills(trader_id)`)
 			s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_fills_order_id ON trader_fills(order_id)`)
+			// Ensure any new columns are also migrated when tables already exist.
+			if err := s.db.AutoMigrate(&TraderOrder{}, &TraderFill{}); err != nil {
+				return fmt.Errorf("failed to auto-migrate order tables: %w", err)
+			}
 			return nil
 		}
 	}

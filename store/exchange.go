@@ -57,7 +57,16 @@ func (s *ExchangeStore) initTables() error {
 		if tableExists > 0 {
 			// Still run data migrations
 			s.migrateToMultiAccount()
+			// Ensure new optional column exists for paper trading.
+			// Older DB schemas may miss this column, causing SQLSTATE 42703 at runtime.
+			if err := s.db.Exec(`ALTER TABLE exchanges ADD COLUMN IF NOT EXISTS price_source_exchange_id TEXT DEFAULT ''`).Error; err != nil {
+				return fmt.Errorf("failed to add exchanges.price_source_exchange_id: %w", err)
+			}
 			s.db.Model(&Exchange{}).Where("account_name = '' OR account_name IS NULL").Update("account_name", "Default")
+			// Also run AutoMigrate to automatically add any other missing columns in future schema versions.
+			if err := s.db.AutoMigrate(&Exchange{}); err != nil {
+				return fmt.Errorf("failed to auto-migrate exchanges: %w", err)
+			}
 			return nil
 		}
 	}

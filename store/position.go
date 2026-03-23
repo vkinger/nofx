@@ -93,6 +93,10 @@ func (s *PositionStore) InitTables() error {
 
 			// Just ensure index exists
 			s.db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_positions_exchange_pos_unique ON trader_positions(exchange_id, exchange_position_id) WHERE exchange_position_id != ''`)
+			// Ensure any new columns are also migrated when tables already exist.
+			if err := s.db.AutoMigrate(&TraderPosition{}); err != nil {
+				return fmt.Errorf("failed to auto-migrate trader_positions table: %w", err)
+			}
 			return nil
 		}
 	}
